@@ -1,0 +1,15 @@
+.vscode/**
+src/**
+node_modules/**
+!node_modules/ssh2-sftp-client/**
+!node_modules/ssh2/**
+!node_modules/minimatch/**
+!node_modules/brace-expansion/**
+coverage/**
+*.map
+tsconfig.json
+webpack.config.js
+jest.config.*
+.gitignore
+docs/plans/**
+CHANGELOG.md

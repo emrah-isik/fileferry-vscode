@@ -1,0 +1,149 @@
+{
+  "name": "fileferry",
+  "displayName": "FileFerry",
+  "description": "Deploy git-changed files to remote servers with precision. Select, confirm, upload.",
+  "version": "0.1.0",
+  "publisher": "fileferry",
+  "license": "GPL-3.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/fileferry/fileferry-vscode"
+  },
+  "keywords": [
+    "sftp",
+    "deploy",
+    "git",
+    "upload",
+    "ssh",
+    "ftp"
+  ],
+  "categories": [
+    "Other"
+  ],
+  "extensionDependencies": ["vscode.git"],
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "activationEvents": [
+    "workspaceContains:.git"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "fileferry.uploadSelected",
+        "title": "FileFerry: Upload"
+      },
+      {
+        "command": "fileferry.openSettings",
+        "title": "FileFerry: Deployment Settings"
+      },
+      {
+        "command": "fileferry.switchServer",
+        "title": "FileFerry: Switch Server"
+      },
+      {
+        "command": "fileferry.openCredentials",
+        "title": "FileFerry: Manage SSH Credentials"
+      },
+      {
+        "command": "fileferry.resetConfirmations",
+        "title": "FileFerry: Reset Upload Confirmations"
+      },
+      {
+        "command": "fileferry.showRemoteDiff",
+        "title": "FileFerry: Compare with Remote"
+      }
+    ],
+    "menus": {
+      "scm/resourceState/context": [
+        {
+          "command": "fileferry.uploadSelected",
+          "group": "fileferry@1"
+        },
+        {
+          "command": "fileferry.showRemoteDiff",
+          "group": "fileferry@2"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "fileferry.uploadSelected",
+          "when": "resourceScheme == file && !explorerResourceIsFolder",
+          "group": "fileferry@1"
+        },
+        {
+          "command": "fileferry.showRemoteDiff",
+          "when": "resourceScheme == file && !explorerResourceIsFolder",
+          "group": "fileferry@2"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "fileferry.uploadSelected",
+          "when": "false"
+        },
+        {
+          "command": "fileferry.showRemoteDiff",
+          "when": "false"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "fileferry.uploadSelected",
+        "key": "alt+u",
+        "when": "focusedView == workbench.scm"
+      },
+      {
+        "command": "fileferry.showRemoteDiff",
+        "key": "alt+p",
+        "when": "focusedView == workbench.scm"
+      }
+    ],
+    "configuration": {
+      "title": "FileFerry",
+      "properties": {
+        "fileferry.defaultServer": {
+          "type": "string",
+          "description": "Name of the default deployment server"
+        }
+      }
+    },
+    "jsonValidation": [
+      {
+        "fileMatch": "**/.vscode/fileferry.json",
+        "url": "./schema/fileferry-schema.json"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "webpack --mode production",
+    "watch": "webpack --mode development --watch",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "lint": "eslint src --ext ts",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/node": "^25.5.0",
+    "@types/ssh2-sftp-client": "^9.0.6",
+    "@types/vscode": "^1.85.0",
+    "@typescript-eslint/eslint-plugin": "^8.57.2",
+    "@typescript-eslint/parser": "^8.57.2",
+    "@vscode/vsce": "^3.7.1",
+    "eslint": "^10.1.0",
+    "jest": "^30.3.0",
+    "ts-jest": "^29.4.6",
+    "ts-loader": "^9.5.4",
+    "typescript": "^5.9.3",
+    "webpack": "^5.105.4",
+    "webpack-cli": "^7.0.2"
+  },
+  "dependencies": {
+    "minimatch": "^10.2.4",
+    "ssh2-sftp-client": "^12.1.1"
+  }
+}

@@ -1,0 +1,491 @@
+// FileFerry Deployment Settings webview
+// Runs inside the VSCode webview iframe — no Node.js, no VSCode API access.
+// All data persistence goes through postMessage to the extension.
+
+const vscode = acquireVsCodeApi();
+
+// ─── State ────────────────────────────────────────────────────────────────────
+
+let state = {
+  servers: [],
+  credentials: [],
+  binding: null,
+  selectedServerId: null,
+  activeTab: 'connection',
+  testStatus: null,   // { success, message } | null
+  editingNew: false,  // true when creating a new (unsaved) server
+};
+
+// ─── Boot ─────────────────────────────────────────────────────────────────────
+
+// Tell the extension we are ready to receive the init message
+vscode.postMessage({ command: 'ready' });
+
+// ─── Message handler (extension → webview) ────────────────────────────────────
+
+window.addEventListener('message', ({ data: msg }) => {
+  switch (msg.command) {
+    case 'init':
+      state.servers = msg.servers || [];
+      state.credentials = msg.credentials || [];
+      state.binding = msg.binding;
+      if (!state.selectedServerId && state.servers.length > 0) {
+        state.selectedServerId = state.servers[0].id;
+      }
+      render();
+      break;
+
+    case 'serverSaved':
+      upsertServer(msg.server);
+      state.selectedServerId = msg.server.id;
+      state.editingNew = false;
+      render();
+      break;
+
+    case 'serverDeleted':
+      state.servers = state.servers.filter(s => s.id !== msg.id);
+      state.selectedServerId = state.servers[0]?.id ?? null;
+      state.editingNew = false;
+      render();
+      break;
+
+    case 'bindingUpdated':
+      state.binding = msg.binding;
+      renderServerList();
+      break;
+
+    case 'credentialsUpdated':
+      state.credentials = msg.credentials || [];
+      renderConnectionTab(getSelectedServer());
+      break;
+
+    case 'testResult':
+      state.testStatus = { success: msg.success, message: msg.message };
+      renderTestResult();
+      break;
+
+    case 'mappingSaved':
+      if (state.binding) {
+        state.binding.servers = state.binding.servers || {};
+        state.binding.servers[msg.serverId] = msg.serverBinding;
+      }
+      renderMappingsTab(getSelectedServer());
+      break;
+
+    case 'rootPathOverrideSaved':
+      if (state.binding) {
+        state.binding.servers = state.binding.servers || {};
+        state.binding.servers[msg.serverId] = state.binding.servers[msg.serverId] || { mappings: [], excludedPaths: [] };
+        state.binding.servers[msg.serverId].rootPathOverride = msg.rootPathOverride;
+      }
+      renderMappingsTab(getSelectedServer());
+      break;
+
+    case 'directorySelected':
+      const rootInput = document.getElementById('f-root-path');
+      if (rootInput) rootInput.value = msg.path;
+      const rootErrEl = document.getElementById('err-root-path');
+      if (rootErrEl) rootErrEl.textContent = '';
+      setBrowseLoading(false);
+      break;
+
+    case 'browseDone':
+      setBrowseLoading(false);
+      break;
+
+    case 'browseError':
+      setBrowseLoading(false);
+      const browseErrEl = document.getElementById('test-connection-result');
+      if (browseErrEl) {
+        browseErrEl.className = 'error';
+        browseErrEl.textContent = `✗ ${msg.message}`;
+      }
+      break;
+
+    case 'validationError':
+      showValidationErrors(msg.errors);
+      break;
+  }
+});
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function escapeHtml(str) {
+  if (str == null) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function setBrowseLoading(loading) {
+  const btn = document.getElementById('btn-browse-root');
+  if (!btn) return;
+  btn.disabled = loading;
+  btn.classList.toggle('btn-loading', loading);
+  btn.textContent = loading ? 'Browsing…' : 'Browse…';
+}
+
+function upsertServer(server) {
+  const idx = state.servers.findIndex(s => s.id === server.id);
+  if (idx >= 0) {
+    state.servers[idx] = server;
+  } else {
+    state.servers.push(server);
+  }
+}
+
+function getSelectedServer() {
+  if (state.editingNew) return { id: '', name: '', type: 'sftp', credentialId: '', rootPath: '' };
+  return state.servers.find(s => s.id === state.selectedServerId) ?? null;
+}
+
+// ─── Render ───────────────────────────────────────────────────────────────────
+
+function render() {
+  renderServerList();
+  renderDetailPanel();
+}
+
+function renderServerList() {
+  const el = document.getElementById('server-list-panel');
+  if (!el) return;
+
+  el.innerHTML = `
+    <div class="panel-header">
+      <span>Servers</span>
+      <button id="add-server-btn" title="Add server">+</button>
+    </div>
+    <ul class="server-list">
+      ${state.servers.map(s => `
+        <li class="server-item ${s.id === state.selectedServerId && !state.editingNew ? 'selected' : ''}"
+            data-id="${escapeHtml(s.id)}">
+          <span class="server-name">${escapeHtml(s.name)}</span>
+          ${state.binding?.defaultServerId === s.id ? '<span class="badge">default</span>' : ''}
+          <button class="btn-clone-server" data-id="${escapeHtml(s.id)}" title="Clone server" tabindex="-1">⎘</button>
+        </li>
+      `).join('')}
+      ${state.editingNew ? '<li class="server-item selected"><span class="server-name"><em>New Server</em></span></li>' : ''}
+    </ul>
+  `;
+
+  document.getElementById('add-server-btn')?.addEventListener('click', () => {
+    state.editingNew = true;
+    state.selectedServerId = null;
+    state.testStatus = null;
+    state.activeTab = 'connection';
+    render();
+  });
+
+  document.querySelectorAll('.server-item[data-id]').forEach(el => {
+    el.addEventListener('click', () => {
+      state.selectedServerId = el.dataset.id;
+      state.editingNew = false;
+      state.testStatus = null;
+      render();
+    });
+  });
+
+  document.querySelectorAll('.btn-clone-server').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      vscode.postMessage({ command: 'cloneServer', id: btn.dataset.id });
+    });
+  });
+}
+
+function renderDetailPanel() {
+  const server = getSelectedServer();
+
+  if (!server && !state.editingNew) {
+    document.getElementById('connection-tab').innerHTML = '';
+    document.getElementById('mappings-tab').innerHTML = '';
+    const detail = document.getElementById('server-detail-panel');
+    if (detail) detail.innerHTML = '<div class="empty-state">Select or add a server to get started</div>';
+    return;
+  }
+
+  // Ensure tabs container is restored (may have been replaced by empty-state)
+  const detail = document.getElementById('server-detail-panel');
+  if (!detail.querySelector('.tabs')) {
+    detail.innerHTML = `
+      <div class="tabs">
+        <button class="tab-btn active" data-tab="connection">Connection</button>
+        <button class="tab-btn" data-tab="mappings">Mappings</button>
+      </div>
+      <div id="connection-tab" class="tab-content active"></div>
+      <div id="mappings-tab" class="tab-content"></div>
+    `;
+  }
+
+  // Wire tab buttons
+  detail.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === state.activeTab);
+    btn.addEventListener('click', () => {
+      state.activeTab = btn.dataset.tab;
+      detail.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === state.activeTab));
+      detail.querySelectorAll('.tab-content').forEach(t => t.classList.toggle('active', t.id === `${state.activeTab}-tab`));
+    });
+  });
+
+  detail.querySelectorAll('.tab-content').forEach(t => {
+    t.classList.toggle('active', t.id === `${state.activeTab}-tab`);
+  });
+
+  renderConnectionTab(server);
+  renderMappingsTab(server);
+}
+
+function renderConnectionTab(server) {
+  const el = document.getElementById('connection-tab');
+  if (!el) return;
+
+  const isDefault = state.binding?.defaultServerId === server.id;
+  const isNew = !server.id;
+
+  el.innerHTML = `
+    <div class="form-group">
+      <label for="f-name">Name</label>
+      <input id="f-name" type="text" value="${escapeHtml(server.name)}" placeholder="e.g. Production">
+      <span class="field-error" id="err-name"></span>
+    </div>
+
+    <div class="form-group">
+      <label for="f-type">Protocol</label>
+      <select id="f-type">
+        <option value="sftp" ${server.type === 'sftp' ? 'selected' : ''}>SFTP</option>
+        <option value="ftp" ${server.type === 'ftp' ? 'selected' : ''}>FTP</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="f-credential">
+        SSH Credential
+        <button id="btn-manage-creds" class="btn-inline-link" type="button">Manage…</button>
+      </label>
+      <select id="f-credential">
+        <option value="">— Select credential —</option>
+        ${state.credentials.map(c => `
+          <option value="${escapeHtml(c.id)}" ${server.credentialId === c.id ? 'selected' : ''}>
+            ${escapeHtml(c.name)} (${escapeHtml(c.username)}@${escapeHtml(c.host)})
+          </option>
+        `).join('')}
+      </select>
+      <span class="field-error" id="err-credential"></span>
+    </div>
+
+    <div class="form-group">
+      <label for="f-root-path">Root Path</label>
+      <div class="input-row">
+        <input id="f-root-path" type="text" value="${escapeHtml(server.rootPath)}" placeholder="/var/www">
+        <button id="btn-browse-root" class="btn-secondary" type="button">Browse…</button>
+      </div>
+      <span class="field-error" id="err-root-path"></span>
+    </div>
+
+    <div class="form-actions">
+      <button id="btn-save">Save</button>
+      ${!isNew ? `<button id="btn-test" class="btn-secondary">Test Connection</button>` : ''}
+      ${!isNew && !isDefault ? `<button id="btn-set-default" class="btn-secondary">Set as Default</button>` : ''}
+      ${!isNew && isDefault ? `<button disabled class="btn-secondary">Default Server ✓</button>` : ''}
+      ${!isNew ? `<button id="btn-delete" class="btn-danger">Delete</button>` : ''}
+    </div>
+
+    <div id="test-connection-result"></div>
+  `;
+
+  if (state.testStatus) renderTestResult();
+
+  document.getElementById('f-name')?.addEventListener('input', () => {
+    const errEl = document.getElementById('err-name');
+    if (errEl) errEl.textContent = '';
+  });
+
+  document.getElementById('f-root-path')?.addEventListener('input', () => {
+    const errEl = document.getElementById('err-root-path');
+    if (errEl) errEl.textContent = '';
+  });
+
+  document.getElementById('f-credential')?.addEventListener('change', () => {
+    const errEl = document.getElementById('err-credential');
+    if (errEl) errEl.textContent = '';
+  });
+
+  document.getElementById('btn-browse-root')?.addEventListener('click', () => {
+    const credentialId = document.getElementById('f-credential').value;
+    const errEl = document.getElementById('err-credential');
+    if (!credentialId) {
+      if (errEl) errEl.textContent = 'Select a credential before browsing';
+      return;
+    }
+    if (errEl) errEl.textContent = '';
+    const currentRoot = document.getElementById('f-root-path').value || '/';
+    setBrowseLoading(true);
+    vscode.postMessage({ command: 'browseDirectory', credentialId, startPath: currentRoot });
+  });
+
+  document.getElementById('btn-manage-creds')?.addEventListener('click', () => {
+    vscode.postMessage({ command: 'openCredentials' });
+  });
+
+  document.getElementById('btn-save')?.addEventListener('click', () => {
+    clearValidationErrors();
+    vscode.postMessage({
+      command: 'saveServer',
+      payload: {
+        id: server.id || undefined,
+        name: document.getElementById('f-name').value,
+        type: document.getElementById('f-type').value,
+        credentialId: document.getElementById('f-credential').value,
+        rootPath: document.getElementById('f-root-path').value,
+      },
+    });
+  });
+
+  document.getElementById('btn-test')?.addEventListener('click', () => {
+    state.testStatus = null;
+    document.getElementById('test-connection-result').className = '';
+    document.getElementById('test-connection-result').textContent = 'Connecting…';
+    vscode.postMessage({ command: 'testConnection', serverId: server.id });
+  });
+
+  document.getElementById('btn-set-default')?.addEventListener('click', () => {
+    vscode.postMessage({ command: 'setDefaultServer', id: server.id });
+  });
+
+  document.getElementById('btn-delete')?.addEventListener('click', () => {
+    vscode.postMessage({ command: 'deleteServer', id: server.id });
+  });
+}
+
+function renderMappingsTab(server) {
+  const el = document.getElementById('mappings-tab');
+  if (!el || !server?.id) return;
+
+  const serverBinding = state.binding?.servers?.[server.id];
+  const mappings = serverBinding?.mappings || [];
+  const excludedPaths = serverBinding?.excludedPaths || [];
+  const rootPathOverride = serverBinding?.rootPathOverride || '';
+
+  el.innerHTML = `
+    <div class="section-title">Project Root Override</div>
+    <p class="hint">Override this server's root path for this project only. Leave blank to use <code>${escapeHtml(server.rootPath || '/var/www')}</code>.</p>
+    <div class="input-row">
+      <input id="f-root-override" type="text" value="${escapeHtml(rootPathOverride)}" placeholder="${escapeHtml(server.rootPath || '/var/www')}">
+      <button id="btn-save-root-override" class="btn-secondary" type="button">Save Override</button>
+    </div>
+    <span class="field-error" id="err-root-override"></span>
+
+    <p class="hint" style="margin-top:24px">Map local paths (relative to workspace root) to remote paths on the server.</p>
+
+    <div class="section-title">Path Mappings</div>
+    <table class="mappings-table">
+      <thead>
+        <tr>
+          <th>Local Path</th>
+          <th>Remote Path</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="mappings-body">
+        ${mappings.map((m, i) => `
+          <tr data-index="${i}">
+            <td><input class="m-local" type="text" value="${escapeHtml(m.localPath)}" placeholder="/"></td>
+            <td><input class="m-remote" type="text" value="${escapeHtml(m.remotePath)}" placeholder="html"></td>
+            <td><button class="btn-remove-mapping" data-index="${i}" title="Remove">×</button></td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+    <button id="btn-add-mapping" class="btn-secondary">+ Add Mapping</button>
+
+    <div class="section-title" style="margin-top:24px">Excluded Paths</div>
+    <p class="hint">Glob patterns separated by commas (e.g. node_modules, *.log, vendor)</p>
+    <input id="f-excluded" type="text" value="${escapeHtml(excludedPaths.join(', '))}">
+
+    <div class="form-actions">
+      <button id="btn-save-mappings">Save Mappings</button>
+    </div>
+  `;
+
+  document.getElementById('btn-save-root-override')?.addEventListener('click', () => {
+    const val = document.getElementById('f-root-override').value.trim();
+    vscode.postMessage({ command: 'saveRootPathOverride', serverId: server.id, rootPathOverride: val || undefined });
+  });
+
+  document.getElementById('btn-add-mapping')?.addEventListener('click', () => {
+    const tbody = document.getElementById('mappings-body');
+    const idx = tbody.children.length;
+    const row = document.createElement('tr');
+    row.dataset.index = idx;
+    row.innerHTML = `
+      <td><input class="m-local" type="text" value="" placeholder="/"></td>
+      <td><input class="m-remote" type="text" value="" placeholder="html"></td>
+      <td><button class="btn-remove-mapping" data-index="${idx}" title="Remove">×</button></td>
+    `;
+    tbody.appendChild(row);
+    wireRemoveButtons();
+  });
+
+  wireRemoveButtons();
+
+  document.getElementById('btn-save-mappings')?.addEventListener('click', () => {
+    const tbody = document.getElementById('mappings-body');
+    const updatedMappings = Array.from(tbody.querySelectorAll('tr')).map(row => ({
+      localPath: row.querySelector('.m-local').value.trim() || '/',
+      remotePath: row.querySelector('.m-remote').value.trim(),
+    }));
+    const excludedRaw = document.getElementById('f-excluded').value;
+    const updatedExcluded = excludedRaw.split(',').map(s => s.trim()).filter(Boolean);
+
+    vscode.postMessage({
+      command: 'saveMapping',
+      serverId: server.id,
+      serverBinding: { mappings: updatedMappings, excludedPaths: updatedExcluded },
+    });
+  });
+}
+
+function wireRemoveButtons() {
+  document.querySelectorAll('.btn-remove-mapping').forEach(btn => {
+    // Replace to remove duplicate listeners
+    const clone = btn.cloneNode(true);
+    btn.replaceWith(clone);
+    clone.addEventListener('click', () => {
+      clone.closest('tr')?.remove();
+    });
+  });
+}
+
+function renderTestResult() {
+  const el = document.getElementById('test-connection-result');
+  if (!el || !state.testStatus) return;
+  el.className = state.testStatus.success ? 'success' : 'error';
+  el.textContent = state.testStatus.success
+    ? `✓ ${state.testStatus.message}`
+    : `✗ ${state.testStatus.message}`;
+}
+
+function showValidationErrors(errors) {
+  if (errors.name) {
+    const el = document.getElementById('err-name');
+    if (el) el.textContent = errors.name;
+  }
+  if (errors.credentialId) {
+    const el = document.getElementById('err-credential');
+    if (el) el.textContent = errors.credentialId;
+  }
+  if (errors.rootPath) {
+    const el = document.getElementById('err-root-path');
+    if (el) el.textContent = errors.rootPath;
+  }
+  if (errors.rootPathOverride) {
+    const el = document.getElementById('err-root-override');
+    if (el) el.textContent = errors.rootPathOverride;
+  }
+}
+
+function clearValidationErrors() {
+  document.querySelectorAll('.field-error').forEach(el => el.textContent = '');
+}

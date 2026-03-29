@@ -1,0 +1,377 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  color: var(--vscode-foreground);
+  background: var(--vscode-editor-background);
+  margin: 0;
+  padding: 0;
+  height: 100vh;
+  overflow: hidden;
+}
+
+#app {
+  display: flex;
+  height: 100vh;
+}
+
+/* ─── Left panel: server list ─────────────────────────────────── */
+
+#server-list-panel {
+  width: 286px;
+  min-width: 220px;
+  border-right: 1px solid var(--vscode-panel-border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--vscode-panel-border);
+  font-weight: 600;
+  font-size: 0.85em;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--vscode-sideBarTitle-foreground);
+}
+
+.panel-header button {
+  background: transparent;
+  border: none;
+  color: var(--vscode-foreground);
+  font-size: 1.4em;
+  line-height: 1;
+  padding: 0 4px;
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+.panel-header button:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+}
+
+.server-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.server-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.server-item:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.server-item.selected {
+  background: var(--vscode-list-activeSelectionBackground);
+  color: var(--vscode-list-activeSelectionForeground);
+}
+
+.server-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.badge {
+  font-size: 0.7em;
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+  padding: 1px 6px;
+  border-radius: 8px;
+  margin-left: 6px;
+  flex-shrink: 0;
+}
+
+/* ─── Right panel: detail form ────────────────────────────────── */
+
+#server-detail-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.empty-state {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--vscode-descriptionForeground);
+  font-style: italic;
+}
+
+/* ─── Tabs ────────────────────────────────────────────────────── */
+
+.tabs {
+  display: flex;
+  border-bottom: 1px solid var(--vscode-panel-border);
+  padding: 0 16px;
+  gap: 2px;
+}
+
+.tab-btn {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--vscode-foreground);
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: var(--vscode-font-size);
+  margin-bottom: -1px;
+}
+
+.tab-btn:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+}
+
+.tab-btn.active {
+  border-bottom-color: var(--vscode-focusBorder);
+  color: var(--vscode-tab-activeForeground);
+}
+
+.tab-content {
+  display: none;
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px;
+}
+
+.tab-content.active {
+  display: block;
+}
+
+/* ─── Form elements ───────────────────────────────────────────── */
+
+.form-group {
+  margin-bottom: 14px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 0.9em;
+  color: var(--vscode-descriptionForeground);
+}
+
+input[type="text"],
+input[type="number"],
+input[type="password"],
+select {
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+  padding: 5px 8px;
+  width: 100%;
+  font-size: var(--vscode-font-size);
+  font-family: var(--vscode-font-family);
+  border-radius: 2px;
+}
+
+input:focus,
+select:focus {
+  outline: 1px solid var(--vscode-focusBorder);
+  border-color: var(--vscode-focusBorder);
+}
+
+.field-error {
+  display: block;
+  margin-top: 3px;
+  font-size: 0.85em;
+  color: var(--vscode-inputValidation-errorForeground, #f44);
+  background: var(--vscode-inputValidation-errorBackground);
+  border-left: 2px solid var(--vscode-inputValidation-errorBorder, #f44);
+  padding: 2px 6px;
+}
+
+.field-error:empty {
+  display: none;
+}
+
+/* ─── Buttons ─────────────────────────────────────────────────── */
+
+.form-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 20px;
+  flex-wrap: wrap;
+}
+
+button {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  border: none;
+  padding: 5px 14px;
+  cursor: pointer;
+  font-size: var(--vscode-font-size);
+  font-family: var(--vscode-font-family);
+  border-radius: 2px;
+}
+
+button:hover:not(:disabled) {
+  background: var(--vscode-button-hoverBackground);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+button.btn-secondary {
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+}
+
+button.btn-secondary:hover:not(:disabled) {
+  background: var(--vscode-button-secondaryHoverBackground);
+}
+
+button.btn-danger {
+  background: transparent;
+  color: var(--vscode-errorForeground, #f44);
+  border: 1px solid var(--vscode-errorForeground, #f44);
+}
+
+button.btn-danger:hover:not(:disabled) {
+  background: var(--vscode-inputValidation-errorBackground);
+}
+
+/* ─── Test connection result ──────────────────────────────────── */
+
+#test-connection-result {
+  margin-top: 10px;
+  padding: 6px 10px;
+  border-radius: 2px;
+  font-size: 0.9em;
+}
+
+#test-connection-result.success {
+  background: var(--vscode-inputValidation-infoBackground);
+  border-left: 3px solid var(--vscode-inputValidation-infoBorder, #4caf50);
+  color: var(--vscode-inputValidation-infoForeground);
+}
+
+#test-connection-result.error {
+  background: var(--vscode-inputValidation-errorBackground);
+  border-left: 3px solid var(--vscode-inputValidation-errorBorder, #f44);
+  color: var(--vscode-inputValidation-errorForeground);
+}
+
+/* ─── Mappings table ──────────────────────────────────────────── */
+
+.mappings-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 8px;
+}
+
+.mappings-table th {
+  text-align: left;
+  font-size: 0.85em;
+  color: var(--vscode-descriptionForeground);
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.mappings-table td {
+  padding: 3px 4px;
+}
+
+.mappings-table td:last-child {
+  width: 30px;
+  text-align: center;
+}
+
+.btn-remove-mapping {
+  background: transparent;
+  border: none;
+  color: var(--vscode-errorForeground, #f44);
+  padding: 2px 6px;
+  cursor: pointer;
+  font-size: 1.1em;
+}
+
+.hint {
+  font-size: 0.85em;
+  color: var(--vscode-descriptionForeground);
+  margin: 4px 0;
+}
+
+.btn-inline-link {
+  background: transparent;
+  border: none;
+  color: var(--vscode-textLink-foreground);
+  padding: 0;
+  font-size: 0.85em;
+  cursor: pointer;
+  margin-left: 8px;
+  text-decoration: underline;
+}
+
+.btn-inline-link:hover {
+  color: var(--vscode-textLink-activeForeground);
+  background: transparent;
+}
+
+.section-title {
+  font-weight: 600;
+  margin: 20px 0 10px;
+  font-size: 0.9em;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--vscode-descriptionForeground);
+}
+
+.input-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.input-row input {
+  flex: 1;
+}
+
+/* ─── Spinner for async button actions ───────────────────────── */
+
+@keyframes fileferry-spin {
+  to { transform: translateY(-50%) rotate(360deg); }
+}
+
+.btn-loading {
+  position: relative;
+  padding-left: 28px;
+  pointer-events: none;
+  opacity: 0.8;
+}
+
+.btn-loading::before {
+  content: '';
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 11px;
+  height: 11px;
+  border: 2px solid transparent;
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: fileferry-spin 0.7s linear infinite;
+}
