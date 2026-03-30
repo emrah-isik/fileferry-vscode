@@ -2,7 +2,7 @@
   "name": "fileferry",
   "displayName": "FileFerry",
   "description": "Deploy git-changed files to remote servers with precision. Select, confirm, upload.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "esidevlabs",
   "icon": "resources/icon.png",
   "license": "GPL-3.0-or-later",
@@ -21,7 +21,9 @@
   "categories": [
     "Other"
   ],
-  "extensionDependencies": ["vscode.git"],
+  "extensionDependencies": [
+    "vscode.git"
+  ],
   "engines": {
     "vscode": "^1.85.0"
   },
