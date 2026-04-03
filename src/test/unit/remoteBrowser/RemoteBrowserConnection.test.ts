@@ -8,6 +8,8 @@ const mockSftp = {
   disconnect: jest.fn(),
   listDirectoryDetailed: jest.fn(),
   get: jest.fn(),
+  deleteFile: jest.fn(),
+  deleteDirectory: jest.fn(),
   connected: false,
 };
 
@@ -198,6 +200,24 @@ describe('RemoteBrowserConnection', () => {
 
       await connection.disconnect();
       expect(mockSftp.disconnect).toHaveBeenCalled();
+    });
+  });
+
+  describe('deleteRemoteFile', () => {
+    it('ensures connection and delegates to sftp deleteFile', async () => {
+      mockSftp.deleteFile.mockResolvedValue(undefined);
+      await connection.deleteRemoteFile('/var/www/old.php');
+      expect(mockSftp.connect).toHaveBeenCalled();
+      expect(mockSftp.deleteFile).toHaveBeenCalledWith('/var/www/old.php');
+    });
+  });
+
+  describe('deleteRemoteDirectory', () => {
+    it('ensures connection and delegates to sftp deleteDirectory', async () => {
+      mockSftp.deleteDirectory.mockResolvedValue(undefined);
+      await connection.deleteRemoteDirectory('/var/www/old-folder');
+      expect(mockSftp.connect).toHaveBeenCalled();
+      expect(mockSftp.deleteDirectory).toHaveBeenCalledWith('/var/www/old-folder');
     });
   });
 

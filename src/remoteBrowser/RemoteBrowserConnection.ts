@@ -85,6 +85,18 @@ export class RemoteBrowserConnection {
     return this.sftp.get(remotePath);
   }
 
+  async deleteRemoteFile(remotePath: string): Promise<void> {
+    await this.ensureConnected();
+    this.resetIdleTimer();
+    await this.sftp.deleteFile(remotePath);
+  }
+
+  async deleteRemoteDirectory(remotePath: string): Promise<void> {
+    await this.ensureConnected();
+    this.resetIdleTimer();
+    await this.sftp.deleteDirectory(remotePath);
+  }
+
   async disconnect(): Promise<void> {
     this.clearIdleTimer();
     if (this.sftp.connected) {

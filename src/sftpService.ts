@@ -127,6 +127,13 @@ export class SftpService {
     await (this.client as any).delete(remotePath);
   }
 
+  async deleteDirectory(remotePath: string): Promise<void> {
+    if (!this.client) {
+      throw new Error('Not connected. Call connect() before deleting directories.');
+    }
+    await this.client.rmdir(remotePath, true);
+  }
+
   async disconnect(): Promise<void> {
     await this.client?.end();
     this.client = null;

@@ -51,8 +51,32 @@ describe('normalizeCommandArgs', () => {
     });
   });
 
-  describe('when no args provided', () => {
-    it('returns undefined resource and allResources', () => {
+  describe('when no args provided (keybinding)', () => {
+    it('falls back to active editor URI', () => {
+      const mockUri = makeUri('/workspace/src/app.php');
+      (vscode.window as any).activeTextEditor = {
+        document: { uri: { ...mockUri, scheme: 'file' } },
+      };
+
+      const { resource, allResources } = normalizeCommandArgs(undefined, undefined);
+      expect(resource?.resourceUri.fsPath).toBe('/workspace/src/app.php');
+      expect(allResources).toHaveLength(1);
+      expect(allResources![0].resourceUri.fsPath).toBe('/workspace/src/app.php');
+    });
+
+    it('returns undefined when no active editor', () => {
+      (vscode.window as any).activeTextEditor = undefined;
+
+      const { resource, allResources } = normalizeCommandArgs(undefined, undefined);
+      expect(resource).toBeUndefined();
+      expect(allResources).toBeUndefined();
+    });
+
+    it('returns undefined when active editor has non-file scheme', () => {
+      (vscode.window as any).activeTextEditor = {
+        document: { uri: { fsPath: '/workspace/output', scheme: 'output' } },
+      };
+
       const { resource, allResources } = normalizeCommandArgs(undefined, undefined);
       expect(resource).toBeUndefined();
       expect(allResources).toBeUndefined();

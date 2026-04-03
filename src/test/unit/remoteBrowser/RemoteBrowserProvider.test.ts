@@ -118,6 +118,36 @@ describe('RemoteBrowserProvider', () => {
       expect(children).toHaveLength(1);
       expect(children![0].label).toMatch(/permission denied/i);
     });
+
+    it('connection error placeholder has reconnect command', async () => {
+      mockConnection.listDirectory.mockRejectedValue(new Error('Connection refused'));
+
+      const children = await provider.getChildren();
+      expect(children![0].command).toEqual({
+        command: 'fileferry.remoteBrowser.refresh',
+        title: 'Retry connection',
+      });
+    });
+
+    it('permission denied placeholder has reconnect command', async () => {
+      mockConnection.listDirectory.mockRejectedValue(new Error('Permission denied'));
+
+      const children = await provider.getChildren();
+      expect(children![0].command).toEqual({
+        command: 'fileferry.remoteBrowser.refresh',
+        title: 'Retry connection',
+      });
+    });
+
+    it('no server configured placeholder has open settings command', async () => {
+      mockConnection.listDirectory.mockRejectedValue(new Error('No server configured'));
+
+      const children = await provider.getChildren();
+      expect(children![0].command).toEqual({
+        command: 'fileferry.openSettings',
+        title: 'Open settings',
+      });
+    });
   });
 
   describe('refresh', () => {
@@ -142,6 +172,53 @@ describe('RemoteBrowserProvider', () => {
       mockConnection.listDirectory.mockResolvedValue([]);
       await provider.getChildren();
       expect(mockConnection.listDirectory).toHaveBeenCalledWith('/var/log');
+    });
+  });
+
+  describe('onDidChangePath', () => {
+    it('fires with the browsed path after root getChildren', async () => {
+      mockConnection.listDirectory.mockResolvedValue([]);
+      const pathListener = jest.fn();
+      provider.onDidChangePath(pathListener);
+
+      await provider.getChildren();
+      expect(pathListener).toHaveBeenCalledWith('/var/www');
+    });
+
+    it('fires with navigated path after navigateTo', async () => {
+      mockConnection.listDirectory.mockResolvedValue([]);
+      const pathListener = jest.fn();
+      provider.onDidChangePath(pathListener);
+
+      provider.navigateTo('/var/log');
+      await provider.getChildren();
+      expect(pathListener).toHaveBeenCalledWith('/var/log');
+    });
+
+    it('does not fire for child directory expansion', async () => {
+      const dirEntry: RemoteEntry = {
+        name: 'logs',
+        type: 'd',
+        size: 4096,
+        modifyTime: 1710000000000,
+        remotePath: '/var/www/logs',
+      };
+      const dirItem = new RemoteFileItem(dirEntry);
+      mockConnection.listDirectory.mockResolvedValue([]);
+      const pathListener = jest.fn();
+      provider.onDidChangePath(pathListener);
+
+      await provider.getChildren(dirItem);
+      expect(pathListener).not.toHaveBeenCalled();
+    });
+
+    it('fires empty string on error', async () => {
+      mockConnection.listDirectory.mockRejectedValue(new Error('Connection refused'));
+      const pathListener = jest.fn();
+      provider.onDidChangePath(pathListener);
+
+      await provider.getChildren();
+      expect(pathListener).toHaveBeenCalledWith('');
     });
   });
 

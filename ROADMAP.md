@@ -1,6 +1,6 @@
 # FileFerry Roadmap
 
-## Current — v0.2.0
+## Current — v0.2.1
 
 - Upload git-changed or Explorer-selected files via SFTP
 - Delete remote files that were locally deleted
@@ -9,9 +9,15 @@
 - SSH credentials stored securely in the OS keychain
 - Upload confirmation flow
 - Status bar showing active server
-- **Remote File Browser** — sidebar panel to browse remote filesystem
+- **Remote File Browser** — sidebar panel to browse remote filesystem with path indicator
 - **Servers panel** — see all configured servers, click to switch
 - **Welcome views** — onboarding guidance for new users
+- **Download to Workspace** — download remote files to mapped local paths
+- **Compare with Local** — diff remote files against local versions
+- **Delete from Server** — delete remote files and folders with confirmation
+- **Copy Remote Path** — copy any remote path to clipboard
+- **Reconnect from error state** — click error items to retry or open settings
+- **Context menus** — right-click actions for all remote browser operations
 
 ---
 

@@ -23,7 +23,15 @@ export function normalizeCommandArgs(
   resource: vscode.SourceControlResourceState | undefined;
   allResources: vscode.SourceControlResourceState[] | undefined;
 } {
+  // Keybindings don't pass SCM resource states — fall back to active editor
   if (!arg1) {
+    const activeUri = vscode.window.activeTextEditor?.document.uri;
+    if (activeUri && activeUri.scheme === 'file') {
+      return {
+        resource: uriToResource(activeUri),
+        allResources: [uriToResource(activeUri)],
+      };
+    }
     return { resource: undefined, allResources: undefined };
   }
 

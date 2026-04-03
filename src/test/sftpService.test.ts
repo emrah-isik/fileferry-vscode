@@ -12,6 +12,7 @@ const mockMethods = {
   list: jest.fn(),
   realPath: jest.fn(),
   delete: jest.fn(),
+  rmdir: jest.fn(),
 };
 
 jest.mock('ssh2-sftp-client', () => {
@@ -277,6 +278,24 @@ describe('SftpService', () => {
       await service.connect(serverConfig, { password: 'secret' });
       await service.disconnect();
       expect(service.connected).toBe(false);
+    });
+  });
+
+  describe('deleteDirectory', () => {
+    beforeEach(async () => {
+      mockMethods.connect.mockResolvedValue(undefined);
+      await service.connect(serverConfig, { password: 'secret' });
+    });
+
+    it('calls rmdir with recursive true', async () => {
+      mockMethods.rmdir.mockResolvedValue(undefined);
+      await service.deleteDirectory('/var/www/old-folder');
+      expect(mockMethods.rmdir).toHaveBeenCalledWith('/var/www/old-folder', true);
+    });
+
+    it('throws if not connected', async () => {
+      const fresh = new SftpService();
+      await expect(fresh.deleteDirectory('/var/www/old-folder')).rejects.toThrow('Not connected');
     });
   });
 

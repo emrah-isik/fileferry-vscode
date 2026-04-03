@@ -18,8 +18,12 @@ If you came from PhpStorm and miss its deployment workflow, FileFerry gives you 
 - **OS keychain security** — passwords and passphrases stored in macOS Keychain / Windows Credential Manager / Linux libsecret. Never written to disk
 - **Multiple servers** — production, staging, dev — switch with `FileFerry: Switch Server` or click the status bar
 - **Clone server** — duplicate an existing server config as a starting point
-- **Remote File Browser** — dedicated sidebar panel to browse your remote server's filesystem. Expand directories, click any file to view it in the editor. File type icons match your VS Code theme. Persistent connection with automatic idle timeout
+- **Remote File Browser** — dedicated sidebar panel to browse your remote server's filesystem. Expand directories, click any file to view it in the editor. File type icons match your VS Code theme. Persistent connection with automatic idle timeout. Path indicator shows your current browsing location
 - **Servers panel** — see all configured servers at a glance in the sidebar. Active server shows a filled circle; click any server to switch. Right-click to edit or test connection
+- **Download to Workspace** — right-click a remote file to download it to the mapped local path. Prompts for a save location if no mapping matches
+- **Compare with Local** — right-click a remote file to open VS Code's diff editor showing the remote version against the local file
+- **Delete from Server** — right-click a remote file or folder to delete it from the server with a mandatory confirmation prompt
+- **Copy Remote Path** — right-click any remote item to copy its full path to clipboard
 - **Root Path Override** — override a server's root path per project without changing the global server definition
 - **Path mappings** — map workspace subfolders to different remote paths per server
 - **Excluded paths** — glob patterns to skip files that should never be deployed
@@ -123,6 +127,10 @@ Configurable via `Preferences → Keyboard Shortcuts` → search `fileferry`.
 | `FileFerry: Switch Server` | Change the default server for this project |
 | `FileFerry: Go to Remote Path` | Navigate the Remote File Browser to a specific path |
 | `FileFerry: Disconnect Remote Browser` | Close the remote browser connection |
+| `Download to Workspace` | Download a remote file to the mapped local workspace path |
+| `Compare with Local` | Diff a remote file against the corresponding local file |
+| `Delete from Server` | Delete a remote file or folder (with confirmation) |
+| `Copy Remote Path` | Copy the full remote path to clipboard |
 | `FileFerry: Reset Upload Confirmations` | Re-enable upload prompts suppressed by "don't ask again" |
 
 ---

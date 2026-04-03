@@ -2,7 +2,7 @@
   "name": "fileferry",
   "displayName": "FileFerry",
   "description": "Deploy git-changed files to remote servers with precision. Select, confirm, upload.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "publisher": "esidevlabs",
   "icon": "resources/icon.png",
   "license": "GPL-3.0-or-later",
@@ -75,6 +75,22 @@
       {
         "command": "fileferry.remoteBrowser.disconnect",
         "title": "FileFerry: Disconnect Remote Browser"
+      },
+      {
+        "command": "fileferry.remoteBrowser.copyPath",
+        "title": "Copy Remote Path"
+      },
+      {
+        "command": "fileferry.remoteBrowser.downloadToWorkspace",
+        "title": "Download to Workspace"
+      },
+      {
+        "command": "fileferry.remoteBrowser.diffWithLocal",
+        "title": "Compare with Local"
+      },
+      {
+        "command": "fileferry.remoteBrowser.delete",
+        "title": "Delete from Server"
       },
       {
         "command": "fileferry.servers.setDefault",
@@ -179,6 +195,26 @@
           "group": "inline"
         },
         {
+          "command": "fileferry.remoteBrowser.downloadToWorkspace",
+          "when": "view == fileferry.remoteBrowser && viewItem == remoteFile",
+          "group": "1_transfer"
+        },
+        {
+          "command": "fileferry.remoteBrowser.diffWithLocal",
+          "when": "view == fileferry.remoteBrowser && viewItem == remoteFile",
+          "group": "1_transfer"
+        },
+        {
+          "command": "fileferry.remoteBrowser.delete",
+          "when": "view == fileferry.remoteBrowser && viewItem =~ /^remote(File|Directory)$/",
+          "group": "3_destructive"
+        },
+        {
+          "command": "fileferry.remoteBrowser.copyPath",
+          "when": "view == fileferry.remoteBrowser",
+          "group": "2_actions"
+        },
+        {
           "command": "fileferry.servers.setDefault",
           "when": "view == fileferry.serversView && viewItem == server-inactive",
           "group": "1_switch"
@@ -217,6 +253,22 @@
         },
         {
           "command": "fileferry.servers.testConnection",
+          "when": "false"
+        },
+        {
+          "command": "fileferry.remoteBrowser.copyPath",
+          "when": "false"
+        },
+        {
+          "command": "fileferry.remoteBrowser.downloadToWorkspace",
+          "when": "false"
+        },
+        {
+          "command": "fileferry.remoteBrowser.diffWithLocal",
+          "when": "false"
+        },
+        {
+          "command": "fileferry.remoteBrowser.delete",
           "when": "false"
         }
       ]

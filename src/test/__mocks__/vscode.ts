@@ -69,6 +69,15 @@ const vscode = {
       toString: () => [base.fsPath, ...parts].join('/')
     })),
   },
+  env: {
+    clipboard: {
+      writeText: jest.fn().mockResolvedValue(undefined),
+      readText: jest.fn().mockResolvedValue(''),
+    },
+  },
+  extensions: {
+    getExtension: jest.fn(),
+  },
   SecretStorage: jest.fn(),
   ConfigurationTarget: {
     Global: 1,

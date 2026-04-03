@@ -70,4 +70,50 @@ export class PathResolver {
   ): ResolvedUploadItem[] {
     return localPaths.map(p => this.resolve(p, workspaceRoot, serverConfig));
   }
+
+  /**
+   * Reverse path resolution: remote → local.
+   * Returns the absolute local workspace path, or null if no mapping matches.
+   */
+  resolveLocalPath(remotePath: string, workspaceRoot: string, serverConfig: ServerConfig): string | null {
+    const rootPath = (serverConfig.rootPathOverride?.trim() || serverConfig.rootPath).replace(/\/$/, '');
+
+    // Remote path must be under the root
+    if (!remotePath.startsWith(rootPath + '/') && remotePath !== rootPath) {
+      return null;
+    }
+
+    // Strip rootPath to get the portion that mappings operate on
+    const afterRoot = remotePath === rootPath ? '' : remotePath.slice(rootPath.length + 1);
+
+    const effectiveMappings = serverConfig.mappings.length > 0
+      ? serverConfig.mappings
+      : [{ localPath: '/', remotePath: '' }];
+
+    // Sort by remotePath length descending (most specific wins)
+    const sorted = [...effectiveMappings].sort(
+      (a, b) => b.remotePath.length - a.remotePath.length
+    );
+
+    for (const mapping of sorted) {
+      const mappingRemote = mapping.remotePath.replace(/\/$/, '');
+      const matches =
+        mappingRemote === '' ||
+        afterRoot === mappingRemote ||
+        afterRoot.startsWith(mappingRemote + '/');
+
+      if (matches) {
+        const relativeToMapping =
+          mappingRemote === ''
+            ? afterRoot
+            : afterRoot.slice(mappingRemote.length + 1);
+
+        const mappingLocal = mapping.localPath === '/' ? '' : mapping.localPath.replace(/^\//, '');
+        const localRelative = [mappingLocal, relativeToMapping].filter(Boolean).join('/');
+        return path.join(workspaceRoot, localRelative);
+      }
+    }
+
+    return null;
+  }
 }

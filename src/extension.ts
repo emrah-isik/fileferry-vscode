@@ -12,6 +12,10 @@ import { RemoteBrowserConnection } from './remoteBrowser/RemoteBrowserConnection
 import { RemoteBrowserProvider } from './remoteBrowser/RemoteBrowserProvider';
 import { ServersProvider } from './remoteBrowser/ServersProvider';
 import { openRemoteFile } from './commands/openRemoteFile';
+import { copyRemotePath } from './commands/copyRemotePath';
+import { downloadToWorkspace } from './commands/downloadToWorkspace';
+import { diffRemoteWithLocal } from './commands/diffRemoteWithLocal';
+import { deleteRemoteItem } from './commands/deleteRemoteItem';
 
 let output: vscode.OutputChannel;
 
@@ -134,6 +138,11 @@ export function activate(context: vscode.ExtensionContext): void {
     showCollapseAll: true,
   });
 
+  // Update path indicator in Remote Files view header
+  browserProvider.onDidChangePath(path => {
+    browserTreeView.description = path || undefined;
+  });
+
   context.subscriptions.push(
     serversTreeView,
     browserTreeView,
@@ -200,6 +209,30 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand(
       'fileferry.remoteBrowser.openFile',
       (entry) => openRemoteFile(entry, browserConnection)
+    ),
+
+    vscode.commands.registerCommand(
+      'fileferry.remoteBrowser.copyPath',
+      (item: any) => copyRemotePath(item)
+    ),
+
+    vscode.commands.registerCommand(
+      'fileferry.remoteBrowser.downloadToWorkspace',
+      withErrorHandling('downloadToWorkspace', async (item: any) => {
+        await downloadToWorkspace(item.entry, browserConnection, bindingManager, serverManager);
+      })
+    ),
+
+    vscode.commands.registerCommand(
+      'fileferry.remoteBrowser.diffWithLocal',
+      withErrorHandling('diffWithLocal', async (item: any) => {
+        await diffRemoteWithLocal(item.entry, browserConnection, bindingManager, serverManager);
+      })
+    ),
+
+    vscode.commands.registerCommand(
+      'fileferry.remoteBrowser.delete',
+      (item: any) => deleteRemoteItem(item, browserConnection, () => browserProvider.refresh())
     ),
 
     vscode.commands.registerCommand(

@@ -116,4 +116,73 @@ describe('PathResolver', () => {
       expect(result.remotePath).toBe('/var/www/index.php');
     });
   });
+
+  describe('resolveLocalPath (reverse: remote → local)', () => {
+    it('maps a remote path back to a local workspace path', () => {
+      const result = resolver.resolveLocalPath('/var/www/src/app.php', workspaceRoot, {
+        rootPath: '/var/www',
+        mappings: [{ localPath: '/', remotePath: '' }],
+        excludedPaths: [],
+      });
+      expect(result).toBe('/workspace/src/app.php');
+    });
+
+    it('uses the most-specific matching mapping', () => {
+      const result = resolver.resolveLocalPath('/var/www/public_html/index.php', workspaceRoot, {
+        rootPath: '/var/www',
+        mappings: [
+          { localPath: '/', remotePath: '' },
+          { localPath: '/public', remotePath: 'public_html' },
+        ],
+        excludedPaths: [],
+      });
+      expect(result).toBe('/workspace/public/index.php');
+    });
+
+    it('handles rootPathOverride', () => {
+      const result = resolver.resolveLocalPath('/home/deploy/app/index.php', workspaceRoot, {
+        rootPath: '/var/www',
+        rootPathOverride: '/home/deploy/app',
+        mappings: [{ localPath: '/', remotePath: '' }],
+        excludedPaths: [],
+      });
+      expect(result).toBe('/workspace/index.php');
+    });
+
+    it('handles mapping with non-empty remotePath', () => {
+      const result = resolver.resolveLocalPath('/srv/app/html/src/app.php', workspaceRoot, {
+        rootPath: '/srv/app',
+        mappings: [{ localPath: '/', remotePath: 'html' }],
+        excludedPaths: [],
+      });
+      expect(result).toBe('/workspace/src/app.php');
+    });
+
+    it('returns null when remote path does not match rootPath', () => {
+      const result = resolver.resolveLocalPath('/other/path/file.php', workspaceRoot, {
+        rootPath: '/var/www',
+        mappings: [{ localPath: '/', remotePath: '' }],
+        excludedPaths: [],
+      });
+      expect(result).toBeNull();
+    });
+
+    it('returns null when no mapping matches the remote subpath', () => {
+      const result = resolver.resolveLocalPath('/var/www/nomatch/file.php', workspaceRoot, {
+        rootPath: '/var/www',
+        mappings: [{ localPath: '/public', remotePath: 'public_html' }],
+        excludedPaths: [],
+      });
+      expect(result).toBeNull();
+    });
+
+    it('handles file directly in rootPath with empty remotePath mapping', () => {
+      const result = resolver.resolveLocalPath('/var/www/index.php', workspaceRoot, {
+        rootPath: '/var/www',
+        mappings: [{ localPath: '/', remotePath: '' }],
+        excludedPaths: [],
+      });
+      expect(result).toBe('/workspace/index.php');
+    });
+  });
 });

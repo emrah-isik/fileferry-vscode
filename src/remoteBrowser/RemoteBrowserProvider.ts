@@ -10,6 +10,9 @@ export class RemoteBrowserProvider implements vscode.TreeDataProvider<RemoteFile
   private readonly _onDidChangeTreeData = new vscode.EventEmitter<RemoteFileItem | undefined | void>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
+  private readonly _onDidChangePath = new vscode.EventEmitter<string>();
+  readonly onDidChangePath = this._onDidChangePath.event;
+
   constructor(private readonly connection: RemoteBrowserConnection) {}
 
   getTreeItem(element: RemoteFileItem): vscode.TreeItem {
@@ -36,8 +39,10 @@ export class RemoteBrowserProvider implements vscode.TreeDataProvider<RemoteFile
       }
 
       const entries = await this.connection.listDirectory(targetPath);
+      if (!element) { this._onDidChangePath.fire(targetPath); }
       return this.toTreeItems(entries, targetPath);
     } catch (err: unknown) {
+      if (!element) { this._onDidChangePath.fire(''); }
       return [this.createErrorItem(err)];
     }
   }
@@ -95,8 +100,14 @@ export class RemoteBrowserProvider implements vscode.TreeDataProvider<RemoteFile
 
     const item = new RemoteFileItem(errorEntry);
     item.description = message;
-    item.command = undefined; // Remove the open-file command
     item.iconPath = new vscode.ThemeIcon('warning');
+
+    if (/no server configured/i.test(message)) {
+      item.command = { command: 'fileferry.openSettings', title: 'Open settings' };
+    } else {
+      item.command = { command: 'fileferry.remoteBrowser.refresh', title: 'Retry connection' };
+    }
+
     return item;
   }
 }

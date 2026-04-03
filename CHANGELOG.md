@@ -2,6 +2,24 @@
 
 All notable changes to FileFerry will be documented in this file.
 
+## [0.2.1] - 2026-04-04
+
+### Added
+
+- **Download to Workspace** — right-click a remote file → "Download to Workspace". Resolves the local path using reverse path mapping and writes to the workspace. Prompts for a save location if no mapping matches
+- **Compare with Local** — right-click a remote file → "Compare with Local". Downloads the remote version to a temp file and opens VS Code's diff editor with remote on the left, local on the right
+- **Delete from Server** — right-click a remote file or folder → "Delete from Server". Mandatory confirmation dialog; directories are deleted recursively
+- **Copy Remote Path** — right-click any item in the Remote Files panel → "Copy Remote Path". Writes the full remote path to clipboard
+- **Current path indicator** — the Remote Files view header now shows the current browsing path (e.g. `Remote Files /var/www/html`)
+- **Reconnect from error state** — clicking "Connection failed" or "Permission denied" in the Remote Files panel now triggers a reconnect attempt. "No server configured" opens Deployment Settings
+- **Context menus** — Remote Files panel items have grouped right-click menus: transfer actions (Download, Compare), utility actions (Copy Path, Refresh), and destructive actions (Delete)
+
+### Fixed
+
+- **Keybinding fallback** — `Alt+U` (upload) and `Alt+P` (compare) now fall back to the active editor when triggered via keybinding instead of showing "no files selected"
+
+---
+
 ## [0.2.0] - 2026-04-03
 
 ### Added
