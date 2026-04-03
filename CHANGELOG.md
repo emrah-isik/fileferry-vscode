@@ -2,6 +2,20 @@
 
 All notable changes to FileFerry will be documented in this file.
 
+## [0.2.0] - 2026-04-03
+
+### Added
+
+- **Remote File Browser** — dedicated sidebar panel in the activity bar to browse the remote server's filesystem. Expand directories lazily, click any file to download and view it in the editor. File type icons provided by your active VS Code icon theme. Persistent SFTP connection with 5-minute idle timeout and automatic reconnection
+- **Servers panel** — sidebar panel showing all configured servers with visual active/inactive state (filled/outline circle). Click a server to set it as the project default. Right-click for Edit and Test Connection. Refresh button and settings shortcut in the toolbar
+- **Welcome views** — onboarding guidance shown when no servers are configured. "Add Server" and "Add SSH Credential" buttons appear in the empty Servers and Remote Files panels
+- **Go to Remote Path** command — navigate the Remote File Browser to any remote directory by typing a path
+- **Disconnect Remote Browser** command — manually close the remote SFTP connection
+- **Theme-aware file icons** — remote files show the same icons as local files (based on file extension and your installed icon theme)
+- **Root path override support in browser** — Remote File Browser respects per-project `rootPathOverride` from `fileferry.json`
+
+---
+
 ## [0.1.0] - 2026-03-30
 
 ### Added

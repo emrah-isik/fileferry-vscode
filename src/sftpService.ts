@@ -7,6 +7,10 @@ import { ServerConfig, UploadPair, UploadResult } from './types';
 export class SftpService {
   private client: SftpClient | null = null;
 
+  get connected(): boolean {
+    return this.client !== null;
+  }
+
   async connect(
     server: ServerConfig,
     credentials: { password?: string; passphrase?: string }
@@ -100,6 +104,13 @@ export class SftpService {
     }
     const items = await this.client.list(remotePath);
     return items.map(item => ({ name: item.name, type: item.type }));
+  }
+
+  async listDirectoryDetailed(remotePath: string): Promise<SftpClient.FileInfo[]> {
+    if (!this.client) {
+      throw new Error('Not connected. Call connect() before listing directories.');
+    }
+    return this.client.list(remotePath);
   }
 
   async resolveRemotePath(remotePath: string): Promise<string> {

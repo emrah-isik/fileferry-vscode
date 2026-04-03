@@ -8,13 +8,17 @@ import { normalizeCommandArgs } from './utils/normalizeCommandArgs';
 import { StatusBarItem } from './ui/StatusBarItem';
 import { DeploymentSettingsPanel } from './ui/webviews/DeploymentSettingsPanel';
 import { SshCredentialPanel } from './ui/webviews/SshCredentialPanel';
+import { RemoteBrowserConnection } from './remoteBrowser/RemoteBrowserConnection';
+import { RemoteBrowserProvider } from './remoteBrowser/RemoteBrowserProvider';
+import { ServersProvider } from './remoteBrowser/ServersProvider';
+import { openRemoteFile } from './commands/openRemoteFile';
 
 let output: vscode.OutputChannel;
 
-function withErrorHandling(label: string, fn: () => Promise<void>): () => Promise<void> {
-  return async () => {
+function withErrorHandling(label: string, fn: (...args: any[]) => Promise<void>): (...args: any[]) => Promise<void> {
+  return async (...args: any[]) => {
     try {
-      await fn();
+      await fn(...args);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       output.appendLine(`[error] ${label}: ${message}`);
@@ -103,6 +107,136 @@ export function activate(context: vscode.ExtensionContext): void {
         vscode.window.showInformationMessage('FileFerry: Upload confirmations reset.');
       })
     )
+  );
+
+  // Servers View
+  const serversProvider = new ServersProvider(serverManager, credentialManager, bindingManager);
+
+  const serversTreeView = vscode.window.createTreeView('fileferry.serversView', {
+    treeDataProvider: serversProvider,
+  });
+
+  // Set context key for welcome views
+  async function updateHasServersContext(): Promise<void> {
+    const servers = await serverManager.getAll();
+    await vscode.commands.executeCommand('setContext', 'fileferry.hasServers', servers.length > 0);
+  }
+  updateHasServersContext();
+
+  // Remote File Browser
+  const browserConnection = new RemoteBrowserConnection(
+    credentialManager, serverManager, bindingManager, output
+  );
+  const browserProvider = new RemoteBrowserProvider(browserConnection);
+
+  const browserTreeView = vscode.window.createTreeView('fileferry.remoteBrowser', {
+    treeDataProvider: browserProvider,
+    showCollapseAll: true,
+  });
+
+  context.subscriptions.push(
+    serversTreeView,
+    browserTreeView,
+    { dispose: () => browserConnection.dispose() },
+
+    // Servers commands
+    vscode.commands.registerCommand(
+      'fileferry.servers.setDefault',
+      withErrorHandling('setDefault', async (serverId: string) => {
+        await bindingManager.setDefaultServer(serverId);
+        statusBar.refresh();
+        serversProvider.refresh();
+        browserProvider.refresh();
+      })
+    ),
+
+    vscode.commands.registerCommand(
+      'fileferry.servers.refresh',
+      () => {
+        serversProvider.refresh();
+        updateHasServersContext();
+      }
+    ),
+
+    vscode.commands.registerCommand(
+      'fileferry.servers.editServer',
+      withErrorHandling('editServer', async () =>
+        DeploymentSettingsPanel.createOrShow(context, { credentialManager, serverManager, bindingManager, credentialsChanged: credentialsChangedEmitter.event })
+      )
+    ),
+
+    vscode.commands.registerCommand(
+      'fileferry.servers.testConnection',
+      withErrorHandling('testConnection', async (item: any) => {
+        const serverId = item?.serverId ?? item;
+        const server = await serverManager.getServer(serverId);
+        if (!server) {
+          vscode.window.showErrorMessage('FileFerry: Server not found.');
+          return;
+        }
+        const credential = await credentialManager.getWithSecret(server.credentialId);
+        const { SftpService } = await import('./sftpService');
+        const sftp = new SftpService();
+        try {
+          await sftp.connect(
+            { ...credential, id: server.id, name: server.name, type: server.type, mappings: [], excludedPaths: [] },
+            { password: credential.password, passphrase: credential.passphrase }
+          );
+          await sftp.disconnect();
+          vscode.window.showInformationMessage(`FileFerry: Connection to "${server.name}" successful.`);
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : String(err);
+          vscode.window.showErrorMessage(`FileFerry: Connection to "${server.name}" failed — ${message}`);
+        }
+      })
+    ),
+
+    // Remote browser commands
+    vscode.commands.registerCommand(
+      'fileferry.remoteBrowser.refresh',
+      () => browserProvider.refresh()
+    ),
+
+    vscode.commands.registerCommand(
+      'fileferry.remoteBrowser.openFile',
+      (entry) => openRemoteFile(entry, browserConnection)
+    ),
+
+    vscode.commands.registerCommand(
+      'fileferry.remoteBrowser.navigateTo',
+      withErrorHandling('navigateTo', async () => {
+        const path = await vscode.window.showInputBox({
+          prompt: 'Enter remote path to browse',
+          value: browserConnection.getRootPath(),
+        });
+        if (path) {
+          browserProvider.navigateTo(path);
+        }
+      })
+    ),
+
+    vscode.commands.registerCommand(
+      'fileferry.remoteBrowser.disconnect',
+      withErrorHandling('disconnect', async () => {
+        await browserConnection.disconnect();
+        browserProvider.refresh();
+        vscode.window.showInformationMessage('FileFerry: Remote browser disconnected.');
+      })
+    ),
+
+    // Refresh views when project binding changes
+    vscode.workspace.createFileSystemWatcher('**/.vscode/fileferry.json').onDidChange(
+      () => {
+        serversProvider.refresh();
+        browserProvider.refresh();
+      }
+    ),
+
+    // Refresh servers view when credentials change
+    credentialsChangedEmitter.event(() => {
+      serversProvider.refresh();
+      updateHasServersContext();
+    })
   );
 }
 

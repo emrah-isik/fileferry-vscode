@@ -18,8 +18,9 @@ If you came from PhpStorm and miss its deployment workflow, FileFerry gives you 
 - **OS keychain security** — passwords and passphrases stored in macOS Keychain / Windows Credential Manager / Linux libsecret. Never written to disk
 - **Multiple servers** — production, staging, dev — switch with `FileFerry: Switch Server` or click the status bar
 - **Clone server** — duplicate an existing server config as a starting point
+- **Remote File Browser** — dedicated sidebar panel to browse your remote server's filesystem. Expand directories, click any file to view it in the editor. File type icons match your VS Code theme. Persistent connection with automatic idle timeout
+- **Servers panel** — see all configured servers at a glance in the sidebar. Active server shows a filled circle; click any server to switch. Right-click to edit or test connection
 - **Root Path Override** — override a server's root path per project without changing the global server definition
-- **Remote directory browser** — browse the server's filesystem when setting the root path
 - **Path mappings** — map workspace subfolders to different remote paths per server
 - **Excluded paths** — glob patterns to skip files that should never be deployed
 - **Test Connection** — verify credentials before your first deploy
@@ -35,6 +36,7 @@ If you came from PhpStorm and miss its deployment workflow, FileFerry gives you 
 4. Add an SSH Credential (click **Manage…** next to the credential dropdown)
 5. Add a Deployment Server and configure path mappings
 6. Go to the **Source Control** panel, select changed files, right-click → **FileFerry: Upload**
+7. Click the **FileFerry icon** in the activity bar to browse remote files and manage servers
 
 Or press `Alt+U` when the Source Control panel is focused.
 
@@ -119,6 +121,8 @@ Configurable via `Preferences → Keyboard Shortcuts` → search `fileferry`.
 | `FileFerry: Deployment Settings` | Open server and mapping configuration |
 | `FileFerry: Manage SSH Credentials` | Add, edit, or delete SSH credentials |
 | `FileFerry: Switch Server` | Change the default server for this project |
+| `FileFerry: Go to Remote Path` | Navigate the Remote File Browser to a specific path |
+| `FileFerry: Disconnect Remote Browser` | Close the remote browser connection |
 | `FileFerry: Reset Upload Confirmations` | Re-enable upload prompts suppressed by "don't ask again" |
 
 ---

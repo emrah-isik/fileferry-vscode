@@ -32,17 +32,35 @@ const vscode = {
     registerCommand: jest.fn(),
     executeCommand: jest.fn()
   },
-  EventEmitter: jest.fn().mockImplementation(() => ({
-    event: jest.fn(),
-    fire: jest.fn(),
-    dispose: jest.fn()
-  })),
+  EventEmitter: class EventEmitter {
+    private listeners: Array<(...args: any[]) => void> = [];
+    event = (listener: (...args: any[]) => void) => {
+      this.listeners.push(listener);
+      return { dispose: () => { this.listeners = this.listeners.filter(l => l !== listener); } };
+    };
+    fire = (...args: any[]) => { this.listeners.forEach(l => l(...args)); };
+    dispose = () => { this.listeners = []; };
+  },
   TreeItemCollapsibleState: {
     None: 0,
     Collapsed: 1,
     Expanded: 2
   },
-  TreeItem: jest.fn(),
+  ThemeIcon: class ThemeIcon {
+    constructor(public readonly id: string) {}
+  },
+  TreeItem: class TreeItem {
+    label?: string;
+    collapsibleState?: number;
+    description?: string;
+    iconPath?: any;
+    command?: any;
+    contextValue?: string;
+    constructor(label: string, collapsibleState?: number) {
+      this.label = label;
+      this.collapsibleState = collapsibleState;
+    }
+  },
   Uri: {
     file: jest.fn((path: string) => ({ fsPath: path, toString: () => path })),
     parse: jest.fn(),

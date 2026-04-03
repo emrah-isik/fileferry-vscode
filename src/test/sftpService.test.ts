@@ -234,6 +234,52 @@ describe('SftpService', () => {
     });
   });
 
+  describe('listDirectoryDetailed', () => {
+    beforeEach(async () => {
+      mockMethods.connect.mockResolvedValue(undefined);
+      await service.connect(serverConfig, { password: 'secret' });
+    });
+
+    it('returns full FileInfo objects from the remote path', async () => {
+      mockMethods.list.mockResolvedValue([
+        { name: 'logs', type: 'd', size: 4096, modifyTime: 1710000000000, accessTime: 1710000000000, rights: { user: 'rwx' }, owner: 1000, group: 1000 },
+        { name: 'app.log', type: '-', size: 52428, modifyTime: 1710100000000, accessTime: 1710100000000, rights: { user: 'rw-' }, owner: 1000, group: 1000 },
+      ]);
+      const result = await service.listDirectoryDetailed('/var/log');
+      expect(mockMethods.list).toHaveBeenCalledWith('/var/log');
+      expect(result).toHaveLength(2);
+      expect(result[0]).toHaveProperty('size', 4096);
+      expect(result[0]).toHaveProperty('modifyTime', 1710000000000);
+      expect(result[1]).toHaveProperty('name', 'app.log');
+    });
+
+    it('throws if not connected', async () => {
+      const fresh = new SftpService();
+      await expect(fresh.listDirectoryDetailed('/var/log')).rejects.toThrow('Not connected');
+    });
+  });
+
+  describe('connected', () => {
+    it('returns false before connecting', () => {
+      const fresh = new SftpService();
+      expect(fresh.connected).toBe(false);
+    });
+
+    it('returns true after connecting', async () => {
+      mockMethods.connect.mockResolvedValue(undefined);
+      await service.connect(serverConfig, { password: 'secret' });
+      expect(service.connected).toBe(true);
+    });
+
+    it('returns false after disconnecting', async () => {
+      mockMethods.connect.mockResolvedValue(undefined);
+      mockMethods.end.mockResolvedValue(undefined);
+      await service.connect(serverConfig, { password: 'secret' });
+      await service.disconnect();
+      expect(service.connected).toBe(false);
+    });
+  });
+
   describe('disconnect', () => {
     it('calls end on the client', async () => {
       mockMethods.connect.mockResolvedValue(undefined);

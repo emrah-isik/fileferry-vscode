@@ -2,7 +2,7 @@
   "name": "fileferry",
   "displayName": "FileFerry",
   "description": "Deploy git-changed files to remote servers with precision. Select, confirm, upload.",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "publisher": "esidevlabs",
   "icon": "resources/icon.png",
   "license": "GPL-3.0-or-later",
@@ -39,7 +39,8 @@
       },
       {
         "command": "fileferry.openSettings",
-        "title": "FileFerry: Deployment Settings"
+        "title": "FileFerry: Deployment Settings",
+        "icon": "$(gear)"
       },
       {
         "command": "fileferry.switchServer",
@@ -56,6 +57,74 @@
       {
         "command": "fileferry.showRemoteDiff",
         "title": "FileFerry: Compare with Remote"
+      },
+      {
+        "command": "fileferry.remoteBrowser.refresh",
+        "title": "FileFerry: Refresh Remote Browser",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "fileferry.remoteBrowser.openFile",
+        "title": "FileFerry: Open Remote File"
+      },
+      {
+        "command": "fileferry.remoteBrowser.navigateTo",
+        "title": "FileFerry: Go to Remote Path",
+        "icon": "$(folder-opened)"
+      },
+      {
+        "command": "fileferry.remoteBrowser.disconnect",
+        "title": "FileFerry: Disconnect Remote Browser"
+      },
+      {
+        "command": "fileferry.servers.setDefault",
+        "title": "FileFerry: Set as Default Server"
+      },
+      {
+        "command": "fileferry.servers.refresh",
+        "title": "FileFerry: Refresh Servers",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "fileferry.servers.editServer",
+        "title": "Edit Server"
+      },
+      {
+        "command": "fileferry.servers.testConnection",
+        "title": "Test Connection"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "fileferry-remote",
+          "title": "FileFerry",
+          "icon": "resources/icon-activitybar.svg"
+        }
+      ]
+    },
+    "views": {
+      "fileferry-remote": [
+        {
+          "id": "fileferry.serversView",
+          "name": "Servers"
+        },
+        {
+          "id": "fileferry.remoteBrowser",
+          "name": "Remote Files",
+          "contextualTitle": "FileFerry Remote Browser"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "fileferry.serversView",
+        "contents": "No servers configured yet.\n[Add Server](command:fileferry.openSettings)\n[Add SSH Credential](command:fileferry.openCredentials)"
+      },
+      {
+        "view": "fileferry.remoteBrowser",
+        "contents": "Browse files on your remote server.\n[Set Up a Server](command:fileferry.openSettings)",
+        "when": "!fileferry.hasServers"
       }
     ],
     "menus": {
@@ -81,6 +150,50 @@
           "group": "fileferry@2"
         }
       ],
+      "view/title": [
+        {
+          "command": "fileferry.remoteBrowser.navigateTo",
+          "when": "view == fileferry.remoteBrowser",
+          "group": "navigation"
+        },
+        {
+          "command": "fileferry.remoteBrowser.refresh",
+          "when": "view == fileferry.remoteBrowser",
+          "group": "navigation"
+        },
+        {
+          "command": "fileferry.openSettings",
+          "when": "view == fileferry.serversView",
+          "group": "navigation"
+        },
+        {
+          "command": "fileferry.servers.refresh",
+          "when": "view == fileferry.serversView",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "fileferry.remoteBrowser.refresh",
+          "when": "view == fileferry.remoteBrowser && viewItem == remoteDirectory",
+          "group": "inline"
+        },
+        {
+          "command": "fileferry.servers.setDefault",
+          "when": "view == fileferry.serversView && viewItem == server-inactive",
+          "group": "1_switch"
+        },
+        {
+          "command": "fileferry.servers.editServer",
+          "when": "view == fileferry.serversView",
+          "group": "2_manage"
+        },
+        {
+          "command": "fileferry.servers.testConnection",
+          "when": "view == fileferry.serversView",
+          "group": "2_manage"
+        }
+      ],
       "commandPalette": [
         {
           "command": "fileferry.uploadSelected",
@@ -88,6 +201,22 @@
         },
         {
           "command": "fileferry.showRemoteDiff",
+          "when": "false"
+        },
+        {
+          "command": "fileferry.remoteBrowser.openFile",
+          "when": "false"
+        },
+        {
+          "command": "fileferry.servers.setDefault",
+          "when": "false"
+        },
+        {
+          "command": "fileferry.servers.editServer",
+          "when": "false"
+        },
+        {
+          "command": "fileferry.servers.testConnection",
           "when": "false"
         }
       ]
