@@ -1,3 +1,4 @@
+import type { CancellationToken } from 'vscode';
 import { SftpService } from '../sftpService';
 import { SshCredentialWithSecret } from '../models/SshCredential';
 import { DeploymentServer } from '../models/DeploymentServer';
@@ -8,6 +9,7 @@ export interface UploadSummaryV2 {
   failed: Array<{ localPath: string; error: string }>;
   deleted: string[];
   deleteFailed: Array<{ remotePath: string; error: string }>;
+  cancelled?: ResolvedUploadItem[];
 }
 
 export class UploadOrchestratorV2 {
@@ -17,7 +19,8 @@ export class UploadOrchestratorV2 {
     items: ResolvedUploadItem[],
     credential: SshCredentialWithSecret,
     _server: DeploymentServer,
-    deleteRemotePaths: string[] = []
+    deleteRemotePaths: string[] = [],
+    token?: CancellationToken
   ): Promise<UploadSummaryV2> {
     await this.sftp.connect(credential as any, {
       password: credential.password,
@@ -27,28 +30,36 @@ export class UploadOrchestratorV2 {
     const result: UploadSummaryV2 = { succeeded: [], failed: [], deleted: [], deleteFailed: [] };
 
     try {
-      for (const item of items) {
+      for (let i = 0; i < items.length; i++) {
+        if (token?.isCancellationRequested) {
+          result.cancelled = items.slice(i);
+          break;
+        }
         try {
-          await this.sftp.uploadFile(item.localPath, item.remotePath);
-          result.succeeded.push(item);
+          await this.sftp.uploadFile(items[i].localPath, items[i].remotePath);
+          result.succeeded.push(items[i]);
         } catch (err: unknown) {
           result.failed.push({
-            localPath: item.localPath,
+            localPath: items[i].localPath,
             error: err instanceof Error ? err.message : String(err),
           });
         }
       }
 
-      for (const remotePath of deleteRemotePaths) {
-        try {
-          await this.sftp.deleteFile(remotePath);
-          result.deleted.push(remotePath);
-        } catch (err: unknown) {
-          result.deleteFailed.push({
-            remotePath,
-            error: err instanceof Error ? err.message : String(err),
-          });
+      if (!token?.isCancellationRequested) {
+        for (const remotePath of deleteRemotePaths) {
+          try {
+            await this.sftp.deleteFile(remotePath);
+            result.deleted.push(remotePath);
+          } catch (err: unknown) {
+            result.deleteFailed.push({
+              remotePath,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
         }
+      } else {
+        result.cancelled = result.cancelled ?? [];
       }
     } finally {
       await this.sftp.disconnect();

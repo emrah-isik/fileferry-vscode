@@ -91,15 +91,21 @@ export async function uploadSelected(
     {
       location: vscode.ProgressLocation.Notification,
       title: `FileFerry: Deploying to "${server.name}"`,
-      cancellable: false,
+      cancellable: true,
     },
-    async () => {
-      const result = await orchestrator.upload(uploadItems, credential, server, deleteRemotePaths);
+    async (_progress, token) => {
+      const result = await orchestrator.upload(uploadItems, credential, server, deleteRemotePaths, token);
 
       const totalFailed = result.failed.length + result.deleteFailed.length;
       const totalSucceeded = result.succeeded.length + result.deleted.length;
 
-      if (totalFailed === 0) {
+      if (result.cancelled) {
+        const cancelledCount = result.cancelled.length;
+        const doneCount = totalSucceeded;
+        vscode.window.showWarningMessage(
+          `FileFerry: Transfer cancelled. ${doneCount} file(s) completed, ${cancelledCount} cancelled.`
+        );
+      } else if (totalFailed === 0) {
         const parts: string[] = [];
         if (result.succeeded.length > 0) {
           parts.push(`${result.succeeded.length} file(s) uploaded`);

@@ -74,7 +74,7 @@ describe('uploadSelected command', () => {
     (vscode.window.showErrorMessage as jest.Mock).mockResolvedValue(undefined);
     (vscode.window.showInformationMessage as jest.Mock).mockResolvedValue('Upload');
     (vscode.window.withProgress as any) = jest.fn().mockImplementation(
-      (_opts: any, task: (p: any) => Promise<any>) => task({ report: jest.fn() })
+      (_opts: any, task: (p: any, token: any) => Promise<any>) => task({ report: jest.fn() }, { isCancellationRequested: false, onCancellationRequested: jest.fn() })
     );
   });
 
@@ -114,7 +114,8 @@ describe('uploadSelected command', () => {
       [{ localPath: '/workspace/src/app.php', remotePath: '/var/www/src/app.php' }],
       expect.objectContaining({ password: 'secret' }),
       serverFixture,
-      []
+      [],
+      expect.objectContaining({ isCancellationRequested: false })
     );
   });
 
@@ -159,7 +160,8 @@ describe('uploadSelected command', () => {
         [],
         expect.objectContaining({ password: 'secret' }),
         serverFixture,
-        ['/var/www/src/deleted.php']
+        ['/var/www/src/deleted.php'],
+        expect.objectContaining({ isCancellationRequested: false })
       );
     });
 
@@ -196,6 +198,51 @@ describe('uploadSelected command', () => {
       await uploadSelected(resource, undefined, deps());
       expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
         expect.stringContaining('deleted')
+      );
+    });
+  });
+
+  describe('cancellation support', () => {
+    it('passes cancellable: true to withProgress', async () => {
+      await uploadSelected(resource, undefined, deps());
+      expect(vscode.window.withProgress).toHaveBeenCalledWith(
+        expect.objectContaining({ cancellable: true }),
+        expect.any(Function)
+      );
+    });
+
+    it('forwards CancellationToken to orchestrator.upload', async () => {
+      const fakeToken = { isCancellationRequested: false, onCancellationRequested: jest.fn() };
+      (vscode.window.withProgress as any) = jest.fn().mockImplementation(
+        (_opts: any, task: (p: any, token: any) => Promise<any>) => task({ report: jest.fn() }, fakeToken)
+      );
+
+      await uploadSelected(resource, undefined, deps());
+      expect(mockUpload).toHaveBeenCalledWith(
+        expect.any(Array),
+        expect.any(Object),
+        expect.any(Object),
+        expect.any(Array),
+        fakeToken
+      );
+    });
+
+    it('shows cancelled notification when transfer is cancelled', async () => {
+      const fakeToken = { isCancellationRequested: true, onCancellationRequested: jest.fn() };
+      (vscode.window.withProgress as any) = jest.fn().mockImplementation(
+        (_opts: any, task: (p: any, token: any) => Promise<any>) => task({ report: jest.fn() }, fakeToken)
+      );
+      mockUpload.mockResolvedValue({
+        succeeded: [{ localPath: '/workspace/src/app.php', remotePath: '/var/www/src/app.php' }],
+        failed: [],
+        deleted: [],
+        deleteFailed: [],
+        cancelled: [{ localPath: '/workspace/src/b.php', remotePath: '/var/www/src/b.php' }],
+      });
+
+      await uploadSelected(resource, undefined, deps());
+      expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+        expect.stringContaining('cancelled')
       );
     });
   });
