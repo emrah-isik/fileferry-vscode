@@ -4,12 +4,15 @@ import { CredentialManager } from '../storage/CredentialManager';
 import { ServerManager } from '../storage/ServerManager';
 import { ProjectBindingManager } from '../storage/ProjectBindingManager';
 import { ServerConfig } from '../types';
+import { HostKeyManager } from '../ssh/HostKeyManager';
+import { showHostKeyPrompt } from '../ssh/hostKeyPrompt';
 import SftpClient from 'ssh2-sftp-client';
 
 const IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
 export class RemoteBrowserConnection {
   private sftp: SftpService;
+  private hostKeyManager: HostKeyManager;
   private currentServerId: string | null = null;
   private currentRootPath: string = '/';
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
@@ -21,9 +24,11 @@ export class RemoteBrowserConnection {
     private readonly credentialManager: CredentialManager,
     private readonly serverManager: ServerManager,
     private readonly bindingManager: ProjectBindingManager,
-    private readonly output: vscode.OutputChannel
+    private readonly output: vscode.OutputChannel,
+    globalStoragePath: string
   ) {
     this.sftp = new SftpService();
+    this.hostKeyManager = new HostKeyManager(globalStoragePath);
   }
 
   async ensureConnected(): Promise<void> {
@@ -62,9 +67,30 @@ export class RemoteBrowserConnection {
       excludedPaths: [],
     };
 
+    const hostKeyMgr = this.hostKeyManager;
+    const host = credential.host;
+    const port = credential.port;
+
     await this.sftp.connect(serverConfig, {
       password: credential.password,
       passphrase: credential.passphrase,
+    }, {
+      hostVerifier: async (key: Buffer | string) => {
+        const keyBase64 = Buffer.isBuffer(key) ? key.toString('base64') : key;
+        const status = await hostKeyMgr.check(host, port, 'ssh-unknown', keyBase64);
+
+        if (status === 'trusted') {
+          return true;
+        }
+
+        const fingerprint = hostKeyMgr.getFingerprint(keyBase64);
+        const accepted = await showHostKeyPrompt(host, port, fingerprint, status);
+
+        if (accepted) {
+          await hostKeyMgr.trust(host, port, 'ssh-unknown', keyBase64);
+        }
+        return accepted;
+      },
     });
 
     this.currentServerId = server.id;

@@ -1,4 +1,4 @@
-export type AuthMethod = 'password' | 'key' | 'agent';
+export type AuthMethod = 'password' | 'key' | 'agent' | 'keyboard-interactive';
 export type ServerType = 'sftp' | 'ftp';
 export type GitStatus = 'modified' | 'added' | 'deleted' | 'renamed' | 'untracked' | 'copied';
 
@@ -16,6 +16,13 @@ export interface ServerConfig {
   username: string;
   authMethod: AuthMethod;
   privateKeyPath?: string; // only for authMethod: 'key'
+  agentSocketPath?: string; // only for authMethod: 'agent' — custom socket override
+  algorithms?: {
+    kex?: string[];
+    cipher?: string[];
+    serverHostKey?: string[];
+    hmac?: string[];
+  };
   mappings: PathMapping[];
   excludedPaths: string[]; // glob patterns e.g. "node_modules", "*.log"
 }

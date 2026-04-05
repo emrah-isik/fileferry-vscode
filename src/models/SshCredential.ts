@@ -1,4 +1,4 @@
-export type AuthMethod = 'password' | 'key' | 'agent';
+export type AuthMethod = 'password' | 'key' | 'agent' | 'keyboard-interactive';
 
 export interface SshCredential {
   id: string;
@@ -8,6 +8,7 @@ export interface SshCredential {
   username: string;
   authMethod: AuthMethod;
   privateKeyPath?: string; // only when authMethod === 'key'
+  agentSocketPath?: string; // only when authMethod === 'agent' — custom socket override
 }
 
 // SshCredentialWithSecret is used only internally when establishing a connection.

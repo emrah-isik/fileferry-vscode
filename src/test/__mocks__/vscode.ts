@@ -16,6 +16,7 @@ const vscode = {
     showErrorMessage: jest.fn(),
     showWarningMessage: jest.fn(),
     showInputBox: jest.fn(),
+    showOpenDialog: jest.fn(),
     showQuickPick: jest.fn(),
     withProgress: jest.fn(),
     createWebviewPanel: jest.fn(),

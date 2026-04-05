@@ -3,6 +3,48 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { ServerConfig, UploadPair, UploadResult } from './types';
+import { resolveAgentSocket } from './ssh/agentResolver';
+
+// Default algorithms that ensure compatibility with modern OpenSSH 8.8+ servers.
+// ssh2 1.17.0 supports these natively — we set them explicitly so they can't be
+// accidentally dropped by library updates and so users can override per-server.
+const DEFAULT_ALGORITHMS = {
+  kex: [
+    'curve25519-sha256',
+    'curve25519-sha256@libssh.org',
+    'ecdh-sha2-nistp256',
+    'ecdh-sha2-nistp384',
+    'ecdh-sha2-nistp521',
+    'diffie-hellman-group-exchange-sha256',
+    'diffie-hellman-group14-sha256',
+    'diffie-hellman-group16-sha512',
+    'diffie-hellman-group18-sha512',
+    'diffie-hellman-group14-sha1',
+  ],
+  serverHostKey: [
+    'ssh-ed25519',
+    'ecdsa-sha2-nistp256',
+    'ecdsa-sha2-nistp384',
+    'ecdsa-sha2-nistp521',
+    'rsa-sha2-512',
+    'rsa-sha2-256',
+  ],
+  cipher: [
+    'aes128-gcm',
+    'aes128-gcm@openssh.com',
+    'aes256-gcm',
+    'aes256-gcm@openssh.com',
+    'aes128-ctr',
+    'aes192-ctr',
+    'aes256-ctr',
+  ],
+  hmac: [
+    'hmac-sha2-256-etm@openssh.com',
+    'hmac-sha2-512-etm@openssh.com',
+    'hmac-sha2-256',
+    'hmac-sha2-512',
+  ],
+};
 
 export class SftpService {
   private client: SftpClient | null = null;
@@ -13,7 +55,11 @@ export class SftpService {
 
   async connect(
     server: ServerConfig,
-    credentials: { password?: string; passphrase?: string }
+    credentials: { password?: string; passphrase?: string },
+    options?: {
+      hostVerifier?: (key: Buffer | string) => boolean | Promise<boolean>;
+      keyboardInteractiveHandler?: (prompts: Array<{ prompt: string; echo: boolean }>) => Promise<string[]>;
+    }
   ): Promise<void> {
     this.client = new SftpClient();
 
@@ -24,22 +70,51 @@ export class SftpService {
       host: server.host,
       port: server.port,
       username: server.username,
+      algorithms: server.algorithms ?? DEFAULT_ALGORITHMS,
+      ...(options?.hostVerifier ? { hostVerifier: options.hostVerifier } : {}),
     };
 
     if (server.authMethod === 'password') {
       connectConfig.password = credentials.password;
     } else if (server.authMethod === 'key') {
       const keyPath = server.privateKeyPath!.replace('~', os.homedir());
-      connectConfig.privateKey = fs.readFileSync(keyPath);
+      try {
+        connectConfig.privateKey = fs.readFileSync(keyPath);
+      } catch {
+        throw new Error(`Could not read private key file "${keyPath}". Check the file exists and is readable.`);
+      }
       if (credentials.passphrase) {
         connectConfig.passphrase = credentials.passphrase;
       }
     } else if (server.authMethod === 'agent') {
-      // SSH agent forwards auth from the OS keychain (e.g. ssh-agent, Pageant)
-      connectConfig.agent = process.env.SSH_AUTH_SOCK ?? 'pageant';
+      connectConfig.agent = resolveAgentSocket(server.agentSocketPath);
+    } else if (server.authMethod === 'keyboard-interactive') {
+      connectConfig.tryKeyboard = true;
     }
 
-    await this.client.connect(connectConfig as any);
+    // Register keyboard-interactive handler on the underlying ssh2 Client
+    // before calling connect, so it's ready when the server sends a challenge.
+    if (server.authMethod === 'keyboard-interactive' && options?.keyboardInteractiveHandler) {
+      const handler = options.keyboardInteractiveHandler;
+      (this.client as any).client.on('keyboard-interactive',
+        async (_name: string, _instructions: string, _lang: string,
+          prompts: Array<{ prompt: string; echo: boolean }>,
+          finish: (responses: string[]) => void) => {
+          const responses = await handler(prompts);
+          finish(responses);
+        }
+      );
+    }
+
+    try {
+      await this.client.connect(connectConfig as any);
+    } catch (err: unknown) {
+      const msg = (err as Error).message ?? '';
+      if (msg.includes('parse') && msg.toLowerCase().includes('privatekey')) {
+        throw new Error('Could not parse private key file. Supported formats: OpenSSH, PEM, PPK');
+      }
+      throw err;
+    }
   }
 
   async uploadFile(localPath: string, remotePath: string): Promise<void> {

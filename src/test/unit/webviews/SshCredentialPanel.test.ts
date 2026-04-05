@@ -229,6 +229,62 @@ describe('SshCredentialPanel message handling', () => {
     expect(mockCredentialManager.save).not.toHaveBeenCalled();
   });
 
+  it('cloneCredential duplicates credential with new id and "(copy)" name', async () => {
+    SshCredentialPanel.createOrShow(mockContext, deps());
+    await messageHandler({ command: 'cloneCredential', id: 'cred-1' });
+    expect(mockCredentialManager.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'Prod SSH (copy)',
+        host: 'example.com',
+      }),
+      'stored-password',
+      undefined
+    );
+    // New id, not the original
+    const savedCred = (mockCredentialManager.save as jest.Mock).mock.calls[0][0];
+    expect(savedCred.id).not.toBe('cred-1');
+    expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      command: 'credentialSaved',
+    }));
+  });
+
+  it('cloneCredential appends timestamp when "(copy)" name already exists', async () => {
+    const existing = [
+      credentialFixture,
+      { ...credentialFixture, id: 'cred-copy', name: 'Prod SSH (copy)' },
+    ];
+    (mockCredentialManager.getAll as jest.Mock).mockResolvedValue(existing);
+    SshCredentialPanel.createOrShow(mockContext, deps());
+    await messageHandler({ command: 'cloneCredential', id: 'cred-1' });
+    const savedCred = (mockCredentialManager.save as jest.Mock).mock.calls[0][0];
+    expect(savedCred.name).toMatch(/^Prod SSH \(copy \d+\)$/);
+  });
+
+  it('browsePrivateKey opens file dialog and sends path back to webview', async () => {
+    const fakeUri = { fsPath: '/home/user/.ssh/id_rsa.pem' };
+    (vscode.window.showOpenDialog as jest.Mock).mockResolvedValue([fakeUri]);
+    SshCredentialPanel.createOrShow(mockContext, deps());
+    await messageHandler({ command: 'browsePrivateKey' });
+    expect(vscode.window.showOpenDialog).toHaveBeenCalledWith(expect.objectContaining({
+      canSelectFiles: true,
+      canSelectFolders: false,
+      canSelectMany: false,
+    }));
+    expect(mockWebview.postMessage).toHaveBeenCalledWith({
+      command: 'privateKeySelected',
+      path: '/home/user/.ssh/id_rsa.pem',
+    });
+  });
+
+  it('browsePrivateKey does nothing when user cancels dialog', async () => {
+    (vscode.window.showOpenDialog as jest.Mock).mockResolvedValue(undefined);
+    SshCredentialPanel.createOrShow(mockContext, deps());
+    await messageHandler({ command: 'browsePrivateKey' });
+    expect(mockWebview.postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ command: 'privateKeySelected' })
+    );
+  });
+
   it('file permission warning shown when privateKeyPath file has 644 permissions', async () => {
     mockStat.mockResolvedValue({ mode: 0o100644 }); // 644 — too permissive
     SshCredentialPanel.createOrShow(mockContext, deps());

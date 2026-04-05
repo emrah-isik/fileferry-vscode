@@ -37,6 +37,8 @@ Passwords and passphrases never touch the filesystem.
 - **Transient secrets**: The SSH Credentials form sends passwords to the extension only on explicit Save or Test Connection actions, and only in those message payloads. They are never re-displayed after save.
 - **Blank = keep existing**: Saving a credential with an empty password/passphrase string passes `undefined` to `CredentialManager.save()`, which skips the keychain write — leaving the previously stored secret intact.
 - **Agent auth**: When `authMethod` is `agent`, no secrets are stored or requested at all. The SSH agent socket handles authentication.
+- **Keyboard-interactive auth**: When `authMethod` is `keyboard-interactive`, no secrets are stored. The server sends challenges at connection time and the user responds via VS Code input prompts.
+- **Host key verification**: Trusted host keys are stored in `globalStorageUri/known_hosts.json` as `{ "[host]:port": { type, key, addedAt } }`. On first connection, the user is prompted to trust the key. If a key changes, a critical warning is shown. The `HostKeyManager` class handles storage; `hostKeyPrompt` handles the VS Code modal UI.
 
 ---
 
@@ -105,8 +107,8 @@ Using `ready`→`init` rather than injecting data into the HTML means the webvie
 
 | Direction | Commands |
 |-----------|----------|
-| Webview → Extension | `ready`, `saveServer`, `deleteServer`, `setDefaultServer`, `saveMapping`, `deleteMapping`, `testConnection`, `openCredentials`, `saveCredential`, `deleteCredential` |
-| Extension → Webview | `init`, `serverSaved`, `serverDeleted`, `bindingUpdated`, `mappingSaved`, `credentialSaved`, `credentialDeleted`, `testResult`, `validationError`, `warning` |
+| Webview → Extension | `ready`, `saveServer`, `deleteServer`, `setDefaultServer`, `cloneServer`, `saveMapping`, `deleteMapping`, `testConnection`, `openCredentials`, `saveCredential`, `deleteCredential`, `cloneCredential`, `browsePrivateKey` |
+| Extension → Webview | `init`, `serverSaved`, `serverDeleted`, `bindingUpdated`, `mappingSaved`, `credentialSaved`, `credentialDeleted`, `testResult`, `validationError`, `warning`, `privateKeySelected` |
 
 **Validation flow**: All validation runs in the extension process (pure `src/utils/validation.ts` functions with no VSCode dependencies). The webview receives `{ command: 'validationError', errors: { [field]: message } }` and renders inline field errors. This keeps the webview thin and ensures validation logic is unit-testable without a webview environment.
 

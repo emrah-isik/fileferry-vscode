@@ -78,6 +78,14 @@ export class SshCredentialPanel {
       case 'testConnection':
         await this.handleTestConnection(msg.credential, msg.password, msg.passphrase);
         break;
+
+      case 'browsePrivateKey':
+        await this.handleBrowsePrivateKey();
+        break;
+
+      case 'cloneCredential':
+        await this.handleCloneCredential(msg.id);
+        break;
     }
   }
 
@@ -196,6 +204,45 @@ export class SshCredentialPanel {
         command: 'testResult',
         success: false,
         message: (err as Error).message,
+      });
+    }
+  }
+
+  private async handleCloneCredential(id: string): Promise<void> {
+    const original = await this.deps.credentialManager.getWithSecret(id);
+    if (!original) { return; }
+    const all = await this.deps.credentialManager.getAll();
+    let cloneName = `${original.name} (copy)`;
+    if (all.some(c => c.name.toLowerCase() === cloneName.toLowerCase())) {
+      cloneName = `${original.name} (copy ${Date.now()})`;
+    }
+    const clone: SshCredential = {
+      id: generateId(),
+      name: cloneName,
+      host: original.host,
+      port: original.port,
+      username: original.username,
+      authMethod: original.authMethod,
+      privateKeyPath: original.privateKeyPath,
+      agentSocketPath: original.agentSocketPath,
+    };
+    await this.deps.credentialManager.save(clone, original.password, original.passphrase);
+    await this.sendInitialState();
+    this.panel.webview.postMessage({ command: 'credentialSaved', credential: clone });
+  }
+
+  private async handleBrowsePrivateKey(): Promise<void> {
+    const result = await vscode.window.showOpenDialog({
+      canSelectFiles: true,
+      canSelectFolders: false,
+      canSelectMany: false,
+      title: 'Select Private Key File',
+      filters: { 'Key Files': ['pem', 'key', 'ppk'], 'All Files': ['*'] },
+    });
+    if (result && result.length > 0) {
+      this.panel.webview.postMessage({
+        command: 'privateKeySelected',
+        path: result[0].fsPath,
       });
     }
   }

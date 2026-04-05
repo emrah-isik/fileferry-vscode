@@ -2,6 +2,20 @@
 
 All notable changes to FileFerry will be documented in this file.
 
+## [0.3.0] - 2026-04-05
+
+### Added
+
+- **Modern OpenSSH algorithm support** — explicit default algorithms (rsa-sha2-256, rsa-sha2-512, curve25519-sha256, etc.) ensure compatibility with OpenSSH 8.8+ servers. Per-server algorithm override available via `ServerConfig.algorithms`
+- **PEM key support** — `.pem` private key files (common for AWS EC2) work out of the box. Clear error messages when a key file is missing or unparseable ("Supported formats: OpenSSH, PEM, PPK")
+- **SSH agent enhancement** — automatic socket discovery: checks `SSH_AUTH_SOCK`, then 1Password agent (`~/.1password/agent.sock`), then Pageant on Windows. Optional custom socket path per credential
+- **Host key verification** — first-connection trust prompt with SHA-256 fingerprint, critical warning when a server's host key changes (MITM protection). Trusted keys stored in `known_hosts.json` in global storage
+- **Keyboard-interactive auth (2FA)** — new authentication method for servers requiring challenge-response / two-factor authentication. VS Code input prompts shown for each server challenge
+- **Browse button for private key path** — file picker dialog in the SSH Credentials form instead of typing the full path manually
+- **Clone credential** — duplicate an existing SSH credential from the credentials list (hover to reveal clone button). Copies all fields including secrets from the OS keychain
+
+---
+
 ## [0.2.1] - 2026-04-04
 
 ### Added

@@ -129,7 +129,8 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // Remote File Browser
   const browserConnection = new RemoteBrowserConnection(
-    credentialManager, serverManager, bindingManager, output
+    credentialManager, serverManager, bindingManager, output,
+    context.globalStorageUri.fsPath
   );
   const browserProvider = new RemoteBrowserProvider(browserConnection);
 

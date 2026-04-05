@@ -98,6 +98,23 @@ body {
   flex-shrink: 0;
 }
 
+.btn-clone {
+  background: transparent;
+  border: none;
+  color: var(--vscode-foreground);
+  font-size: 1.1em;
+  line-height: 1;
+  padding: 0 3px;
+  cursor: pointer;
+  border-radius: 3px;
+  opacity: 0;
+  margin-left: 4px;
+  flex-shrink: 0;
+}
+
+.server-item:hover .btn-clone { opacity: 0.7; }
+.btn-clone:hover { opacity: 1 !important; background: var(--vscode-toolbar-hoverBackground); }
+
 /* ─── Right panel ─────────────────────────────────────────────── */
 
 #credential-detail-panel {
@@ -186,6 +203,20 @@ input:focus, select:focus {
   font-size: 0.82em;
   color: var(--vscode-descriptionForeground);
   font-style: italic;
+}
+
+/* ─── Input with button ──────────────────────────────────────── */
+
+.input-with-button {
+  display: flex;
+  gap: 6px;
+}
+
+.input-with-button input { flex: 1; }
+
+.btn-small {
+  padding: 5px 10px;
+  white-space: nowrap;
 }
 
 /* ─── Buttons ─────────────────────────────────────────────────── */

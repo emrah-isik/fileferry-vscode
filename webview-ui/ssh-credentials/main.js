@@ -57,6 +57,12 @@ window.addEventListener('message', ({ data: msg }) => {
     case 'warning':
       showFieldWarning(msg.field, msg.message);
       break;
+
+    case 'privateKeySelected': {
+      const input = document.getElementById('f-key-path');
+      if (input) input.value = msg.path;
+      break;
+    }
   }
 });
 
@@ -104,6 +110,7 @@ function renderList() {
             data-id="${escapeHtml(c.id)}">
           <span class="server-name">${escapeHtml(c.name)}</span>
           <span class="auth-badge">${escapeHtml(c.authMethod)}</span>
+          <button class="btn-clone" data-id="${escapeHtml(c.id)}" title="Clone credential" tabindex="-1">⎘</button>
         </li>
       `).join('')}
       ${state.editingNew ? `
@@ -126,6 +133,13 @@ function renderList() {
       state.editingNew = false;
       state.testStatus = null;
       render();
+    });
+  });
+
+  document.querySelectorAll('.btn-clone').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      vscode.postMessage({ command: 'cloneCredential', id: btn.dataset.id });
     });
   });
 }
@@ -175,6 +189,7 @@ function renderDetail() {
           <option value="password" ${authMethod === 'password' ? 'selected' : ''}>Password</option>
           <option value="key" ${authMethod === 'key' ? 'selected' : ''}>Private Key</option>
           <option value="agent" ${authMethod === 'agent' ? 'selected' : ''}>SSH Agent</option>
+          <option value="keyboard-interactive" ${authMethod === 'keyboard-interactive' ? 'selected' : ''}>Keyboard Interactive (2FA)</option>
         </select>
       </div>
 
@@ -247,8 +262,11 @@ function renderAuthFields(authMethod) {
     el.innerHTML = `
       <div class="form-group">
         <label for="f-key-path">Private Key Path</label>
-        <input id="f-key-path" type="text" value="${escapeHtml(cred?.privateKeyPath)}"
-               placeholder="/home/user/.ssh/id_rsa">
+        <div class="input-with-button">
+          <input id="f-key-path" type="text" value="${escapeHtml(cred?.privateKeyPath)}"
+                 placeholder="/home/user/.ssh/id_rsa">
+          <button id="btn-browse-key" class="btn-secondary btn-small" type="button">Browse</button>
+        </div>
         <span class="field-error" id="err-privateKeyPath"></span>
         <span class="field-warning" id="warn-privateKeyPath"></span>
       </div>
@@ -262,12 +280,22 @@ function renderAuthFields(authMethod) {
       const errEl = document.getElementById('err-privateKeyPath');
       if (errEl) errEl.textContent = '';
     });
+    document.getElementById('btn-browse-key')?.addEventListener('click', () => {
+      vscode.postMessage({ command: 'browsePrivateKey' });
+    });
   } else if (authMethod === 'agent') {
     el.innerHTML = `
       <p class="hint">
         Uses the SSH agent running on your system (<code>SSH_AUTH_SOCK</code>).
         No password or key file needed — make sure your key is added to the agent with
         <code>ssh-add</code>.
+      </p>
+    `;
+  } else if (authMethod === 'keyboard-interactive') {
+    el.innerHTML = `
+      <p class="hint">
+        The server will send authentication challenges (e.g. a 2FA code) at connection time.
+        You'll be prompted to respond in VS Code when connecting.
       </p>
     `;
   }

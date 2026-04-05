@@ -1,7 +1,11 @@
 import { RemoteBrowserConnection } from '../../../remoteBrowser/RemoteBrowserConnection';
 import { SftpService } from '../../../sftpService';
+import { HostKeyManager } from '../../../ssh/HostKeyManager';
+import * as hostKeyPrompt from '../../../ssh/hostKeyPrompt';
 
 jest.mock('../../../sftpService');
+jest.mock('../../../ssh/HostKeyManager');
+jest.mock('../../../ssh/hostKeyPrompt');
 
 const mockSftp = {
   connect: jest.fn(),
@@ -30,6 +34,14 @@ const mockBindingManager = {
 const mockOutput = {
   appendLine: jest.fn(),
 };
+
+const mockHostKeyManager = {
+  check: jest.fn(),
+  trust: jest.fn(),
+  getFingerprint: jest.fn(),
+};
+
+(HostKeyManager as jest.Mock).mockImplementation(() => mockHostKeyManager);
 
 const fakeServer = {
   id: 'server-1',
@@ -67,11 +79,16 @@ describe('RemoteBrowserConnection', () => {
     mockSftp.connect.mockResolvedValue(undefined);
     mockSftp.disconnect.mockResolvedValue(undefined);
 
+    mockHostKeyManager.check.mockResolvedValue('trusted');
+    mockHostKeyManager.trust.mockResolvedValue(undefined);
+    mockHostKeyManager.getFingerprint.mockReturnValue('SHA256:abc123');
+
     connection = new RemoteBrowserConnection(
       mockCredentialManager as any,
       mockServerManager as any,
       mockBindingManager as any,
-      mockOutput as any
+      mockOutput as any,
+      '/fake/global-storage'
     );
   });
 
@@ -92,7 +109,8 @@ describe('RemoteBrowserConnection', () => {
           username: 'deploy',
           authMethod: 'password',
         }),
-        expect.objectContaining({ password: 'secret' })
+        expect.objectContaining({ password: 'secret' }),
+        expect.objectContaining({ hostVerifier: expect.any(Function) })
       );
     });
 
@@ -262,6 +280,65 @@ describe('RemoteBrowserConnection', () => {
 
       await connection.ensureConnected();
       expect(connection.getRootPath()).toBe('/var/www');
+    });
+  });
+
+  describe('host key verification', () => {
+    it('passes a hostVerifier callback to SftpService.connect', async () => {
+      await connection.ensureConnected();
+      expect(mockSftp.connect).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.objectContaining({ hostVerifier: expect.any(Function) })
+      );
+    });
+
+    it('hostVerifier accepts trusted keys without prompting', async () => {
+      mockHostKeyManager.check.mockResolvedValue('trusted');
+      mockSftp.connect.mockImplementation(async (_cfg: any, _creds: any, opts: any) => {
+        const result = await opts.hostVerifier(Buffer.from('fakekey'));
+        expect(result).toBe(true);
+      });
+      await connection.ensureConnected();
+      expect(hostKeyPrompt.showHostKeyPrompt).not.toHaveBeenCalled();
+    });
+
+    it('hostVerifier prompts for unknown keys and trusts on accept', async () => {
+      mockHostKeyManager.check.mockResolvedValue('unknown');
+      (hostKeyPrompt.showHostKeyPrompt as jest.Mock).mockResolvedValue(true);
+      mockSftp.connect.mockImplementation(async (_cfg: any, _creds: any, opts: any) => {
+        const result = await opts.hostVerifier(Buffer.from('newkey'));
+        expect(result).toBe(true);
+      });
+      await connection.ensureConnected();
+      expect(hostKeyPrompt.showHostKeyPrompt).toHaveBeenCalledWith(
+        'example.com', 22, expect.any(String), 'unknown'
+      );
+      expect(mockHostKeyManager.trust).toHaveBeenCalled();
+    });
+
+    it('hostVerifier rejects unknown keys when user declines', async () => {
+      mockHostKeyManager.check.mockResolvedValue('unknown');
+      (hostKeyPrompt.showHostKeyPrompt as jest.Mock).mockResolvedValue(false);
+      mockSftp.connect.mockImplementation(async (_cfg: any, _creds: any, opts: any) => {
+        const result = await opts.hostVerifier(Buffer.from('newkey'));
+        expect(result).toBe(false);
+      });
+      await connection.ensureConnected();
+      expect(mockHostKeyManager.trust).not.toHaveBeenCalled();
+    });
+
+    it('hostVerifier prompts with warning for changed keys', async () => {
+      mockHostKeyManager.check.mockResolvedValue('changed');
+      (hostKeyPrompt.showHostKeyPrompt as jest.Mock).mockResolvedValue(true);
+      mockSftp.connect.mockImplementation(async (_cfg: any, _creds: any, opts: any) => {
+        const result = await opts.hostVerifier(Buffer.from('changedkey'));
+        expect(result).toBe(true);
+      });
+      await connection.ensureConnected();
+      expect(hostKeyPrompt.showHostKeyPrompt).toHaveBeenCalledWith(
+        'example.com', 22, expect.any(String), 'changed'
+      );
     });
   });
 });

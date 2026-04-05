@@ -155,6 +155,14 @@ describe('validateSshCredential', () => {
     expect(errors).toHaveLength(0);
   });
 
+  it('returns no error for keyboard-interactive auth with no extra fields', () => {
+    const errors = validateSshCredential(
+      { ...validCredential, authMethod: 'keyboard-interactive', password: undefined },
+      []
+    );
+    expect(errors).toHaveLength(0);
+  });
+
   it('returns multiple errors for multiple invalid fields simultaneously', () => {
     const errors = validateSshCredential(
       { name: '', host: '', port: 0, username: '', authMethod: 'password', password: '' },

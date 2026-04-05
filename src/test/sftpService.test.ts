@@ -1,5 +1,13 @@
 import { SftpService } from '../sftpService';
 import { ServerConfig } from '../types';
+import * as fs from 'fs';
+import * as agentResolverModule from '../ssh/agentResolver';
+
+// Mock for the underlying ssh2 Client that ssh2-sftp-client wraps
+const mockSsh2Client = {
+  on: jest.fn(),
+  removeAllListeners: jest.fn(),
+};
 
 // Shared mock methods — defined outside the factory so tests can configure them.
 // jest.mock is hoisted but jest.fn() calls inside the factory capture these refs.
@@ -13,11 +21,15 @@ const mockMethods = {
   realPath: jest.fn(),
   delete: jest.fn(),
   rmdir: jest.fn(),
+  client: mockSsh2Client,
 };
 
 jest.mock('ssh2-sftp-client', () => {
   return jest.fn().mockImplementation(() => mockMethods);
 });
+
+jest.mock('fs');
+jest.mock('../ssh/agentResolver');
 
 const serverConfig: ServerConfig = {
   id: 'prod',
@@ -51,19 +63,169 @@ describe('SftpService', () => {
       }));
     });
 
-    it('connects with agent auth', async () => {
+    it('connects with agent auth using resolved socket', async () => {
       mockMethods.connect.mockResolvedValue(undefined);
+      (agentResolverModule.resolveAgentSocket as jest.Mock).mockReturnValue('/tmp/ssh-agent.sock');
       const agentConfig: ServerConfig = { ...serverConfig, authMethod: 'agent' };
       await service.connect(agentConfig, {});
+      expect(agentResolverModule.resolveAgentSocket).toHaveBeenCalledWith(undefined);
       expect(mockMethods.connect).toHaveBeenCalledWith(expect.objectContaining({
-        agent: expect.anything()
+        agent: '/tmp/ssh-agent.sock'
       }));
+    });
+
+    it('passes custom agentSocketPath to resolver', async () => {
+      mockMethods.connect.mockResolvedValue(undefined);
+      (agentResolverModule.resolveAgentSocket as jest.Mock).mockReturnValue('/custom/agent.sock');
+      const agentConfig: ServerConfig = {
+        ...serverConfig, authMethod: 'agent', agentSocketPath: '/custom/agent.sock'
+      };
+      await service.connect(agentConfig, {});
+      expect(agentResolverModule.resolveAgentSocket).toHaveBeenCalledWith('/custom/agent.sock');
     });
 
     it('throws on connection failure', async () => {
       mockMethods.connect.mockRejectedValue(new Error('Connection refused'));
       await expect(service.connect(serverConfig, { password: 'x' }))
         .rejects.toThrow('Connection refused');
+    });
+
+    it('passes default algorithms including rsa-sha2-256 and rsa-sha2-512', async () => {
+      mockMethods.connect.mockResolvedValue(undefined);
+      await service.connect(serverConfig, { password: 'secret' });
+      const config = mockMethods.connect.mock.calls[0][0];
+      expect(config.algorithms).toBeDefined();
+      expect(config.algorithms.serverHostKey).toContain('rsa-sha2-256');
+      expect(config.algorithms.serverHostKey).toContain('rsa-sha2-512');
+    });
+
+    it('includes modern kex algorithms in defaults', async () => {
+      mockMethods.connect.mockResolvedValue(undefined);
+      await service.connect(serverConfig, { password: 'secret' });
+      const config = mockMethods.connect.mock.calls[0][0];
+      expect(config.algorithms.kex).toContain('curve25519-sha256');
+      expect(config.algorithms.kex).toContain('ecdh-sha2-nistp256');
+    });
+
+    it('passes custom algorithms when provided in server config', async () => {
+      mockMethods.connect.mockResolvedValue(undefined);
+      const customAlgorithms = {
+        serverHostKey: ['ssh-ed25519'],
+        kex: ['curve25519-sha256'],
+      };
+      const customConfig: ServerConfig = { ...serverConfig, algorithms: customAlgorithms };
+      await service.connect(customConfig, { password: 'secret' });
+      const config = mockMethods.connect.mock.calls[0][0];
+      expect(config.algorithms.serverHostKey).toEqual(['ssh-ed25519']);
+      expect(config.algorithms.kex).toEqual(['curve25519-sha256']);
+    });
+
+    it('connects with key auth reading a .pem file', async () => {
+      mockMethods.connect.mockResolvedValue(undefined);
+      const pemContent = Buffer.from('-----BEGIN RSA PRIVATE KEY-----\nfake\n-----END RSA PRIVATE KEY-----');
+      (fs.readFileSync as jest.Mock).mockReturnValue(pemContent);
+      const keyConfig: ServerConfig = {
+        ...serverConfig,
+        authMethod: 'key',
+        privateKeyPath: '/home/user/.ssh/ec2-key.pem',
+      };
+      await service.connect(keyConfig, {});
+      expect(fs.readFileSync).toHaveBeenCalledWith('/home/user/.ssh/ec2-key.pem');
+      expect(mockMethods.connect).toHaveBeenCalledWith(expect.objectContaining({
+        privateKey: pemContent,
+      }));
+    });
+
+    it('wraps key file read error with helpful message', async () => {
+      const readError = new Error('ENOENT: no such file or directory');
+      (fs.readFileSync as jest.Mock).mockImplementation(() => { throw readError; });
+      const keyConfig: ServerConfig = {
+        ...serverConfig,
+        authMethod: 'key',
+        privateKeyPath: '/home/user/.ssh/missing.pem',
+      };
+      await expect(service.connect(keyConfig, {}))
+        .rejects.toThrow('Could not read private key file "/home/user/.ssh/missing.pem"');
+    });
+
+    it('wraps key parse error from ssh2 with helpful message', async () => {
+      (fs.readFileSync as jest.Mock).mockReturnValue(Buffer.from('not-a-valid-key'));
+      mockMethods.connect.mockRejectedValue(new Error('Cannot parse privateKey'));
+      const keyConfig: ServerConfig = {
+        ...serverConfig,
+        authMethod: 'key',
+        privateKeyPath: '/home/user/.ssh/bad.pem',
+      };
+      await expect(service.connect(keyConfig, {}))
+        .rejects.toThrow('Could not parse private key file. Supported formats: OpenSSH, PEM, PPK');
+    });
+
+    it('passes hostVerifier callback to ssh2 connect config', async () => {
+      mockMethods.connect.mockResolvedValue(undefined);
+      const hostVerifier = jest.fn().mockReturnValue(true);
+      await service.connect(serverConfig, { password: 'secret' }, { hostVerifier });
+      const config = mockMethods.connect.mock.calls[0][0];
+      expect(config.hostVerifier).toBe(hostVerifier);
+    });
+
+    it('rejects connection when hostVerifier returns false', async () => {
+      mockMethods.connect.mockImplementation((config: any) => {
+        // Simulate ssh2 calling hostVerifier synchronously and rejecting
+        if (config.hostVerifier && !config.hostVerifier('deadbeef')) {
+          return Promise.reject(new Error('Handshake failed'));
+        }
+        return Promise.resolve();
+      });
+      const hostVerifier = jest.fn().mockReturnValue(false);
+      await expect(service.connect(serverConfig, { password: 'secret' }, { hostVerifier }))
+        .rejects.toThrow('Handshake failed');
+      expect(hostVerifier).toHaveBeenCalled();
+    });
+
+    it('connects without hostVerifier when not provided', async () => {
+      mockMethods.connect.mockResolvedValue(undefined);
+      await service.connect(serverConfig, { password: 'secret' });
+      const config = mockMethods.connect.mock.calls[0][0];
+      expect(config.hostVerifier).toBeUndefined();
+    });
+
+    it('sets tryKeyboard true for keyboard-interactive auth', async () => {
+      mockMethods.connect.mockResolvedValue(undefined);
+      const kiConfig: ServerConfig = { ...serverConfig, authMethod: 'keyboard-interactive' };
+      await service.connect(kiConfig, {}, { keyboardInteractiveHandler: jest.fn() });
+      const config = mockMethods.connect.mock.calls[0][0];
+      expect(config.tryKeyboard).toBe(true);
+    });
+
+    it('registers keyboard-interactive event handler on underlying client', async () => {
+      mockMethods.connect.mockResolvedValue(undefined);
+      const handler = jest.fn();
+      const kiConfig: ServerConfig = { ...serverConfig, authMethod: 'keyboard-interactive' };
+      await service.connect(kiConfig, {}, { keyboardInteractiveHandler: handler });
+      expect(mockSsh2Client.on).toHaveBeenCalledWith(
+        'keyboard-interactive',
+        expect.any(Function)
+      );
+    });
+
+    it('keyboard-interactive event forwards prompts to handler and sends responses', async () => {
+      mockMethods.connect.mockResolvedValue(undefined);
+      const handler = jest.fn().mockResolvedValue(['my-otp-code']);
+      const kiConfig: ServerConfig = { ...serverConfig, authMethod: 'keyboard-interactive' };
+      await service.connect(kiConfig, {}, { keyboardInteractiveHandler: handler });
+
+      // Get the registered event callback
+      const eventCall = mockSsh2Client.on.mock.calls.find(
+        (call: any[]) => call[0] === 'keyboard-interactive'
+      );
+      const eventCallback = eventCall[1];
+
+      // Simulate ssh2 emitting keyboard-interactive event
+      const finish = jest.fn();
+      await eventCallback('', 'SSH Server', '', [{ prompt: 'Verification code: ', echo: false }], finish);
+
+      expect(handler).toHaveBeenCalledWith([{ prompt: 'Verification code: ', echo: false }]);
+      expect(finish).toHaveBeenCalledWith(['my-otp-code']);
     });
   });
 
