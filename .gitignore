@@ -5,3 +5,6 @@ out/
 .vscode-test/
 coverage/
 docs/plans/
+.vscode/*
+!.vscode/launch.json
+!.vscode/extensions.json
