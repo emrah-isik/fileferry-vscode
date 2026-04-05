@@ -157,7 +157,7 @@
       "explorer/context": [
         {
           "command": "fileferry.uploadSelected",
-          "when": "resourceScheme == file && !explorerResourceIsFolder",
+          "when": "resourceScheme == file",
           "group": "fileferry@1"
         },
         {

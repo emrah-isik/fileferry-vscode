@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
+import * as path from 'path';
 
 export interface ResolvedResources {
   toUpload: string[];
@@ -18,6 +19,7 @@ export class ScmResourceResolver {
    *
    * When triggered via keybinding with nothing selected, both may be undefined.
    * Files present on disk go into toUpload; files deleted from disk go into toDelete.
+   * Folders are expanded recursively into their contained files.
    */
   resolve(
     primaryResource?: vscode.SourceControlResourceState,
@@ -38,12 +40,30 @@ export class ScmResourceResolver {
 
     for (const p of unique) {
       if (fs.existsSync(p)) {
-        toUpload.push(p);
+        if (fs.statSync(p).isDirectory()) {
+          toUpload.push(...this.expandFolder(p));
+        } else {
+          toUpload.push(p);
+        }
       } else {
         toDelete.push(p);
       }
     }
 
     return { toUpload, toDelete };
+  }
+
+  private expandFolder(dirPath: string): string[] {
+    const files: string[] = [];
+    const entries = fs.readdirSync(dirPath);
+    for (const entry of entries) {
+      const fullPath = path.join(dirPath, entry);
+      if (fs.statSync(fullPath).isDirectory()) {
+        files.push(...this.expandFolder(fullPath));
+      } else {
+        files.push(fullPath);
+      }
+    }
+    return files;
   }
 }
