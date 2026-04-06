@@ -1,10 +1,9 @@
 import {
   validateSshCredential,
-  validateDeploymentServer,
+  validateProjectServer,
   validateMappings,
 } from '../../utils/validation';
 import { SshCredential } from '../../models/SshCredential';
-import { DeploymentServer } from '../../models/DeploymentServer';
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -21,12 +20,9 @@ const existingCredentials: SshCredential[] = [
   { id: 'cred-existing', name: 'Existing', host: 'other.com', port: 22, username: 'user', authMethod: 'password' },
 ];
 
-const existingServers: DeploymentServer[] = [
-  { id: 'srv-existing', name: 'Existing Server', type: 'sftp', credentialId: 'cred-1', rootPath: '/var/www' },
-];
+const existingServerNames = ['Existing Server'];
 
 const validServer = {
-  name: 'Production',
   type: 'sftp' as const,
   credentialId: 'cred-existing',  // matches existingCredentials fixture
   rootPath: '/var/www',
@@ -172,35 +168,48 @@ describe('validateSshCredential', () => {
   });
 });
 
-// ─── validateDeploymentServer ─────────────────────────────────────────────────
+// ─── validateProjectServer ──────────────────────────────────────────────────
 
-describe('validateDeploymentServer', () => {
+describe('validateProjectServer', () => {
   it('requires name', () => {
-    const errors = validateDeploymentServer({ ...validServer, name: '' }, [], existingCredentials);
+    const errors = validateProjectServer('', validServer, [], existingCredentials);
     expect(errors.some(e => e.field === 'name')).toBe(true);
   });
 
   it('rejects name shorter than 3 characters', () => {
-    const errors = validateDeploymentServer({ ...validServer, name: 'Ab' }, [], existingCredentials);
+    const errors = validateProjectServer('Ab', validServer, [], existingCredentials);
     expect(errors.some(e => e.field === 'name')).toBe(true);
   });
 
   it('rejects name longer than 50 characters', () => {
-    const errors = validateDeploymentServer({ ...validServer, name: 'a'.repeat(51) }, [], existingCredentials);
+    const errors = validateProjectServer('a'.repeat(51), validServer, [], existingCredentials);
     expect(errors.some(e => e.field === 'name')).toBe(true);
   });
 
-  it('requires unique name', () => {
-    const errors = validateDeploymentServer(
-      { ...validServer, name: 'Existing Server' },
-      existingServers,
+  it('requires unique name (case-insensitive)', () => {
+    const errors = validateProjectServer(
+      'Existing Server',
+      validServer,
+      existingServerNames,
       existingCredentials
     );
     expect(errors.some(e => e.field === 'name')).toBe(true);
   });
 
+  it('allows same name when editing (currentName matches)', () => {
+    const errors = validateProjectServer(
+      'Existing Server',
+      validServer,
+      existingServerNames,
+      existingCredentials,
+      'Existing Server'
+    );
+    expect(errors.some(e => e.field === 'name')).toBe(false);
+  });
+
   it('requires type', () => {
-    const errors = validateDeploymentServer(
+    const errors = validateProjectServer(
+      'Production',
       { ...validServer, type: undefined as any },
       [],
       existingCredentials
@@ -209,12 +218,13 @@ describe('validateDeploymentServer', () => {
   });
 
   it('requires credentialId that exists in credentials list', () => {
-    const errors = validateDeploymentServer({ ...validServer, credentialId: 'ghost' }, [], []);
+    const errors = validateProjectServer('Production', { ...validServer, credentialId: 'ghost' }, [], []);
     expect(errors.some(e => e.field === 'credentialId')).toBe(true);
   });
 
   it('requires rootPath starting with /', () => {
-    const errors = validateDeploymentServer(
+    const errors = validateProjectServer(
+      'Production',
       { ...validServer, rootPath: 'var/www' },
       [],
       existingCredentials
@@ -223,7 +233,7 @@ describe('validateDeploymentServer', () => {
   });
 
   it('returns no errors for a valid server', () => {
-    expect(validateDeploymentServer(validServer, [], existingCredentials)).toHaveLength(0);
+    expect(validateProjectServer('Production', validServer, [], existingCredentials)).toHaveLength(0);
   });
 });
 

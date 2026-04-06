@@ -23,12 +23,9 @@ const mockCredentialManager = {
   getWithSecret: jest.fn(),
 };
 
-const mockServerManager = {
-  getServer: jest.fn(),
-};
-
-const mockBindingManager = {
-  getBinding: jest.fn(),
+const mockConfigManager = {
+  getConfig: jest.fn(),
+  getServerById: jest.fn(),
 };
 
 const mockOutput = {
@@ -45,10 +42,12 @@ const mockHostKeyManager = {
 
 const fakeServer = {
   id: 'server-1',
-  name: 'Production',
   type: 'sftp' as const,
   credentialId: 'cred-1',
+  credentialName: 'Deploy Key',
   rootPath: '/var/www',
+  mappings: [{ localPath: '/', remotePath: '/var/www' }],
+  excludedPaths: [],
 };
 
 const fakeCredential = {
@@ -61,9 +60,9 @@ const fakeCredential = {
   password: 'secret',
 };
 
-const fakeBinding = {
+const fakeConfig = {
   defaultServerId: 'server-1',
-  servers: {},
+  servers: { Production: fakeServer },
 };
 
 describe('RemoteBrowserConnection', () => {
@@ -73,8 +72,8 @@ describe('RemoteBrowserConnection', () => {
     jest.clearAllMocks();
     jest.useFakeTimers();
     mockSftp.connected = false;
-    mockBindingManager.getBinding.mockResolvedValue(fakeBinding);
-    mockServerManager.getServer.mockResolvedValue(fakeServer);
+    mockConfigManager.getConfig.mockResolvedValue(fakeConfig);
+    mockConfigManager.getServerById.mockResolvedValue({ name: 'Production', server: fakeServer });
     mockCredentialManager.getWithSecret.mockResolvedValue(fakeCredential);
     mockSftp.connect.mockResolvedValue(undefined);
     mockSftp.disconnect.mockResolvedValue(undefined);
@@ -85,8 +84,7 @@ describe('RemoteBrowserConnection', () => {
 
     connection = new RemoteBrowserConnection(
       mockCredentialManager as any,
-      mockServerManager as any,
-      mockBindingManager as any,
+      mockConfigManager as any,
       mockOutput as any,
       '/fake/global-storage'
     );
@@ -97,10 +95,10 @@ describe('RemoteBrowserConnection', () => {
   });
 
   describe('ensureConnected', () => {
-    it('resolves server from binding and connects', async () => {
+    it('resolves server from config and connects', async () => {
       await connection.ensureConnected();
-      expect(mockBindingManager.getBinding).toHaveBeenCalled();
-      expect(mockServerManager.getServer).toHaveBeenCalledWith('server-1');
+      expect(mockConfigManager.getConfig).toHaveBeenCalled();
+      expect(mockConfigManager.getServerById).toHaveBeenCalledWith('server-1');
       expect(mockCredentialManager.getWithSecret).toHaveBeenCalledWith('cred-1');
       expect(mockSftp.connect).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -127,12 +125,12 @@ describe('RemoteBrowserConnection', () => {
       await connection.ensureConnected();
       mockSftp.connected = true;
 
-      const newBinding = { defaultServerId: 'server-2', servers: {} };
       const newServer = { ...fakeServer, id: 'server-2', credentialId: 'cred-2' };
       const newCredential = { ...fakeCredential, id: 'cred-2', host: 'staging.example.com' };
+      const newConfig = { defaultServerId: 'server-2', servers: { Staging: newServer } };
 
-      mockBindingManager.getBinding.mockResolvedValue(newBinding);
-      mockServerManager.getServer.mockResolvedValue(newServer);
+      mockConfigManager.getConfig.mockResolvedValue(newConfig);
+      mockConfigManager.getServerById.mockResolvedValue({ name: 'Staging', server: newServer });
       mockCredentialManager.getWithSecret.mockResolvedValue(newCredential);
 
       await connection.ensureConnected();
@@ -140,13 +138,13 @@ describe('RemoteBrowserConnection', () => {
       expect(mockSftp.connect).toHaveBeenCalledTimes(2);
     });
 
-    it('throws when no binding exists', async () => {
-      mockBindingManager.getBinding.mockResolvedValue(null);
+    it('throws when no config exists', async () => {
+      mockConfigManager.getConfig.mockResolvedValue(null);
       await expect(connection.ensureConnected()).rejects.toThrow(/no server configured/i);
     });
 
     it('throws when server not found', async () => {
-      mockServerManager.getServer.mockResolvedValue(undefined);
+      mockConfigManager.getServerById.mockResolvedValue(undefined);
       await expect(connection.ensureConnected()).rejects.toThrow(/server not found/i);
     });
   });
@@ -249,37 +247,12 @@ describe('RemoteBrowserConnection', () => {
       expect(connection.getRootPath()).toBe('/');
     });
 
-    it('uses rootPathOverride from binding when present', async () => {
-      const bindingWithOverride = {
-        defaultServerId: 'server-1',
-        servers: {
-          'server-1': {
-            mappings: [],
-            excludedPaths: [],
-            rootPathOverride: '/home/deploy/myapp',
-          },
-        },
-      };
-      mockBindingManager.getBinding.mockResolvedValue(bindingWithOverride);
+    it('uses server rootPath directly (no override concept)', async () => {
+      const serverWithDifferentRoot = { ...fakeServer, rootPath: '/home/deploy/myapp' };
+      mockConfigManager.getServerById.mockResolvedValue({ name: 'Production', server: serverWithDifferentRoot });
 
       await connection.ensureConnected();
       expect(connection.getRootPath()).toBe('/home/deploy/myapp');
-    });
-
-    it('falls back to server rootPath when no override', async () => {
-      const bindingWithServerConfig = {
-        defaultServerId: 'server-1',
-        servers: {
-          'server-1': {
-            mappings: [],
-            excludedPaths: [],
-          },
-        },
-      };
-      mockBindingManager.getBinding.mockResolvedValue(bindingWithServerConfig);
-
-      await connection.ensureConnected();
-      expect(connection.getRootPath()).toBe('/var/www');
     });
   });
 

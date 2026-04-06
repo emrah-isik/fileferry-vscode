@@ -1,17 +1,15 @@
 import * as vscode from 'vscode';
 import { ServerItem, ServerItemData } from './ServerItem';
-import { ServerManager } from '../storage/ServerManager';
+import { ProjectConfigManager } from '../storage/ProjectConfigManager';
 import { CredentialManager } from '../storage/CredentialManager';
-import { ProjectBindingManager } from '../storage/ProjectBindingManager';
 
 export class ServersProvider implements vscode.TreeDataProvider<ServerItem> {
   private readonly _onDidChangeTreeData = new vscode.EventEmitter<ServerItem | undefined | void>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
   constructor(
-    private readonly serverManager: ServerManager,
-    private readonly credentialManager: CredentialManager,
-    private readonly bindingManager: ProjectBindingManager
+    private readonly configManager: ProjectConfigManager,
+    private readonly credentialManager: CredentialManager
   ) {}
 
   getTreeItem(element: ServerItem): vscode.TreeItem {
@@ -19,17 +17,19 @@ export class ServersProvider implements vscode.TreeDataProvider<ServerItem> {
   }
 
   async getChildren(): Promise<ServerItem[]> {
-    const [servers, credentials, binding] = await Promise.all([
-      this.serverManager.getAll(),
+    const [config, credentials] = await Promise.all([
+      this.configManager.getConfig(),
       this.credentialManager.getAll(),
-      this.bindingManager.getBinding(),
     ]);
 
-    const defaultServerId = binding?.defaultServerId ?? null;
+    if (!config) { return []; }
 
-    const items = servers.map(server => {
+    const defaultServerId = config.defaultServerId ?? null;
+
+    const items = Object.entries(config.servers).map(([name, server]) => {
       const credential = credentials.find(c => c.id === server.credentialId);
       const data: ServerItemData = {
+        serverName: name,
         server,
         credential,
         isDefault: server.id === defaultServerId,
@@ -42,7 +42,7 @@ export class ServersProvider implements vscode.TreeDataProvider<ServerItem> {
       if (a.data.isDefault !== b.data.isDefault) {
         return a.data.isDefault ? -1 : 1;
       }
-      return a.data.server.name.localeCompare(b.data.server.name);
+      return a.data.serverName.localeCompare(b.data.serverName);
     });
   }
 

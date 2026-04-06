@@ -5,18 +5,16 @@ import { PathResolver } from '../path/PathResolver';
 import { DiffService } from '../diffService';
 import { SftpService } from '../sftpService';
 import { CredentialManager } from '../storage/CredentialManager';
-import { ServerManager } from '../storage/ServerManager';
-import { ProjectBindingManager } from '../storage/ProjectBindingManager';
+import { ProjectConfigManager } from '../storage/ProjectConfigManager';
 
-interface Deps {
+interface Dependencies {
   credentialManager: CredentialManager;
-  serverManager: ServerManager;
-  bindingManager: ProjectBindingManager;
+  configManager: ProjectConfigManager;
 }
 
 export async function showRemoteDiff(
   resource: vscode.SourceControlResourceState | undefined,
-  deps: Deps
+  dependencies: Dependencies
 ): Promise<void> {
   // Fall back to active editor when invoked via keybinding with no SCM selection
   if (!resource) {
@@ -29,26 +27,27 @@ export async function showRemoteDiff(
     }
   }
 
-  const binding = await deps.bindingManager.getBinding();
-  if (!binding) {
+  const config = await dependencies.configManager.getConfig();
+  if (!config) {
     vscode.window.showErrorMessage(
-      'FileFerry: No project binding found. Run "FileFerry: Deployment Settings" to configure.'
+      'FileFerry: No project configuration found. Run "FileFerry: Deployment Settings" to configure.'
     );
     return;
   }
 
-  const server = await deps.serverManager.getServer(binding.defaultServerId);
-  if (!server) {
+  const match = await dependencies.configManager.getServerById(config.defaultServerId);
+  if (!match) {
     vscode.window.showErrorMessage(
       'FileFerry: Default server not found. Open Deployment Settings to fix.'
     );
     return;
   }
 
-  const serverBinding = binding.servers[server.id];
-  if (!serverBinding) {
+  const { name: serverName, server } = match;
+
+  if (server.mappings.length === 0) {
     vscode.window.showErrorMessage(
-      `FileFerry: No mappings configured for server "${server.name}".`
+      `FileFerry: No mappings configured for server "${serverName}".`
     );
     return;
   }
@@ -61,9 +60,8 @@ export async function showRemoteDiff(
   try {
     const resolved = pathResolver.resolve(localPath, workspaceRoot, {
       rootPath: server.rootPath,
-      rootPathOverride: serverBinding.rootPathOverride,
-      mappings: serverBinding.mappings,
-      excludedPaths: serverBinding.excludedPaths,
+      mappings: server.mappings,
+      excludedPaths: server.excludedPaths,
     });
     remotePath = resolved.remotePath;
   } catch (err: unknown) {
@@ -71,7 +69,7 @@ export async function showRemoteDiff(
     return;
   }
 
-  const credential = await deps.credentialManager.getWithSecret(server.credentialId);
+  const credential = await dependencies.credentialManager.getWithSecret(server.credentialId);
   const tempDir = path.join(os.tmpdir(), 'fileferry');
   const diffService = new DiffService(new SftpService(), tempDir);
   const fileName = path.basename(localPath);
@@ -79,7 +77,7 @@ export async function showRemoteDiff(
   await vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Notification,
-      title: `FileFerry: Fetching remote "${fileName}" from "${server.name}"`,
+      title: `FileFerry: Fetching remote "${fileName}" from "${serverName}"`,
       cancellable: false,
     },
     async () => {
@@ -99,7 +97,7 @@ export async function showRemoteDiff(
         'vscode.diff',
         vscode.Uri.file(tempPath),
         resource.resourceUri,
-        `${fileName} (Remote: ${server.name}) ↔ ${fileName} (Local)`
+        `${fileName} (Remote: ${serverName}) ↔ ${fileName} (Local)`
       );
     }
   );

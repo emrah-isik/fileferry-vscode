@@ -7,13 +7,12 @@ const vscode = acquireVsCodeApi();
 // ─── State ────────────────────────────────────────────────────────────────────
 
 let state = {
-  servers: [],
+  config: null,           // ProjectConfig: { defaultServerId, uploadOnSave?, servers: { [name]: ProjectServer } }
   credentials: [],
-  binding: null,
-  selectedServerId: null,
+  selectedServerName: null,
   activeTab: 'connection',
-  testStatus: null,   // { success, message } | null
-  editingNew: false,  // true when creating a new (unsaved) server
+  testStatus: null,       // { success, message } | null
+  editingNew: false,      // true when creating a new (unsaved) server
 };
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────
@@ -26,32 +25,24 @@ vscode.postMessage({ command: 'ready' });
 window.addEventListener('message', ({ data: msg }) => {
   switch (msg.command) {
     case 'init':
-      state.servers = msg.servers || [];
+      state.config = msg.config || { defaultServerId: '', servers: {} };
       state.credentials = msg.credentials || [];
-      state.binding = msg.binding;
-      if (!state.selectedServerId && state.servers.length > 0) {
-        state.selectedServerId = state.servers[0].id;
+      if (!state.selectedServerName) {
+        const names = Object.keys(state.config.servers);
+        if (names.length > 0) state.selectedServerName = names[0];
       }
       render();
       break;
 
-    case 'serverSaved':
-      upsertServer(msg.server);
-      state.selectedServerId = msg.server.id;
-      state.editingNew = false;
+    case 'configUpdated':
+      state.config = msg.config || { defaultServerId: '', servers: {} };
+      // If selected server was deleted, select first remaining
+      if (state.selectedServerName && !state.config.servers[state.selectedServerName]) {
+        const names = Object.keys(state.config.servers);
+        state.selectedServerName = names[0] || null;
+        state.editingNew = false;
+      }
       render();
-      break;
-
-    case 'serverDeleted':
-      state.servers = state.servers.filter(s => s.id !== msg.id);
-      state.selectedServerId = state.servers[0]?.id ?? null;
-      state.editingNew = false;
-      render();
-      break;
-
-    case 'bindingUpdated':
-      state.binding = msg.binding;
-      renderServerList();
       break;
 
     case 'credentialsUpdated':
@@ -62,23 +53,6 @@ window.addEventListener('message', ({ data: msg }) => {
     case 'testResult':
       state.testStatus = { success: msg.success, message: msg.message };
       renderTestResult();
-      break;
-
-    case 'mappingSaved':
-      if (state.binding) {
-        state.binding.servers = state.binding.servers || {};
-        state.binding.servers[msg.serverId] = msg.serverBinding;
-      }
-      renderMappingsTab(getSelectedServer());
-      break;
-
-    case 'rootPathOverrideSaved':
-      if (state.binding) {
-        state.binding.servers = state.binding.servers || {};
-        state.binding.servers[msg.serverId] = state.binding.servers[msg.serverId] || { mappings: [], excludedPaths: [] };
-        state.binding.servers[msg.serverId].rootPathOverride = msg.rootPathOverride;
-      }
-      renderMappingsTab(getSelectedServer());
       break;
 
     case 'directorySelected':
@@ -98,7 +72,7 @@ window.addEventListener('message', ({ data: msg }) => {
       const browseErrEl = document.getElementById('test-connection-result');
       if (browseErrEl) {
         browseErrEl.className = 'error';
-        browseErrEl.textContent = `✗ ${msg.message}`;
+        browseErrEl.textContent = `\u2717 ${msg.message}`;
       }
       break;
 
@@ -124,21 +98,20 @@ function setBrowseLoading(loading) {
   if (!btn) return;
   btn.disabled = loading;
   btn.classList.toggle('btn-loading', loading);
-  btn.textContent = loading ? 'Browsing…' : 'Browse…';
+  btn.textContent = loading ? 'Browsing\u2026' : 'Browse\u2026';
 }
 
-function upsertServer(server) {
-  const idx = state.servers.findIndex(s => s.id === server.id);
-  if (idx >= 0) {
-    state.servers[idx] = server;
-  } else {
-    state.servers.push(server);
-  }
+function getServerEntries() {
+  if (!state.config) return [];
+  return Object.entries(state.config.servers);
 }
 
 function getSelectedServer() {
-  if (state.editingNew) return { id: '', name: '', type: 'sftp', credentialId: '', rootPath: '' };
-  return state.servers.find(s => s.id === state.selectedServerId) ?? null;
+  if (state.editingNew) return { _name: '', id: '', type: 'sftp', credentialId: '', credentialName: '', rootPath: '', mappings: [], excludedPaths: [] };
+  if (!state.selectedServerName || !state.config) return null;
+  const server = state.config.servers[state.selectedServerName];
+  if (!server) return null;
+  return { _name: state.selectedServerName, ...server };
 }
 
 // ─── Render ───────────────────────────────────────────────────────────────────
@@ -152,18 +125,21 @@ function renderServerList() {
   const el = document.getElementById('server-list-panel');
   if (!el) return;
 
+  const entries = getServerEntries();
+  const defaultId = state.config?.defaultServerId || '';
+
   el.innerHTML = `
     <div class="panel-header">
       <span>Servers</span>
       <button id="add-server-btn" title="Add server">+</button>
     </div>
     <ul class="server-list">
-      ${state.servers.map(s => `
-        <li class="server-item ${s.id === state.selectedServerId && !state.editingNew ? 'selected' : ''}"
-            data-id="${escapeHtml(s.id)}">
-          <span class="server-name">${escapeHtml(s.name)}</span>
-          ${state.binding?.defaultServerId === s.id ? '<span class="badge">default</span>' : ''}
-          <button class="btn-clone-server" data-id="${escapeHtml(s.id)}" title="Clone server" tabindex="-1">⎘</button>
+      ${entries.map(([name, server]) => `
+        <li class="server-item ${name === state.selectedServerName && !state.editingNew ? 'selected' : ''}"
+            data-name="${escapeHtml(name)}">
+          <span class="server-name">${escapeHtml(name)}</span>
+          ${defaultId === server.id ? '<span class="badge">default</span>' : ''}
+          <button class="btn-clone-server" data-id="${escapeHtml(server.id)}" title="Clone server" tabindex="-1">\u2398</button>
         </li>
       `).join('')}
       ${state.editingNew ? '<li class="server-item selected"><span class="server-name"><em>New Server</em></span></li>' : ''}
@@ -172,15 +148,15 @@ function renderServerList() {
 
   document.getElementById('add-server-btn')?.addEventListener('click', () => {
     state.editingNew = true;
-    state.selectedServerId = null;
+    state.selectedServerName = null;
     state.testStatus = null;
     state.activeTab = 'connection';
     render();
   });
 
-  document.querySelectorAll('.server-item[data-id]').forEach(el => {
+  document.querySelectorAll('.server-item[data-name]').forEach(el => {
     el.addEventListener('click', () => {
-      state.selectedServerId = el.dataset.id;
+      state.selectedServerName = el.dataset.name;
       state.editingNew = false;
       state.testStatus = null;
       render();
@@ -241,13 +217,13 @@ function renderConnectionTab(server) {
   const el = document.getElementById('connection-tab');
   if (!el) return;
 
-  const isDefault = state.binding?.defaultServerId === server.id;
+  const isDefault = state.config?.defaultServerId === server.id;
   const isNew = !server.id;
 
   el.innerHTML = `
     <div class="form-group">
       <label for="f-name">Name</label>
-      <input id="f-name" type="text" value="${escapeHtml(server.name)}" placeholder="e.g. Production">
+      <input id="f-name" type="text" value="${escapeHtml(server._name)}" placeholder="e.g. Production">
       <span class="field-error" id="err-name"></span>
     </div>
 
@@ -262,10 +238,10 @@ function renderConnectionTab(server) {
     <div class="form-group">
       <label for="f-credential">
         SSH Credential
-        <button id="btn-manage-creds" class="btn-inline-link" type="button">Manage…</button>
+        <button id="btn-manage-creds" class="btn-inline-link" type="button">Manage\u2026</button>
       </label>
       <select id="f-credential">
-        <option value="">— Select credential —</option>
+        <option value="">\u2014 Select credential \u2014</option>
         ${state.credentials.map(c => `
           <option value="${escapeHtml(c.id)}" ${server.credentialId === c.id ? 'selected' : ''}>
             ${escapeHtml(c.name)} (${escapeHtml(c.username)}@${escapeHtml(c.host)})
@@ -279,7 +255,7 @@ function renderConnectionTab(server) {
       <label for="f-root-path">Root Path</label>
       <div class="input-row">
         <input id="f-root-path" type="text" value="${escapeHtml(server.rootPath)}" placeholder="/var/www">
-        <button id="btn-browse-root" class="btn-secondary" type="button">Browse…</button>
+        <button id="btn-browse-root" class="btn-secondary" type="button">Browse\u2026</button>
       </div>
       <span class="field-error" id="err-root-path"></span>
     </div>
@@ -288,7 +264,7 @@ function renderConnectionTab(server) {
       <button id="btn-save">Save</button>
       ${!isNew ? `<button id="btn-test" class="btn-secondary">Test Connection</button>` : ''}
       ${!isNew && !isDefault ? `<button id="btn-set-default" class="btn-secondary">Set as Default</button>` : ''}
-      ${!isNew && isDefault ? `<button disabled class="btn-secondary">Default Server ✓</button>` : ''}
+      ${!isNew && isDefault ? `<button disabled class="btn-secondary">Default Server \u2713</button>` : ''}
       ${!isNew ? `<button id="btn-delete" class="btn-danger">Delete</button>` : ''}
     </div>
 
@@ -346,7 +322,7 @@ function renderConnectionTab(server) {
   document.getElementById('btn-test')?.addEventListener('click', () => {
     state.testStatus = null;
     document.getElementById('test-connection-result').className = '';
-    document.getElementById('test-connection-result').textContent = 'Connecting…';
+    document.getElementById('test-connection-result').textContent = 'Connecting\u2026';
     vscode.postMessage({ command: 'testConnection', serverId: server.id });
   });
 
@@ -363,21 +339,12 @@ function renderMappingsTab(server) {
   const el = document.getElementById('mappings-tab');
   if (!el || !server?.id) return;
 
-  const serverBinding = state.binding?.servers?.[server.id];
-  const mappings = serverBinding?.mappings || [];
-  const excludedPaths = serverBinding?.excludedPaths || [];
-  const rootPathOverride = serverBinding?.rootPathOverride || '';
+  // Mappings and excludedPaths live directly on the server object now
+  const mappings = server.mappings || [];
+  const excludedPaths = server.excludedPaths || [];
 
   el.innerHTML = `
-    <div class="section-title">Project Root Override</div>
-    <p class="hint">Override this server's root path for this project only. Leave blank to use <code>${escapeHtml(server.rootPath || '/var/www')}</code>.</p>
-    <div class="input-row">
-      <input id="f-root-override" type="text" value="${escapeHtml(rootPathOverride)}" placeholder="${escapeHtml(server.rootPath || '/var/www')}">
-      <button id="btn-save-root-override" class="btn-secondary" type="button">Save Override</button>
-    </div>
-    <span class="field-error" id="err-root-override"></span>
-
-    <p class="hint" style="margin-top:24px">Map local paths (relative to workspace root) to remote paths on the server.</p>
+    <p class="hint">Map local paths (relative to workspace root) to remote paths on the server.</p>
 
     <div class="section-title">Path Mappings</div>
     <table class="mappings-table">
@@ -393,7 +360,7 @@ function renderMappingsTab(server) {
           <tr data-index="${i}">
             <td><input class="m-local" type="text" value="${escapeHtml(m.localPath)}" placeholder="/"></td>
             <td><input class="m-remote" type="text" value="${escapeHtml(m.remotePath)}" placeholder="html"></td>
-            <td><button class="btn-remove-mapping" data-index="${i}" title="Remove">×</button></td>
+            <td><button class="btn-remove-mapping" data-index="${i}" title="Remove">\u00d7</button></td>
           </tr>
         `).join('')}
       </tbody>
@@ -409,11 +376,6 @@ function renderMappingsTab(server) {
     </div>
   `;
 
-  document.getElementById('btn-save-root-override')?.addEventListener('click', () => {
-    const val = document.getElementById('f-root-override').value.trim();
-    vscode.postMessage({ command: 'saveRootPathOverride', serverId: server.id, rootPathOverride: val || undefined });
-  });
-
   document.getElementById('btn-add-mapping')?.addEventListener('click', () => {
     const tbody = document.getElementById('mappings-body');
     const idx = tbody.children.length;
@@ -422,7 +384,7 @@ function renderMappingsTab(server) {
     row.innerHTML = `
       <td><input class="m-local" type="text" value="" placeholder="/"></td>
       <td><input class="m-remote" type="text" value="" placeholder="html"></td>
-      <td><button class="btn-remove-mapping" data-index="${idx}" title="Remove">×</button></td>
+      <td><button class="btn-remove-mapping" data-index="${idx}" title="Remove">\u00d7</button></td>
     `;
     tbody.appendChild(row);
     wireRemoveButtons();
@@ -442,7 +404,8 @@ function renderMappingsTab(server) {
     vscode.postMessage({
       command: 'saveMapping',
       serverId: server.id,
-      serverBinding: { mappings: updatedMappings, excludedPaths: updatedExcluded },
+      mappings: updatedMappings,
+      excludedPaths: updatedExcluded,
     });
   });
 }
@@ -463,8 +426,8 @@ function renderTestResult() {
   if (!el || !state.testStatus) return;
   el.className = state.testStatus.success ? 'success' : 'error';
   el.textContent = state.testStatus.success
-    ? `✓ ${state.testStatus.message}`
-    : `✗ ${state.testStatus.message}`;
+    ? `\u2713 ${state.testStatus.message}`
+    : `\u2717 ${state.testStatus.message}`;
 }
 
 function showValidationErrors(errors) {
@@ -479,10 +442,6 @@ function showValidationErrors(errors) {
   if (errors.rootPath) {
     const el = document.getElementById('err-root-path');
     if (el) el.textContent = errors.rootPath;
-  }
-  if (errors.rootPathOverride) {
-    const el = document.getElementById('err-root-override');
-    if (el) el.textContent = errors.rootPathOverride;
   }
 }
 

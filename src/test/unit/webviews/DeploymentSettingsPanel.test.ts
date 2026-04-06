@@ -1,8 +1,7 @@
 import * as vscode from 'vscode';
 import { DeploymentSettingsPanel } from '../../../ui/webviews/DeploymentSettingsPanel';
 import type { CredentialManager } from '../../../storage/CredentialManager';
-import type { ServerManager } from '../../../storage/ServerManager';
-import type { ProjectBindingManager } from '../../../storage/ProjectBindingManager';
+import type { ProjectConfigManager } from '../../../storage/ProjectConfigManager';
 
 jest.mock('../../../sftpService');
 
@@ -39,147 +38,177 @@ const mockContext = {
   subscriptions: [],
 } as unknown as vscode.ExtensionContext;
 
-// --- Manager mocks ---
+// --- Fixtures ---
 const credentialsMock = [{ id: 'cred-1', name: 'Prod SSH', host: 'example.com', port: 22, username: 'deploy', authMethod: 'password' }];
-const serversMock = [{ id: 'srv-1', name: 'Production', type: 'sftp', credentialId: 'cred-1', rootPath: '/var/www' }];
-const bindingMock = {
-  defaultServerId: 'srv-1',
-  servers: {
-    'srv-1': { mappings: [{ localPath: '/', remotePath: '/var/www' }], excludedPaths: ['node_modules'] }
-  }
+
+const serverFixture = {
+  id: 'srv-1',
+  type: 'sftp' as const,
+  credentialId: 'cred-1',
+  credentialName: 'Prod SSH',
+  rootPath: '/var/www',
+  mappings: [{ localPath: '/', remotePath: '/var/www' }],
+  excludedPaths: ['node_modules'],
 };
 
+const configFixture = {
+  defaultServerId: 'srv-1',
+  servers: {
+    Production: serverFixture,
+  },
+};
+
+// --- Manager mocks ---
 const mockCredentialManager = {
   getAll: jest.fn().mockResolvedValue(credentialsMock),
   getWithSecret: jest.fn().mockResolvedValue({ ...credentialsMock[0], password: 'secret' }),
 } as unknown as CredentialManager;
 
-const mockServerManager = {
-  getAll: jest.fn().mockResolvedValue(serversMock),
-  save: jest.fn().mockResolvedValue(undefined),
-  delete: jest.fn().mockResolvedValue(undefined),
-  getServer: jest.fn().mockResolvedValue(serversMock[0]),
-} as unknown as ServerManager;
-
-const mockBindingManager = {
-  getBinding: jest.fn().mockResolvedValue(bindingMock),
+const mockConfigManager = {
+  getConfig: jest.fn().mockResolvedValue(configFixture),
+  saveConfig: jest.fn().mockResolvedValue(undefined),
+  addServer: jest.fn().mockResolvedValue(undefined),
+  removeServer: jest.fn().mockResolvedValue(undefined),
+  renameServer: jest.fn().mockResolvedValue(undefined),
   setDefaultServer: jest.fn().mockResolvedValue(undefined),
-  setServerBinding: jest.fn().mockResolvedValue(undefined),
-} as unknown as ProjectBindingManager;
+  getServerById: jest.fn().mockResolvedValue({ name: 'Production', server: serverFixture }),
+  getServer: jest.fn().mockResolvedValue(serverFixture),
+  getServerNames: jest.fn().mockResolvedValue(['Production']),
+} as unknown as ProjectConfigManager;
 
-function deps() {
-  return { credentialManager: mockCredentialManager, serverManager: mockServerManager, bindingManager: mockBindingManager };
+function dependencies() {
+  return { credentialManager: mockCredentialManager, configManager: mockConfigManager };
 }
 
 describe('DeploymentSettingsPanel message handling', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     (vscode.window.createWebviewPanel as jest.Mock).mockReturnValue(mockPanel);
-    (mockServerManager.save as jest.Mock).mockResolvedValue(undefined);
-    (mockServerManager.delete as jest.Mock).mockResolvedValue(undefined);
+    (mockConfigManager.getConfig as jest.Mock).mockResolvedValue(configFixture);
+    (mockConfigManager.saveConfig as jest.Mock).mockResolvedValue(undefined);
+    (mockConfigManager.getServerById as jest.Mock).mockResolvedValue({ name: 'Production', server: serverFixture });
     (mockCredentialManager.getAll as jest.Mock).mockResolvedValue(credentialsMock);
-    (mockServerManager.getAll as jest.Mock).mockResolvedValue(serversMock);
-    (mockBindingManager.getBinding as jest.Mock).mockResolvedValue(bindingMock);
-    (mockServerManager.getServer as jest.Mock).mockResolvedValue(serversMock[0]);
     (mockCredentialManager.getWithSecret as jest.Mock).mockResolvedValue({ ...credentialsMock[0], password: 'secret' });
     // Reset singleton
     (DeploymentSettingsPanel as any).currentPanel = undefined;
   });
 
-  it('sends init message with servers and credentials on panel open', async () => {
-    DeploymentSettingsPanel.createOrShow(mockContext, deps());
-    // Trigger 'ready' from webview
+  it('sends init message with config and credentials on panel open', async () => {
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
     await messageHandler({ command: 'ready' });
     expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
       command: 'init',
-      servers: serversMock,
+      config: configFixture,
       credentials: credentialsMock,
     }));
   });
 
-  it('handles saveServer message: calls ServerManager.save, posts serverSaved back', async () => {
-    DeploymentSettingsPanel.createOrShow(mockContext, deps());
-    const server = { id: 'srv-1', name: 'Production', type: 'sftp', credentialId: 'cred-1', rootPath: '/var/www' };
-    await messageHandler({ command: 'saveServer', payload: server });
-    expect(mockServerManager.save).toHaveBeenCalledWith(expect.objectContaining({ name: 'Production' }));
-    expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({ command: 'serverSaved' }));
+  it('handles saveServer message: saves to config, posts configUpdated back', async () => {
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    const payload = { id: 'srv-1', name: 'Production', type: 'sftp', credentialId: 'cred-1', rootPath: '/var/www' };
+    await messageHandler({ command: 'saveServer', payload });
+    expect(mockConfigManager.saveConfig).toHaveBeenCalled();
+    expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({ command: 'configUpdated' }));
   });
 
   it('saveServer shows info notification with server name after save', async () => {
-    DeploymentSettingsPanel.createOrShow(mockContext, deps());
-    const server = { id: 'srv-1', name: 'Production', type: 'sftp', credentialId: 'cred-1', rootPath: '/var/www' };
-    await messageHandler({ command: 'saveServer', payload: server });
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    const payload = { id: 'srv-1', name: 'Production', type: 'sftp', credentialId: 'cred-1', rootPath: '/var/www' };
+    await messageHandler({ command: 'saveServer', payload });
     expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
       expect.stringContaining('Production')
     );
+  });
+
+  it('saveServer creates new server with generated id when no id provided', async () => {
+    (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({ defaultServerId: '', servers: {} });
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    const payload = { name: 'Staging', type: 'sftp', credentialId: 'cred-1', rootPath: '/var/www/staging' };
+    await messageHandler({ command: 'saveServer', payload });
+    const savedConfig = (mockConfigManager.saveConfig as jest.Mock).mock.calls[0][0];
+    expect(savedConfig.servers.Staging).toBeDefined();
+    expect(savedConfig.servers.Staging.id).toBeDefined();
+    expect(savedConfig.servers.Staging.credentialId).toBe('cred-1');
+  });
+
+  it('saveServer sets credentialName from credential lookup', async () => {
+    (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({ defaultServerId: '', servers: {} });
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    const payload = { name: 'Staging', type: 'sftp', credentialId: 'cred-1', rootPath: '/var/www' };
+    await messageHandler({ command: 'saveServer', payload });
+    const savedConfig = (mockConfigManager.saveConfig as jest.Mock).mock.calls[0][0];
+    expect(savedConfig.servers.Staging.credentialName).toBe('Prod SSH');
+  });
+
+  it('saveServer preserves existing mappings and excludedPaths on edit', async () => {
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    const payload = { id: 'srv-1', name: 'Production', type: 'sftp', credentialId: 'cred-1', rootPath: '/var/www/html' };
+    await messageHandler({ command: 'saveServer', payload });
+    const savedConfig = (mockConfigManager.saveConfig as jest.Mock).mock.calls[0][0];
+    expect(savedConfig.servers.Production.mappings).toEqual(serverFixture.mappings);
+    expect(savedConfig.servers.Production.excludedPaths).toEqual(serverFixture.excludedPaths);
+  });
+
+  it('saveServer renames config key when server name changes', async () => {
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    const payload = { id: 'srv-1', name: 'Prod Renamed', type: 'sftp', credentialId: 'cred-1', rootPath: '/var/www' };
+    await messageHandler({ command: 'saveServer', payload });
+    const savedConfig = (mockConfigManager.saveConfig as jest.Mock).mock.calls[0][0];
+    expect(savedConfig.servers['Prod Renamed']).toBeDefined();
+    expect(savedConfig.servers['Production']).toBeUndefined();
   });
 
   it('handles deleteServer message: shows confirmation, deletes on confirm', async () => {
     (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue('Delete');
-    DeploymentSettingsPanel.createOrShow(mockContext, deps());
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
     await messageHandler({ command: 'deleteServer', id: 'srv-1' });
     expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
       expect.stringContaining('Production'), 'Delete', 'Cancel'
     );
-    expect(mockServerManager.delete).toHaveBeenCalledWith('srv-1');
-    expect(mockWebview.postMessage).toHaveBeenCalledWith({ command: 'serverDeleted', id: 'srv-1' });
+    expect(mockConfigManager.removeServer).toHaveBeenCalledWith('Production');
+    expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({ command: 'configUpdated' }));
   });
 
   it('handles deleteServer message: does nothing when user cancels', async () => {
     (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue('Cancel');
-    DeploymentSettingsPanel.createOrShow(mockContext, deps());
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
     await messageHandler({ command: 'deleteServer', id: 'srv-1' });
-    expect(mockServerManager.delete).not.toHaveBeenCalled();
-    expect(mockWebview.postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ command: 'serverDeleted' }));
+    expect(mockConfigManager.removeServer).not.toHaveBeenCalled();
   });
 
-  it('handles setDefaultServer message: updates ProjectBinding defaultServerId', async () => {
-    DeploymentSettingsPanel.createOrShow(mockContext, deps());
+  it('handles setDefaultServer message: updates config defaultServerId', async () => {
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
     await messageHandler({ command: 'setDefaultServer', id: 'srv-1' });
-    expect(mockBindingManager.setDefaultServer).toHaveBeenCalledWith('srv-1');
-    expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({ command: 'bindingUpdated' }));
+    expect(mockConfigManager.setDefaultServer).toHaveBeenCalledWith('srv-1');
+    expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({ command: 'configUpdated' }));
   });
 
-  it('handles saveMapping message: updates ProjectBinding server mappings', async () => {
-    DeploymentSettingsPanel.createOrShow(mockContext, deps());
-    const serverBinding = { mappings: [{ localPath: '/', remotePath: '/var/www' }], excludedPaths: [] };
-    await messageHandler({ command: 'saveMapping', serverId: 'srv-1', serverBinding });
-    expect(mockBindingManager.setServerBinding).toHaveBeenCalledWith('srv-1', expect.objectContaining({
-      mappings: serverBinding.mappings,
-      excludedPaths: serverBinding.excludedPaths,
-    }));
-    expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({ command: 'mappingSaved' }));
+  it('handles saveMapping message: updates server mappings in config', async () => {
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    const mappings = [{ localPath: '/', remotePath: '/var/www' }];
+    const excludedPaths = ['node_modules'];
+    await messageHandler({ command: 'saveMapping', serverId: 'srv-1', mappings, excludedPaths });
+    const savedConfig = (mockConfigManager.saveConfig as jest.Mock).mock.calls[0][0];
+    expect(savedConfig.servers.Production.mappings).toEqual(mappings);
+    expect(savedConfig.servers.Production.excludedPaths).toEqual(excludedPaths);
+    expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({ command: 'configUpdated' }));
   });
 
   it('saveMapping shows info notification with server name after save', async () => {
-    DeploymentSettingsPanel.createOrShow(mockContext, deps());
-    const serverBinding = { mappings: [{ localPath: '/', remotePath: '/var/www' }], excludedPaths: [] };
-    await messageHandler({ command: 'saveMapping', serverId: 'srv-1', serverBinding });
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    const mappings = [{ localPath: '/', remotePath: '/var/www' }];
+    await messageHandler({ command: 'saveMapping', serverId: 'srv-1', mappings, excludedPaths: [] });
     expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
       expect.stringContaining('Production')
     );
   });
 
-  it('saveMapping preserves existing rootPathOverride from project binding', async () => {
-    const bindingWithOverride = {
-      ...bindingMock,
-      servers: { 'srv-1': { mappings: [], excludedPaths: [], rootPathOverride: '/home/deploy/app' } },
-    };
-    (mockBindingManager.getBinding as jest.Mock).mockResolvedValue(bindingWithOverride);
-    DeploymentSettingsPanel.createOrShow(mockContext, deps());
-    const serverBinding = { mappings: [{ localPath: '/', remotePath: '/var/www' }], excludedPaths: [] };
-    await messageHandler({ command: 'saveMapping', serverId: 'srv-1', serverBinding });
-    expect(mockBindingManager.setServerBinding).toHaveBeenCalledWith('srv-1', expect.objectContaining({
-      rootPathOverride: '/home/deploy/app',
-    }));
-  });
-
   it('handles deleteMapping message: removes mapping entry', async () => {
-    DeploymentSettingsPanel.createOrShow(mockContext, deps());
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
     await messageHandler({ command: 'deleteMapping', serverId: 'srv-1', index: 0 });
-    expect(mockBindingManager.setServerBinding).toHaveBeenCalledWith('srv-1', expect.objectContaining({
-      mappings: [],
-    }));
+    const savedConfig = (mockConfigManager.saveConfig as jest.Mock).mock.calls[0][0];
+    expect(savedConfig.servers.Production.mappings).toEqual([]);
+    expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({ command: 'configUpdated' }));
   });
 
   it('handles testConnection message: calls SftpService, posts result', async () => {
@@ -189,7 +218,7 @@ describe('DeploymentSettingsPanel message handling', () => {
       connect: mockConnect,
       disconnect: mockDisconnect,
     }));
-    DeploymentSettingsPanel.createOrShow(mockContext, deps());
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
     await messageHandler({ command: 'testConnection', serverId: 'srv-1' });
     expect(mockConnect).toHaveBeenCalled();
     expect(mockDisconnect).toHaveBeenCalled();
@@ -200,23 +229,20 @@ describe('DeploymentSettingsPanel message handling', () => {
   });
 
   it('posts validation error back if saveServer payload is invalid', async () => {
-    DeploymentSettingsPanel.createOrShow(mockContext, deps());
-    // Missing name and credentialId
-    await messageHandler({ command: 'saveServer', payload: { id: '', name: '', type: 'sftp', credentialId: '', rootPath: '/var/www' } });
-    expect(mockServerManager.save).not.toHaveBeenCalled();
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    await messageHandler({ command: 'saveServer', payload: { name: '', type: 'sftp', credentialId: '', rootPath: '/var/www' } });
+    expect(mockConfigManager.saveConfig).not.toHaveBeenCalled();
     expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
       command: 'validationError',
     }));
   });
 
-  // ── Issue 3: validate before test connection ──────────────────────────────
-
-  it('testConnection fails early with testResult if stored server fails validation', async () => {
-    const invalidServer = { id: 'srv-1', name: 'Production', type: 'sftp', credentialId: '', rootPath: '/var/www' };
-    (mockServerManager.getServer as jest.Mock).mockResolvedValue(invalidServer);
+  it('testConnection fails early with testResult if server has invalid credential', async () => {
+    const serverWithNoCred = { ...serverFixture, credentialId: '' };
+    (mockConfigManager.getServerById as jest.Mock).mockResolvedValue({ name: 'Production', server: serverWithNoCred });
     const mockConnect = jest.fn();
     (SftpService as jest.Mock).mockImplementation(() => ({ connect: mockConnect, disconnect: jest.fn() }));
-    DeploymentSettingsPanel.createOrShow(mockContext, deps());
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
     await messageHandler({ command: 'testConnection', serverId: 'srv-1' });
     expect(mockConnect).not.toHaveBeenCalled();
     expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
@@ -225,74 +251,41 @@ describe('DeploymentSettingsPanel message handling', () => {
     }));
   });
 
-  // ── Issue 2: cloneServer ──────────────────────────────────────────────────
-
   it('cloneServer creates a copy with a new id and "(copy)" suffix', async () => {
-    DeploymentSettingsPanel.createOrShow(mockContext, deps());
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
     await messageHandler({ command: 'cloneServer', id: 'srv-1' });
-    expect(mockServerManager.save).toHaveBeenCalledWith(expect.objectContaining({
-      name: 'Production (copy)',
-      credentialId: 'cred-1',
-      rootPath: '/var/www',
-    }));
-    const saved = (mockServerManager.save as jest.Mock).mock.calls[0][0];
-    expect(saved.id).not.toBe('srv-1');
-    expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({ command: 'serverSaved' }));
+    const savedConfig = (mockConfigManager.saveConfig as jest.Mock).mock.calls[0][0];
+    const clone = savedConfig.servers['Production (copy)'];
+    expect(clone).toBeDefined();
+    expect(clone.id).not.toBe('srv-1');
+    expect(clone.credentialId).toBe('cred-1');
+    expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({ command: 'configUpdated' }));
   });
 
   it('cloneServer appends timestamp when "(copy)" name is already taken', async () => {
-    const existing = [
-      ...serversMock,
-      { id: 'srv-2', name: 'Production (copy)', type: 'sftp', credentialId: 'cred-1', rootPath: '/var/www' },
-    ];
-    (mockServerManager.getAll as jest.Mock).mockResolvedValue(existing);
-    DeploymentSettingsPanel.createOrShow(mockContext, deps());
+    const configWithCopy = {
+      ...configFixture,
+      servers: {
+        ...configFixture.servers,
+        'Production (copy)': { ...serverFixture, id: 'srv-2' },
+      },
+    };
+    (mockConfigManager.getConfig as jest.Mock).mockResolvedValue(configWithCopy);
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
     await messageHandler({ command: 'cloneServer', id: 'srv-1' });
-    const saved = (mockServerManager.save as jest.Mock).mock.calls[0][0];
-    expect(saved.name).toMatch(/^Production \(copy \d+\)$/);
+    const savedConfig = (mockConfigManager.saveConfig as jest.Mock).mock.calls[0][0];
+    const cloneNames = Object.keys(savedConfig.servers).filter(n => n.startsWith('Production (copy'));
+    expect(cloneNames.length).toBeGreaterThanOrEqual(2);
   });
 
   it('cloneServer does nothing when server id is not found', async () => {
-    (mockServerManager.getServer as jest.Mock).mockResolvedValue(undefined);
-    DeploymentSettingsPanel.createOrShow(mockContext, deps());
+    (mockConfigManager.getServerById as jest.Mock).mockResolvedValue(undefined);
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
     await messageHandler({ command: 'cloneServer', id: 'unknown' });
-    expect(mockServerManager.save).not.toHaveBeenCalled();
+    expect(mockConfigManager.saveConfig).not.toHaveBeenCalled();
   });
 
-  // ── Issue 2: saveRootPathOverride ─────────────────────────────────────────
-
-  it('saveRootPathOverride saves the override to the project binding', async () => {
-    DeploymentSettingsPanel.createOrShow(mockContext, deps());
-    await messageHandler({ command: 'saveRootPathOverride', serverId: 'srv-1', rootPathOverride: '/home/deploy/app' });
-    expect(mockBindingManager.setServerBinding).toHaveBeenCalledWith('srv-1', expect.objectContaining({
-      rootPathOverride: '/home/deploy/app',
-    }));
-    expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
-      command: 'rootPathOverrideSaved',
-      serverId: 'srv-1',
-      rootPathOverride: '/home/deploy/app',
-    }));
-  });
-
-  it('saveRootPathOverride clears the override when value is empty', async () => {
-    DeploymentSettingsPanel.createOrShow(mockContext, deps());
-    await messageHandler({ command: 'saveRootPathOverride', serverId: 'srv-1', rootPathOverride: '' });
-    expect(mockBindingManager.setServerBinding).toHaveBeenCalledWith('srv-1', expect.objectContaining({
-      rootPathOverride: undefined,
-    }));
-  });
-
-  it('saveRootPathOverride rejects a path that does not start with /', async () => {
-    DeploymentSettingsPanel.createOrShow(mockContext, deps());
-    await messageHandler({ command: 'saveRootPathOverride', serverId: 'srv-1', rootPathOverride: 'var/www' });
-    expect(mockBindingManager.setServerBinding).not.toHaveBeenCalled();
-    expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
-      command: 'validationError',
-      errors: { rootPathOverride: expect.any(String) },
-    }));
-  });
-
-  // ── Issue 1: browseDirectory ──────────────────────────────────────────────
+  // ── browseDirectory ──────────────────────────────────────────────────────────
 
   it('browseDirectory: user selects a folder → posts directorySelected', async () => {
     const mockConnect = jest.fn().mockResolvedValue(undefined);
@@ -310,7 +303,7 @@ describe('DeploymentSettingsPanel message handling', () => {
       label: '$(check) Select this folder',
       description: '/var/www',
     });
-    DeploymentSettingsPanel.createOrShow(mockContext, deps());
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
     await messageHandler({ command: 'browseDirectory', credentialId: 'cred-1', startPath: '/var/www' });
     expect(mockConnect).toHaveBeenCalled();
     expect(mockListDirectory).toHaveBeenCalledWith('/var/www');
@@ -330,7 +323,7 @@ describe('DeploymentSettingsPanel message handling', () => {
     (vscode.window.showQuickPick as jest.Mock)
       .mockResolvedValueOnce({ label: '$(folder) html' })
       .mockResolvedValueOnce({ label: '$(check) Select this folder', description: '/var/www/html' });
-    DeploymentSettingsPanel.createOrShow(mockContext, deps());
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
     await messageHandler({ command: 'browseDirectory', credentialId: 'cred-1', startPath: '/var/www' });
     // preflight + /var/www loop + /var/www/html loop = 3 calls
     expect(mockListDirectory).toHaveBeenCalledTimes(3);
@@ -346,7 +339,7 @@ describe('DeploymentSettingsPanel message handling', () => {
       listDirectory: jest.fn().mockResolvedValue([]),
     }));
     (vscode.window.showQuickPick as jest.Mock).mockResolvedValue(undefined);
-    DeploymentSettingsPanel.createOrShow(mockContext, deps());
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
     await messageHandler({ command: 'browseDirectory', credentialId: 'cred-1', startPath: '/' });
     expect(mockWebview.postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ command: 'directorySelected' }));
     expect(mockDisconnect).toHaveBeenCalled();
@@ -356,8 +349,8 @@ describe('DeploymentSettingsPanel message handling', () => {
     const mockConnect = jest.fn().mockResolvedValue(undefined);
     const mockDisconnect = jest.fn().mockResolvedValue(undefined);
     const mockListDirectory = jest.fn()
-      .mockRejectedValueOnce(new Error('Permission denied /'))  // initial / fails
-      .mockResolvedValue([{ name: 'html', type: 'd' }]);         // home dir succeeds
+      .mockRejectedValueOnce(new Error('Permission denied /'))
+      .mockResolvedValue([{ name: 'html', type: 'd' }]);
     const mockResolveRemotePath = jest.fn().mockResolvedValue('/home/deploy');
     (SftpService as jest.Mock).mockImplementation(() => ({
       connect: mockConnect,
@@ -369,7 +362,7 @@ describe('DeploymentSettingsPanel message handling', () => {
       label: '$(check) Select this folder',
       description: '/home/deploy',
     });
-    DeploymentSettingsPanel.createOrShow(mockContext, deps());
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
     await messageHandler({ command: 'browseDirectory', credentialId: 'cred-1', startPath: '/' });
     expect(mockResolveRemotePath).toHaveBeenCalledWith('.');
     expect(mockWebview.postMessage).toHaveBeenCalledWith({ command: 'directorySelected', path: '/home/deploy' });
@@ -380,7 +373,7 @@ describe('DeploymentSettingsPanel message handling', () => {
       connect: jest.fn().mockRejectedValue(new Error('Auth failed')),
       disconnect: jest.fn().mockResolvedValue(undefined),
     }));
-    DeploymentSettingsPanel.createOrShow(mockContext, deps());
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
     await messageHandler({ command: 'browseDirectory', credentialId: 'cred-1', startPath: '/' });
     expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
       command: 'browseError',
@@ -390,7 +383,7 @@ describe('DeploymentSettingsPanel message handling', () => {
 
   it('browseDirectory: credential not found → posts browseError', async () => {
     (mockCredentialManager.getWithSecret as jest.Mock).mockRejectedValue(new Error('Not found'));
-    DeploymentSettingsPanel.createOrShow(mockContext, deps());
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
     await messageHandler({ command: 'browseDirectory', credentialId: 'bad-id', startPath: '/' });
     expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
       command: 'browseError',
@@ -403,11 +396,11 @@ describe('DeploymentSettingsPanel message handling', () => {
       fireEvent = listener;
       return { dispose: jest.fn() };
     };
-    DeploymentSettingsPanel.createOrShow(mockContext, { ...deps(), credentialsChanged });
+    DeploymentSettingsPanel.createOrShow(mockContext, { ...dependencies(), credentialsChanged });
     jest.clearAllMocks();
     (mockCredentialManager.getAll as jest.Mock).mockResolvedValue([...credentialsMock, { id: 'cred-2', name: 'Staging SSH', host: 'staging.example.com', port: 22, username: 'deploy', authMethod: 'password' }]);
     fireEvent();
-    await new Promise(process.nextTick); // flush async pushUpdatedCredentials
+    await new Promise(process.nextTick);
     expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
       command: 'credentialsUpdated',
       credentials: expect.arrayContaining([expect.objectContaining({ id: 'cred-2' })]),
@@ -415,8 +408,8 @@ describe('DeploymentSettingsPanel message handling', () => {
   });
 
   it('only creates one panel instance (singleton pattern)', () => {
-    DeploymentSettingsPanel.createOrShow(mockContext, deps());
-    DeploymentSettingsPanel.createOrShow(mockContext, deps());
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
     expect(vscode.window.createWebviewPanel).toHaveBeenCalledTimes(1);
     expect(mockPanel.reveal).toHaveBeenCalledTimes(1);
   });

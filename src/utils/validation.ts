@@ -1,5 +1,5 @@
 import { SshCredential, SshCredentialWithSecret } from '../models/SshCredential';
-import { DeploymentServer } from '../models/DeploymentServer';
+import { ProjectServer } from '../models/ProjectConfig';
 
 export interface ValidationError {
   field: string;
@@ -70,26 +70,28 @@ export function validateSshCredential(
   return errors;
 }
 
-export function validateDeploymentServer(
-  server: Partial<DeploymentServer>,
-  existingServers: DeploymentServer[],
+export function validateProjectServer(
+  name: string,
+  server: Partial<ProjectServer>,
+  existingServerNames: string[],
   existingCredentials: SshCredential[],
-  currentId?: string
+  currentName?: string
 ): ValidationError[] {
   const errors: ValidationError[] = [];
 
-  if (!server.name?.trim()) {
+  const trimmedName = name.trim();
+  if (!trimmedName) {
     errors.push({ field: 'name', message: 'Name is required' });
-  } else if (server.name.trim().length < 3) {
+  } else if (trimmedName.length < 3) {
     errors.push({ field: 'name', message: 'Name must be at least 3 characters' });
-  } else if (server.name.trim().length > 50) {
+  } else if (trimmedName.length > 50) {
     errors.push({ field: 'name', message: 'Name must be 50 characters or fewer' });
   } else {
-    const duplicate = existingServers.find(
-      s => s.name.toLowerCase() === server.name!.trim().toLowerCase() && s.id !== currentId
+    const duplicate = existingServerNames.find(
+      n => n.toLowerCase() === trimmedName.toLowerCase() && n.toLowerCase() !== currentName?.toLowerCase()
     );
     if (duplicate) {
-      errors.push({ field: 'name', message: `Name "${server.name.trim()}" is already in use` });
+      errors.push({ field: 'name', message: `Name "${trimmedName}" is already in use` });
     }
   }
 

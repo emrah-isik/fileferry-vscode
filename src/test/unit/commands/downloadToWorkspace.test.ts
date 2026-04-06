@@ -15,12 +15,36 @@ const mockConnection = {
   onDidDisconnect: jest.fn(),
 };
 
-const mockBindingManager = {
-  getBinding: jest.fn(),
+const mockConfigManager = {
+  getConfig: jest.fn(),
+  getServerById: jest.fn(),
+  toggleUploadOnSave: jest.fn(),
 };
 
-const mockServerManager = {
-  getServer: jest.fn(),
+const serverFixture = {
+  id: 'srv1',
+  type: 'sftp',
+  credentialId: 'cred-1',
+  credentialName: 'deploy@prod',
+  rootPath: '/var/www',
+  mappings: [{ localPath: '/', remotePath: 'html' }],
+  excludedPaths: [],
+};
+
+const configFixture = {
+  defaultServerId: 'srv1',
+  uploadOnSave: false,
+  servers: {
+    Production: {
+      id: 'srv1',
+      type: 'sftp',
+      credentialId: 'cred-1',
+      credentialName: 'deploy@prod',
+      rootPath: '/var/www',
+      mappings: [{ localPath: '/', remotePath: 'html' }],
+      excludedPaths: [],
+    },
+  },
 };
 
 describe('downloadToWorkspace', () => {
@@ -42,26 +66,13 @@ describe('downloadToWorkspace', () => {
       remotePath: '/var/www/html/src/app.php',
     };
 
-    mockBindingManager.getBinding.mockResolvedValue({
-      defaultServerId: 'srv1',
-      servers: {
-        srv1: {
-          mappings: [{ localPath: '/', remotePath: 'html' }],
-          excludedPaths: [],
-        },
-      },
-    });
-    mockServerManager.getServer.mockResolvedValue({
-      id: 'srv1',
-      name: 'Production',
-      rootPath: '/var/www',
-    });
+    mockConfigManager.getConfig.mockResolvedValue(configFixture);
+    mockConfigManager.getServerById.mockResolvedValue({ name: 'Production', server: serverFixture });
 
     await downloadToWorkspace(
       entry,
       mockConnection as any,
-      mockBindingManager as any,
-      mockServerManager as any
+      mockConfigManager as any,
     );
 
     expect(mockConnection.downloadFile).toHaveBeenCalledWith('/var/www/html/src/app.php');
@@ -80,20 +91,8 @@ describe('downloadToWorkspace', () => {
       remotePath: '/other/path/config.ini',
     };
 
-    mockBindingManager.getBinding.mockResolvedValue({
-      defaultServerId: 'srv1',
-      servers: {
-        srv1: {
-          mappings: [{ localPath: '/', remotePath: 'html' }],
-          excludedPaths: [],
-        },
-      },
-    });
-    mockServerManager.getServer.mockResolvedValue({
-      id: 'srv1',
-      name: 'Production',
-      rootPath: '/var/www',
-    });
+    mockConfigManager.getConfig.mockResolvedValue(configFixture);
+    mockConfigManager.getServerById.mockResolvedValue({ name: 'Production', server: serverFixture });
 
     const saveUri = vscode.Uri.file('/workspace/saved/config.ini');
     (vscode.window as any).showSaveDialog = jest.fn().mockResolvedValue(saveUri);
@@ -101,8 +100,7 @@ describe('downloadToWorkspace', () => {
     await downloadToWorkspace(
       entry,
       mockConnection as any,
-      mockBindingManager as any,
-      mockServerManager as any,
+      mockConfigManager as any,
     );
 
     expect((vscode.window as any).showSaveDialog).toHaveBeenCalled();
@@ -118,28 +116,15 @@ describe('downloadToWorkspace', () => {
       remotePath: '/other/path/config.ini',
     };
 
-    mockBindingManager.getBinding.mockResolvedValue({
-      defaultServerId: 'srv1',
-      servers: {
-        srv1: {
-          mappings: [{ localPath: '/', remotePath: 'html' }],
-          excludedPaths: [],
-        },
-      },
-    });
-    mockServerManager.getServer.mockResolvedValue({
-      id: 'srv1',
-      name: 'Production',
-      rootPath: '/var/www',
-    });
+    mockConfigManager.getConfig.mockResolvedValue(configFixture);
+    mockConfigManager.getServerById.mockResolvedValue({ name: 'Production', server: serverFixture });
 
     (vscode.window as any).showSaveDialog = jest.fn().mockResolvedValue(undefined);
 
     await downloadToWorkspace(
       entry,
       mockConnection as any,
-      mockBindingManager as any,
-      mockServerManager as any,
+      mockConfigManager as any,
     );
 
     expect(mockFs.writeFile).not.toHaveBeenCalled();
@@ -154,32 +139,19 @@ describe('downloadToWorkspace', () => {
       remotePath: '/var/www/html/deep/nested/app.php',
     };
 
-    mockBindingManager.getBinding.mockResolvedValue({
-      defaultServerId: 'srv1',
-      servers: {
-        srv1: {
-          mappings: [{ localPath: '/', remotePath: 'html' }],
-          excludedPaths: [],
-        },
-      },
-    });
-    mockServerManager.getServer.mockResolvedValue({
-      id: 'srv1',
-      name: 'Production',
-      rootPath: '/var/www',
-    });
+    mockConfigManager.getConfig.mockResolvedValue(configFixture);
+    mockConfigManager.getServerById.mockResolvedValue({ name: 'Production', server: serverFixture });
 
     await downloadToWorkspace(
       entry,
       mockConnection as any,
-      mockBindingManager as any,
-      mockServerManager as any,
+      mockConfigManager as any,
     );
 
     expect(mockFs.mkdir).toHaveBeenCalledWith('/workspace/deep/nested', { recursive: true });
   });
 
-  it('uses rootPathOverride when set', async () => {
+  it('uses server rootPath for path resolution', async () => {
     const entry: RemoteEntry = {
       name: 'index.php',
       type: '-',
@@ -188,27 +160,21 @@ describe('downloadToWorkspace', () => {
       remotePath: '/home/deploy/app/index.php',
     };
 
-    mockBindingManager.getBinding.mockResolvedValue({
-      defaultServerId: 'srv1',
-      servers: {
-        srv1: {
-          mappings: [{ localPath: '/', remotePath: '' }],
-          excludedPaths: [],
-          rootPathOverride: '/home/deploy/app',
-        },
-      },
+    const overrideServer = {
+      ...serverFixture,
+      rootPath: '/home/deploy/app',
+      mappings: [{ localPath: '/', remotePath: '' }],
+    };
+    mockConfigManager.getConfig.mockResolvedValue({
+      ...configFixture,
+      servers: { Production: overrideServer },
     });
-    mockServerManager.getServer.mockResolvedValue({
-      id: 'srv1',
-      name: 'Production',
-      rootPath: '/var/www',
-    });
+    mockConfigManager.getServerById.mockResolvedValue({ name: 'Production', server: overrideServer });
 
     await downloadToWorkspace(
       entry,
       mockConnection as any,
-      mockBindingManager as any,
-      mockServerManager as any,
+      mockConfigManager as any,
     );
 
     expect(mockFs.writeFile).toHaveBeenCalledWith('/workspace/index.php', expect.any(Buffer));

@@ -1,15 +1,17 @@
 import { ServerItem, ServerItemData } from '../../../remoteBrowser/ServerItem';
-import { DeploymentServer } from '../../../models/DeploymentServer';
+import { ProjectServer } from '../../../models/ProjectConfig';
 import { SshCredential } from '../../../models/SshCredential';
 
 const vscode = require('vscode');
 
-const fakeServer: DeploymentServer = {
+const fakeServer: ProjectServer = {
   id: 'server-1',
-  name: 'Production',
   type: 'sftp',
   credentialId: 'cred-1',
+  credentialName: 'Deploy Key',
   rootPath: '/var/www',
+  mappings: [{ localPath: '/', remotePath: '/var/www' }],
+  excludedPaths: [],
 };
 
 const fakeCredential: SshCredential = {
@@ -24,6 +26,7 @@ const fakeCredential: SshCredential = {
 describe('ServerItem', () => {
   describe('active (default) server', () => {
     const data: ServerItemData = {
+      serverName: 'Production',
       server: fakeServer,
       credential: fakeCredential,
       isDefault: true,
@@ -47,6 +50,7 @@ describe('ServerItem', () => {
 
   describe('inactive server', () => {
     const data: ServerItemData = {
+      serverName: 'Production',
       server: fakeServer,
       credential: fakeCredential,
       isDefault: false,
@@ -66,6 +70,7 @@ describe('ServerItem', () => {
   describe('description', () => {
     it('shows user@host:rootPath when credential exists', () => {
       const data: ServerItemData = {
+        serverName: 'Production',
         server: fakeServer,
         credential: fakeCredential,
         isDefault: false,
@@ -76,6 +81,7 @@ describe('ServerItem', () => {
 
     it('shows "credential missing" when credential is undefined', () => {
       const data: ServerItemData = {
+        serverName: 'Production',
         server: fakeServer,
         credential: undefined,
         isDefault: false,
@@ -88,6 +94,7 @@ describe('ServerItem', () => {
   describe('command', () => {
     it('has setDefault command with server id', () => {
       const data: ServerItemData = {
+        serverName: 'Production',
         server: fakeServer,
         credential: fakeCredential,
         isDefault: false,
@@ -104,6 +111,7 @@ describe('ServerItem', () => {
   describe('collapsibleState', () => {
     it('is None (leaf item)', () => {
       const data: ServerItemData = {
+        serverName: 'Production',
         server: fakeServer,
         credential: fakeCredential,
         isDefault: false,

@@ -1,6 +1,5 @@
 import * as vscode from 'vscode';
-import { ProjectBindingManager } from '../storage/ProjectBindingManager';
-import { ServerManager } from '../storage/ServerManager';
+import { ProjectConfigManager } from '../storage/ProjectConfigManager';
 
 interface MenuAction {
   label: string;
@@ -14,8 +13,7 @@ export class StatusBarItem implements vscode.Disposable {
 
   constructor(
     context: vscode.ExtensionContext,
-    private readonly bindingManager: ProjectBindingManager,
-    private readonly serverManager: ServerManager
+    private readonly configManager: ProjectConfigManager
   ) {
     this.item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
     this.item.command = 'fileferry.statusBarMenu';
@@ -33,17 +31,17 @@ export class StatusBarItem implements vscode.Disposable {
   }
 
   async refresh(): Promise<void> {
-    const binding = await this.bindingManager.getBinding();
-    if (!binding) {
+    const config = await this.configManager.getConfig();
+    if (!config) {
       this.uploadOnSave = false;
       this.item.text = '$(server) FileFerry';
       this.item.tooltip = 'FileFerry: Click to open Deployment Settings';
       this.item.show();
       return;
     }
-    const server = await this.serverManager.getServer(binding.defaultServerId);
-    const name = server?.name ?? 'FileFerry';
-    this.uploadOnSave = binding.uploadOnSave === true;
+    const match = await this.configManager.getServerById(config.defaultServerId);
+    const name = match?.name ?? 'FileFerry';
+    this.uploadOnSave = config.uploadOnSave === true;
     const icon = this.uploadOnSave ? '$(cloud-upload)' : '$(server)';
     this.item.text = `${icon} ${name}`;
     this.item.tooltip = `FileFerry: ${name} — Upload on save: ${this.uploadOnSave ? 'ON' : 'OFF'}`;

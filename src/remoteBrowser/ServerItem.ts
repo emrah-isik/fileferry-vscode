@@ -1,9 +1,10 @@
 import * as vscode from 'vscode';
-import { DeploymentServer } from '../models/DeploymentServer';
+import { ProjectServer } from '../models/ProjectConfig';
 import { SshCredential } from '../models/SshCredential';
 
 export interface ServerItemData {
-  server: DeploymentServer;
+  serverName: string;
+  server: ProjectServer;
   credential: SshCredential | undefined;
   isDefault: boolean;
 }
@@ -12,7 +13,7 @@ export class ServerItem extends vscode.TreeItem {
   public readonly serverId: string;
 
   constructor(public readonly data: ServerItemData) {
-    super(data.server.name, vscode.TreeItemCollapsibleState.None);
+    super(data.serverName, vscode.TreeItemCollapsibleState.None);
 
     this.serverId = data.server.id;
 

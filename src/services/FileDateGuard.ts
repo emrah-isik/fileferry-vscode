@@ -1,7 +1,6 @@
 import * as fs from 'fs';
 import { SftpService } from '../sftpService';
 import { SshCredentialWithSecret } from '../models/SshCredential';
-import { DeploymentServer } from '../models/DeploymentServer';
 import { ResolvedUploadItem } from '../path/PathResolver';
 
 export class FileDateGuard {
@@ -9,8 +8,7 @@ export class FileDateGuard {
 
   async check(
     items: ResolvedUploadItem[],
-    credential: SshCredentialWithSecret,
-    server: DeploymentServer
+    credential: SshCredentialWithSecret
   ): Promise<ResolvedUploadItem[]> {
     if (items.length === 0) {
       return [];

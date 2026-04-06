@@ -6,8 +6,7 @@ import * as crypto from 'crypto';
 import { RemoteEntry } from '../remoteBrowser/RemoteFileItem';
 import { RemoteBrowserConnection } from '../remoteBrowser/RemoteBrowserConnection';
 import { PathResolver } from '../path/PathResolver';
-import { ProjectBindingManager } from '../storage/ProjectBindingManager';
-import { ServerManager } from '../storage/ServerManager';
+import { ProjectConfigManager } from '../storage/ProjectConfigManager';
 
 const TEMP_DIR = path.join(os.tmpdir(), 'fileferry-diff');
 
@@ -21,8 +20,7 @@ function getTempPath(remotePath: string): string {
 export async function diffRemoteWithLocal(
   entry: RemoteEntry,
   connection: RemoteBrowserConnection,
-  bindingManager: ProjectBindingManager,
-  serverManager: ServerManager
+  configManager: ProjectConfigManager
 ): Promise<void> {
   const workspaceFolders = vscode.workspace.workspaceFolders;
   if (!workspaceFolders || workspaceFolders.length === 0) {
@@ -31,25 +29,24 @@ export async function diffRemoteWithLocal(
   }
   const workspaceRoot = workspaceFolders[0].uri.fsPath;
 
-  const binding = await bindingManager.getBinding();
-  if (!binding?.defaultServerId) {
-    vscode.window.showErrorMessage('FileFerry: No project binding found. Open Deployment Settings to configure.');
+  const config = await configManager.getConfig();
+  if (!config?.defaultServerId) {
+    vscode.window.showErrorMessage('FileFerry: No project configuration found. Open Deployment Settings to configure.');
     return;
   }
 
-  const server = await serverManager.getServer(binding.defaultServerId);
-  if (!server) {
+  const match = await configManager.getServerById(config.defaultServerId);
+  if (!match) {
     vscode.window.showErrorMessage('FileFerry: Default server not found.');
     return;
   }
 
-  const serverBinding = binding.servers?.[server.id];
+  const { server } = match;
   const resolver = new PathResolver();
   const localPath = resolver.resolveLocalPath(entry.remotePath, workspaceRoot, {
     rootPath: server.rootPath,
-    rootPathOverride: serverBinding?.rootPathOverride,
-    mappings: serverBinding?.mappings ?? [],
-    excludedPaths: serverBinding?.excludedPaths ?? [],
+    mappings: server.mappings,
+    excludedPaths: server.excludedPaths,
   });
 
   if (!localPath) {

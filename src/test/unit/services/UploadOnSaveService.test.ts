@@ -11,8 +11,7 @@ import { UploadOrchestratorV2 } from '../../../services/UploadOrchestratorV2';
 import { FileDateGuard } from '../../../services/FileDateGuard';
 import { UploadOnSaveService } from '../../../services/UploadOnSaveService';
 import type { CredentialManager } from '../../../storage/CredentialManager';
-import type { ServerManager } from '../../../storage/ServerManager';
-import type { ProjectBindingManager } from '../../../storage/ProjectBindingManager';
+import type { ProjectConfigManager } from '../../../storage/ProjectConfigManager';
 
 const mockResolve = jest.fn();
 const mockUpload = jest.fn().mockResolvedValue({ succeeded: [], failed: [], deleted: [], deleteFailed: [] });
@@ -29,24 +28,30 @@ const mockCredentialManager = {
   }),
 } as unknown as CredentialManager;
 
-const mockServerManager = {
-  getServer: jest.fn(),
-} as unknown as ServerManager;
-
-const mockBindingManager = {
-  getBinding: jest.fn(),
-} as unknown as ProjectBindingManager;
+const mockConfigManager = {
+  getConfig: jest.fn(),
+  getServerById: jest.fn(),
+  toggleUploadOnSave: jest.fn(),
+} as unknown as ProjectConfigManager;
 
 const serverFixture = {
-  id: 'srv-1', name: 'Production', type: 'sftp',
-  credentialId: 'cred-1', rootPath: '/var/www',
+  id: 'srv-1', type: 'sftp',
+  credentialId: 'cred-1', credentialName: 'deploy@prod',
+  rootPath: '/var/www',
+  mappings: [{ localPath: '/', remotePath: '' }],
+  excludedPaths: [],
 };
 
-const bindingFixture = {
+const configFixture = {
   defaultServerId: 'srv-1',
   uploadOnSave: true,
   servers: {
-    'srv-1': {
+    Production: {
+      id: 'srv-1',
+      type: 'sftp',
+      credentialId: 'cred-1',
+      credentialName: 'deploy@prod',
+      rootPath: '/var/www',
       mappings: [{ localPath: '/', remotePath: '' }],
       excludedPaths: [],
     },
@@ -61,7 +66,7 @@ const mockDisposable = { dispose: jest.fn() };
 const mockExecFile = child_process.execFile as unknown as jest.Mock;
 
 function deps() {
-  return { credentialManager: mockCredentialManager, serverManager: mockServerManager, bindingManager: mockBindingManager };
+  return { credentialManager: mockCredentialManager, configManager: mockConfigManager };
 }
 
 function createService() {
@@ -81,8 +86,8 @@ describe('UploadOnSaveService', () => {
       return mockDisposable;
     });
     (vscode.workspace as any).workspaceFolders = [{ uri: { fsPath: '/workspace' } }];
-    (mockServerManager.getServer as jest.Mock).mockResolvedValue(serverFixture);
-    (mockBindingManager.getBinding as jest.Mock).mockResolvedValue(bindingFixture);
+    (mockConfigManager.getConfig as jest.Mock).mockResolvedValue(configFixture);
+    (mockConfigManager.getServerById as jest.Mock).mockResolvedValue({ name: 'Production', server: serverFixture });
     mockResolve.mockReturnValue({ localPath: '/workspace/src/app.php', remotePath: '/var/www/src/app.php' });
     mockUpload.mockResolvedValue({
       succeeded: [{ localPath: '/workspace/src/app.php', remotePath: '/var/www/src/app.php' }],
@@ -109,7 +114,7 @@ describe('UploadOnSaveService', () => {
   });
 
   it('does nothing when uploadOnSave is false', async () => {
-    (mockBindingManager.getBinding as jest.Mock).mockResolvedValue({ ...bindingFixture, uploadOnSave: false });
+    (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({ ...configFixture, uploadOnSave: false });
     const service = createService();
     service.register();
 
@@ -119,8 +124,8 @@ describe('UploadOnSaveService', () => {
   });
 
   it('does nothing when uploadOnSave is undefined', async () => {
-    const { uploadOnSave, ...bindingWithout } = bindingFixture;
-    (mockBindingManager.getBinding as jest.Mock).mockResolvedValue(bindingWithout);
+    const { uploadOnSave, ...configWithout } = configFixture;
+    (mockConfigManager.getConfig as jest.Mock).mockResolvedValue(configWithout);
     const service = createService();
     service.register();
 
@@ -129,8 +134,8 @@ describe('UploadOnSaveService', () => {
     expect(mockUpload).not.toHaveBeenCalled();
   });
 
-  it('does nothing when no binding exists', async () => {
-    (mockBindingManager.getBinding as jest.Mock).mockResolvedValue(null);
+  it('does nothing when no config exists', async () => {
+    (mockConfigManager.getConfig as jest.Mock).mockResolvedValue(null);
     const service = createService();
     service.register();
 
@@ -140,7 +145,7 @@ describe('UploadOnSaveService', () => {
   });
 
   it('does nothing when default server is not found', async () => {
-    (mockServerManager.getServer as jest.Mock).mockResolvedValue(undefined);
+    (mockConfigManager.getServerById as jest.Mock).mockResolvedValue(undefined);
     const service = createService();
     service.register();
 
@@ -149,10 +154,10 @@ describe('UploadOnSaveService', () => {
     expect(mockUpload).not.toHaveBeenCalled();
   });
 
-  it('does nothing when server binding is missing', async () => {
-    (mockBindingManager.getBinding as jest.Mock).mockResolvedValue({
-      ...bindingFixture,
-      servers: {},
+  it('does nothing when server has no mappings', async () => {
+    (mockConfigManager.getServerById as jest.Mock).mockResolvedValue({
+      name: 'Production',
+      server: { ...serverFixture, mappings: [] },
     });
     const service = createService();
     service.register();
@@ -200,7 +205,7 @@ describe('UploadOnSaveService', () => {
     expect(mockUpload).toHaveBeenCalledWith(
       [{ localPath: '/workspace/src/app.php', remotePath: '/var/www/src/app.php' }],
       expect.objectContaining({ password: 'secret' }),
-      serverFixture,
+      expect.any(Object),
       [],
     );
   });

@@ -1,33 +1,33 @@
 import { ServersProvider } from '../../../remoteBrowser/ServersProvider';
 import { ServerItem } from '../../../remoteBrowser/ServerItem';
+import { ProjectConfig } from '../../../models/ProjectConfig';
 
-const mockServerManager = {
-  getAll: jest.fn(),
-  getServer: jest.fn(),
+const mockConfigManager = {
+  getConfig: jest.fn(),
 };
 
 const mockCredentialManager = {
   getAll: jest.fn(),
 };
 
-const mockBindingManager = {
-  getBinding: jest.fn(),
-};
-
 const serverA = {
   id: 'server-a',
-  name: 'Production',
   type: 'sftp' as const,
   credentialId: 'cred-1',
+  credentialName: 'Prod Key',
   rootPath: '/var/www',
+  mappings: [{ localPath: '/', remotePath: '/var/www' }],
+  excludedPaths: [],
 };
 
 const serverB = {
   id: 'server-b',
-  name: 'Staging',
   type: 'sftp' as const,
   credentialId: 'cred-2',
+  credentialName: 'Staging Key',
   rootPath: '/var/www/staging',
+  mappings: [{ localPath: '/', remotePath: '/var/www/staging' }],
+  excludedPaths: [],
 };
 
 const credA = {
@@ -48,19 +48,25 @@ const credB = {
   authMethod: 'key' as const,
 };
 
+const configFixture: ProjectConfig = {
+  defaultServerId: 'server-a',
+  servers: {
+    Production: serverA,
+    Staging: serverB,
+  },
+};
+
 describe('ServersProvider', () => {
   let provider: ServersProvider;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockServerManager.getAll.mockResolvedValue([serverA, serverB]);
+    mockConfigManager.getConfig.mockResolvedValue(configFixture);
     mockCredentialManager.getAll.mockResolvedValue([credA, credB]);
-    mockBindingManager.getBinding.mockResolvedValue({ defaultServerId: 'server-a', servers: {} });
 
     provider = new ServersProvider(
-      mockServerManager as any,
-      mockCredentialManager as any,
-      mockBindingManager as any
+      mockConfigManager as any,
+      mockCredentialManager as any
     );
   });
 
@@ -80,9 +86,8 @@ describe('ServersProvider', () => {
     });
 
     it('sorts default server first, then alphabetical', async () => {
-      // serverB is alphabetically before serverA ("Staging" < "Production"? no, P < S)
-      // But default should be first regardless
-      mockBindingManager.getBinding.mockResolvedValue({ defaultServerId: 'server-b', servers: {} });
+      const config: ProjectConfig = { ...configFixture, defaultServerId: 'server-b' };
+      mockConfigManager.getConfig.mockResolvedValue(config);
       const children = await provider.getChildren();
       expect(children[0].data.server.id).toBe('server-b');
       expect(children[1].data.server.id).toBe('server-a');
@@ -96,18 +101,22 @@ describe('ServersProvider', () => {
       expect(staging!.data.credential).toBeUndefined();
     });
 
-    it('returns empty array when no servers configured', async () => {
-      mockServerManager.getAll.mockResolvedValue([]);
+    it('returns empty array when no config exists', async () => {
+      mockConfigManager.getConfig.mockResolvedValue(null);
       const children = await provider.getChildren();
       expect(children).toEqual([]);
     });
 
-    it('handles null binding (no project binding file)', async () => {
-      mockBindingManager.getBinding.mockResolvedValue(null);
+    it('returns empty array when no servers configured', async () => {
+      mockConfigManager.getConfig.mockResolvedValue({ defaultServerId: '', servers: {} });
       const children = await provider.getChildren();
-      expect(children).toHaveLength(2);
-      // No server should be marked as default
-      expect(children.every(c => !c.data.isDefault)).toBe(true);
+      expect(children).toEqual([]);
+    });
+
+    it('sets serverName from the config key', async () => {
+      const children = await provider.getChildren();
+      const prod = children.find(c => c.data.server.id === 'server-a');
+      expect(prod!.data.serverName).toBe('Production');
     });
   });
 

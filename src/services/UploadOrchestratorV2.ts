@@ -1,7 +1,6 @@
 import type { CancellationToken } from 'vscode';
 import { SftpService } from '../sftpService';
 import { SshCredentialWithSecret } from '../models/SshCredential';
-import { DeploymentServer } from '../models/DeploymentServer';
 import { ResolvedUploadItem } from '../path/PathResolver';
 
 export interface UploadSummaryV2 {
@@ -18,7 +17,7 @@ export class UploadOrchestratorV2 {
   async upload(
     items: ResolvedUploadItem[],
     credential: SshCredentialWithSecret,
-    _server: DeploymentServer,
+    _server: unknown,
     deleteRemotePaths: string[] = [],
     token?: CancellationToken
   ): Promise<UploadSummaryV2> {

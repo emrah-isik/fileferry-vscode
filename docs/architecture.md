@@ -4,27 +4,30 @@ This document covers the six key design decisions that shape FileFerry's codebas
 
 ---
 
-## 1. Three-Tier Data Model
+## 1. Two-Tier Data Model
 
-FileFerry separates concerns across three distinct storage layers:
+FileFerry separates concerns across two storage layers:
 
-```
+```text
 SSH Credentials  (global — per VS Code install)
-      │  referenced by credentialId
+      │  referenced by credentialId (UUID)
       ▼
-Deployment Servers  (global — per VS Code install)
-      │  referenced by serverId
-      ▼
-Project Binding  (per workspace — .vscode/fileferry.json)
+Project Config  (per workspace — .vscode/fileferry.json)
 ```
 
 **SSH Credentials** (`globalStorageUri/credentials.json`) store connection details: host, port, username, auth method, and optional private key path. Secret fields (password, passphrase) are never in this file — they live in the OS keychain.
 
-**Deployment Servers** (`globalStorageUri/servers.json`) store a display name, protocol, a reference to a credential by ID, and a root path on the remote server. A server has no path mapping knowledge — that belongs to the binding.
+**Project Config** (`.vscode/fileferry.json`) is workspace-local. It contains:
 
-**Project Binding** (`.vscode/fileferry.json`) is workspace-local. It records the `defaultServerId` and a per-server map of local→remote path mappings and exclusion patterns. It contains no secrets and is safe to commit to git.
+- `defaultServerId` — UUID of the active server
+- `uploadOnSave` — optional per-project toggle
+- `servers` — a map of display names to `ProjectServer` objects
 
-This design means credentials and servers are configured once and shared across all projects, while path mappings are specific to each project and kept alongside the code.
+Each `ProjectServer` holds its UUID (`id`), protocol (`type`), credential reference (`credentialId` + human-readable `credentialName`), `rootPath`, path `mappings`, and `excludedPaths`. It contains no secrets and is safe to commit to git.
+
+This design means credentials are configured once and shared across all projects, while server definitions (including path mappings) are specific to each project.
+
+**Migration from v0.4:** On activation, if a legacy `servers.json` (global) and old-format `.vscode/fileferry.json` (binding) exist, they are merged into the new project config format automatically. The old `servers.json` is left in place but no longer read.
 
 ---
 
@@ -105,10 +108,12 @@ Using `ready`→`init` rather than injecting data into the HTML means the webvie
 
 **Message directions**:
 
-| Direction | Commands |
-| --------- | -------- |
-| Webview → Extension | `ready`, `saveServer`, `deleteServer`, `setDefaultServer`, `cloneServer`, `saveMapping`, `deleteMapping`, `testConnection`, `openCredentials`, `saveCredential`, `deleteCredential`, `cloneCredential`, `browsePrivateKey` |
-| Extension → Webview | `init`, `serverSaved`, `serverDeleted`, `bindingUpdated`, `mappingSaved`, `credentialSaved`, `credentialDeleted`, `testResult`, `validationError`, `warning`, `privateKeySelected` |
+| Direction | Panel | Commands |
+| --------- | ----- | -------- |
+| Webview → Extension | Deployment Settings | `ready`, `saveServer`, `deleteServer`, `setDefaultServer`, `cloneServer`, `saveMapping`, `deleteMapping`, `testConnection`, `browseDirectory`, `openCredentials` |
+| Extension → Webview | Deployment Settings | `init` (`{ config, credentials }`), `configUpdated` (`{ config }`), `credentialsUpdated`, `testResult`, `validationError`, `directorySelected`, `browseDone`, `browseError` |
+| Webview → Extension | SSH Credentials | `ready`, `saveCredential`, `deleteCredential`, `cloneCredential`, `testConnection`, `browsePrivateKey` |
+| Extension → Webview | SSH Credentials | `init`, `credentialSaved`, `credentialDeleted`, `testResult`, `validationError`, `warning`, `privateKeySelected` |
 
 **Validation flow**: All validation runs in the extension process (pure `src/utils/validation.ts` functions with no VSCode dependencies). The webview receives `{ command: 'validationError', errors: { [field]: message } }` and renders inline field errors. This keeps the webview thin and ensures validation logic is unit-testable without a webview environment.
 

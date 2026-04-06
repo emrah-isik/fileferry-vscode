@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs/promises';
 import { randomBytes } from 'crypto';
 import { CredentialManager } from '../../storage/CredentialManager';
-import { ServerManager } from '../../storage/ServerManager';
+import { ProjectConfigManager } from '../../storage/ProjectConfigManager';
 import { SftpService } from '../../sftpService';
 import { generateId } from '../../utils/uuid';
 import { SshCredential, SshCredentialWithSecret } from '../../models/SshCredential';
@@ -10,7 +10,7 @@ import { validateSshCredential } from '../../utils/validation';
 
 interface Deps {
   credentialManager: CredentialManager;
-  serverManager: ServerManager;
+  configManager: ProjectConfigManager;
   onCredentialChange?: () => void;
 }
 
@@ -152,11 +152,13 @@ export class SshCredentialPanel {
   private async handleDeleteCredential(id: string): Promise<void> {
     const credentials = await this.deps.credentialManager.getAll();
     const credential = credentials.find(c => c.id === id);
-    const servers = await this.deps.serverManager.getAll();
-    const references = servers.filter(s => s.credentialId === id);
+    const config = await this.deps.configManager.getConfig();
+    const references = config
+      ? Object.entries(config.servers).filter(([, s]) => s.credentialId === id).map(([name]) => name)
+      : [];
 
     const message = references.length > 0
-      ? `Delete "${credential?.name ?? 'this credential'}"? It is used by: ${references.map(s => s.name).join(', ')}.`
+      ? `Delete "${credential?.name ?? 'this credential'}"? It is used by: ${references.join(', ')}.`
       : `Delete "${credential?.name ?? 'this credential'}"? This cannot be undone.`;
 
     const answer = await vscode.window.showWarningMessage(message, 'Delete', 'Cancel');

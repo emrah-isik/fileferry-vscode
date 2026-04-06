@@ -12,8 +12,7 @@ import { UploadOrchestratorV2 } from '../../../services/UploadOrchestratorV2';
 import { FileDateGuard } from '../../../services/FileDateGuard';
 import { uploadSelected } from '../../../commands/uploadSelected';
 import type { CredentialManager } from '../../../storage/CredentialManager';
-import type { ServerManager } from '../../../storage/ServerManager';
-import type { ProjectBindingManager } from '../../../storage/ProjectBindingManager';
+import type { ProjectConfigManager } from '../../../storage/ProjectConfigManager';
 
 const mockResolve = jest.fn();
 const mockResolveAll = jest.fn();
@@ -32,37 +31,37 @@ const mockCredentialManager = {
   }),
 } as unknown as CredentialManager;
 
-const mockServerManager = {
-  getServer: jest.fn(),
-} as unknown as ServerManager;
-
-const mockBindingManager = {
-  getBinding: jest.fn(),
-} as unknown as ProjectBindingManager;
+const mockConfigManager = {
+  getConfig: jest.fn(),
+  getServerById: jest.fn(),
+} as unknown as ProjectConfigManager;
 
 const mockContext = {
   globalState: { get: jest.fn().mockReturnValue(false), update: jest.fn() },
 } as unknown as vscode.ExtensionContext;
 
 const serverFixture = {
-  id: 'srv-1', name: 'Production', type: 'sftp',
-  credentialId: 'cred-1', rootPath: '/var/www',
+  id: 'srv-1',
+  type: 'sftp',
+  credentialId: 'cred-1',
+  credentialName: 'deploy@prod',
+  rootPath: '/var/www',
+  mappings: [{ localPath: '/', remotePath: '' }],
+  excludedPaths: [],
 };
 
-const bindingFixture = {
+const configFixture = {
   defaultServerId: 'srv-1',
+  uploadOnSave: false,
   servers: {
-    'srv-1': {
-      mappings: [{ localPath: '/', remotePath: '' }],
-      excludedPaths: [],
-    },
+    Production: serverFixture,
   },
 };
 
 const resource = { resourceUri: vscode.Uri.file('/workspace/src/app.php') } as any;
 
-function deps() {
-  return { credentialManager: mockCredentialManager, serverManager: mockServerManager, bindingManager: mockBindingManager, context: mockContext };
+function dependencies() {
+  return { credentialManager: mockCredentialManager, configManager: mockConfigManager, context: mockContext };
 }
 
 describe('uploadSelected command', () => {
@@ -72,8 +71,8 @@ describe('uploadSelected command', () => {
     mockResolve.mockReturnValue({ toUpload: ['/workspace/src/app.php'], toDelete: [] });
     mockResolveAll.mockReturnValue([{ localPath: '/workspace/src/app.php', remotePath: '/var/www/src/app.php' }]);
     mockUpload.mockResolvedValue({ succeeded: [{ localPath: '/workspace/src/app.php', remotePath: '/var/www/src/app.php' }], failed: [], deleted: [], deleteFailed: [] });
-    (mockServerManager.getServer as jest.Mock).mockResolvedValue(serverFixture);
-    (mockBindingManager.getBinding as jest.Mock).mockResolvedValue(bindingFixture);
+    (mockConfigManager.getConfig as jest.Mock).mockResolvedValue(configFixture);
+    (mockConfigManager.getServerById as jest.Mock).mockResolvedValue({ name: 'Production', server: serverFixture });
     (vscode.workspace as any).workspaceFolders = [{ uri: vscode.Uri.file('/workspace') }];
     (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(undefined);
     (vscode.window.showErrorMessage as jest.Mock).mockResolvedValue(undefined);
@@ -85,23 +84,23 @@ describe('uploadSelected command', () => {
 
   it('shows warning when no files are resolved (toUpload and toDelete both empty)', async () => {
     mockResolve.mockReturnValue({ toUpload: [], toDelete: [] });
-    await uploadSelected(resource, undefined, deps());
+    await uploadSelected(resource, undefined, dependencies());
     expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
       expect.stringContaining('No files selected')
     );
   });
 
-  it('shows error when project binding is missing', async () => {
-    (mockBindingManager.getBinding as jest.Mock).mockResolvedValue(null);
-    await uploadSelected(resource, undefined, deps());
+  it('shows error when project config is missing', async () => {
+    (mockConfigManager.getConfig as jest.Mock).mockResolvedValue(null);
+    await uploadSelected(resource, undefined, dependencies());
     expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
-      expect.stringContaining('No project binding')
+      expect.stringContaining('No project configuration')
     );
   });
 
   it('shows error when default server is not found', async () => {
-    (mockServerManager.getServer as jest.Mock).mockResolvedValue(undefined);
-    await uploadSelected(resource, undefined, deps());
+    (mockConfigManager.getServerById as jest.Mock).mockResolvedValue(undefined);
+    await uploadSelected(resource, undefined, dependencies());
     expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
       expect.stringContaining('Default server not found')
     );
@@ -109,23 +108,23 @@ describe('uploadSelected command', () => {
 
   it('cancels upload when user dismisses confirmation', async () => {
     (vscode.window.showInformationMessage as jest.Mock).mockResolvedValue('Cancel');
-    await uploadSelected(resource, undefined, deps());
+    await uploadSelected(resource, undefined, dependencies());
     expect(mockUpload).not.toHaveBeenCalled();
   });
 
   it('calls UploadOrchestratorV2 with resolved upload items', async () => {
-    await uploadSelected(resource, undefined, deps());
+    await uploadSelected(resource, undefined, dependencies());
     expect(mockUpload).toHaveBeenCalledWith(
       [{ localPath: '/workspace/src/app.php', remotePath: '/var/www/src/app.php' }],
       expect.objectContaining({ password: 'secret' }),
-      serverFixture,
+      expect.any(Object),
       [],
       expect.objectContaining({ isCancellationRequested: false })
     );
   });
 
   it('shows success notification after upload', async () => {
-    await uploadSelected(resource, undefined, deps());
+    await uploadSelected(resource, undefined, dependencies());
     expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
       expect.stringContaining('1 file')
     );
@@ -138,7 +137,7 @@ describe('uploadSelected command', () => {
       deleted: [],
       deleteFailed: [],
     });
-    await uploadSelected(resource, undefined, deps());
+    await uploadSelected(resource, undefined, dependencies());
     expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
       expect.stringContaining('1 file'),
       expect.any(String)
@@ -155,32 +154,31 @@ describe('uploadSelected command', () => {
         .mockReturnValueOnce([]) // upload items
         .mockReturnValueOnce([{ localPath: '/workspace/src/deleted.php', remotePath: '/var/www/src/deleted.php' }]); // delete items
       mockUpload.mockResolvedValue({ succeeded: [], failed: [], deleted: ['/var/www/src/deleted.php'], deleteFailed: [] });
-      // confirmWithDeletions uses showInformationMessage — return 'Proceed'
       (vscode.window.showInformationMessage as jest.Mock).mockResolvedValue('Proceed');
     });
 
     it('passes remote delete paths to orchestrator', async () => {
-      await uploadSelected(resource, undefined, deps());
+      await uploadSelected(resource, undefined, dependencies());
       expect(mockUpload).toHaveBeenCalledWith(
         [],
         expect.objectContaining({ password: 'secret' }),
-        serverFixture,
+        expect.any(Object),
         ['/var/www/src/deleted.php'],
         expect.objectContaining({ isCancellationRequested: false })
       );
     });
 
     it('always shows confirmation dialog when deletions present, even if suppressed', async () => {
-      (mockContext.globalState.get as jest.Mock).mockReturnValue(true); // upload suppressed
+      (mockContext.globalState.get as jest.Mock).mockReturnValue(true);
       (vscode.window.showInformationMessage as jest.Mock).mockResolvedValue('Proceed');
-      await uploadSelected(resource, undefined, deps());
+      await uploadSelected(resource, undefined, dependencies());
       expect(vscode.window.showInformationMessage).toHaveBeenCalled();
       expect(mockUpload).toHaveBeenCalled();
     });
 
     it('cancels when user declines deletion confirmation', async () => {
       (vscode.window.showInformationMessage as jest.Mock).mockResolvedValue('Cancel');
-      await uploadSelected(resource, undefined, deps());
+      await uploadSelected(resource, undefined, dependencies());
       expect(mockUpload).not.toHaveBeenCalled();
     });
 
@@ -189,7 +187,7 @@ describe('uploadSelected command', () => {
         succeeded: [], failed: [], deleted: [],
         deleteFailed: [{ remotePath: '/var/www/src/deleted.php', error: 'Permission denied' }],
       });
-      await uploadSelected(resource, undefined, deps());
+      await uploadSelected(resource, undefined, dependencies());
       expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
         expect.stringContaining('1 file'),
         expect.any(String)
@@ -200,7 +198,7 @@ describe('uploadSelected command', () => {
       mockUpload.mockResolvedValue({
         succeeded: [], failed: [], deleted: ['/var/www/src/deleted.php'], deleteFailed: [],
       });
-      await uploadSelected(resource, undefined, deps());
+      await uploadSelected(resource, undefined, dependencies());
       expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
         expect.stringContaining('deleted')
       );
@@ -211,9 +209,7 @@ describe('uploadSelected command', () => {
     it('prompts user when resolveAll throws an exclusion error', async () => {
       mockResolveAll.mockImplementation(() => { throw new Error('File is excluded: /workspace/debug.log'); });
       (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(undefined);
-
-      await uploadSelected(resource, undefined, deps());
-
+      await uploadSelected(resource, undefined, dependencies());
       expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
         expect.stringContaining('excluded'),
         'Upload Anyway'
@@ -221,16 +217,12 @@ describe('uploadSelected command', () => {
     });
 
     it('retries with ignoreExclusions when user clicks "Upload Anyway"', async () => {
-      // First call throws exclusion error, second call (with ignoreExclusions) succeeds
       mockResolveAll
         .mockImplementationOnce(() => { throw new Error('File is excluded: /workspace/debug.log'); })
         .mockReturnValueOnce([{ localPath: '/workspace/debug.log', remotePath: '/var/www/debug.log' }])
-        .mockReturnValueOnce([]); // delete resolveAll if called
+        .mockReturnValueOnce([]);
       (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue('Upload Anyway');
-
-      await uploadSelected(resource, undefined, deps());
-
-      // Second resolveAll call should have ignoreExclusions: true in serverConfig
+      await uploadSelected(resource, undefined, dependencies());
       const secondCallConfig = mockResolveAll.mock.calls[1]?.[2];
       expect(secondCallConfig).toHaveProperty('ignoreExclusions', true);
       expect(mockUpload).toHaveBeenCalled();
@@ -241,9 +233,7 @@ describe('uploadSelected command', () => {
       mockResolveAll.mockImplementation(() => { throw new Error('File is excluded: /workspace/debug.log'); });
       (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(undefined);
       (vscode.window.showInformationMessage as jest.Mock).mockResolvedValue(undefined);
-
-      await uploadSelected(resource, undefined, deps());
-
+      await uploadSelected(resource, undefined, dependencies());
       expect(mockUpload).not.toHaveBeenCalled();
     });
   });
@@ -254,9 +244,7 @@ describe('uploadSelected command', () => {
         document: { uri: vscode.Uri.file('/workspace/src/app.php') },
       };
       mockResolve.mockReturnValue({ toUpload: ['/workspace/src/app.php'], toDelete: [] });
-
-      await uploadSelected(undefined, undefined, deps());
-
+      await uploadSelected(undefined, undefined, dependencies());
       expect(mockResolve).toHaveBeenCalledWith(
         expect.objectContaining({ resourceUri: expect.objectContaining({ fsPath: '/workspace/src/app.php' }) }),
         undefined
@@ -266,9 +254,7 @@ describe('uploadSelected command', () => {
     it('shows warning when no resource args and no active editor', async () => {
       (vscode.window as any).activeTextEditor = undefined;
       mockResolve.mockReturnValue({ toUpload: [], toDelete: [] });
-
-      await uploadSelected(undefined, undefined, deps());
-
+      await uploadSelected(undefined, undefined, dependencies());
       expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
         expect.stringContaining('No files selected')
       );
@@ -278,7 +264,7 @@ describe('uploadSelected command', () => {
   describe('file date guard', () => {
     it('proceeds with upload when no remote files are newer', async () => {
       mockDateGuardCheck.mockResolvedValue([]);
-      await uploadSelected(resource, undefined, deps());
+      await uploadSelected(resource, undefined, dependencies());
       expect(mockUpload).toHaveBeenCalled();
     });
 
@@ -287,9 +273,7 @@ describe('uploadSelected command', () => {
         { localPath: '/workspace/src/app.php', remotePath: '/var/www/src/app.php' },
       ]);
       (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(undefined);
-
-      await uploadSelected(resource, undefined, deps());
-
+      await uploadSelected(resource, undefined, dependencies());
       expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
         expect.stringContaining('newer on the remote'),
         'Overwrite'
@@ -302,25 +286,22 @@ describe('uploadSelected command', () => {
         { localPath: '/workspace/src/app.php', remotePath: '/var/www/src/app.php' },
       ]);
       (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue('Overwrite');
-
-      await uploadSelected(resource, undefined, deps());
-
+      await uploadSelected(resource, undefined, dependencies());
       expect(mockUpload).toHaveBeenCalled();
     });
 
-    it('passes credential and server to date guard check', async () => {
-      await uploadSelected(resource, undefined, deps());
+    it('passes credential to date guard check (no server arg)', async () => {
+      await uploadSelected(resource, undefined, dependencies());
       expect(mockDateGuardCheck).toHaveBeenCalledWith(
         expect.any(Array),
-        expect.objectContaining({ password: 'secret' }),
-        serverFixture
+        expect.objectContaining({ password: 'secret' })
       );
     });
   });
 
   describe('cancellation support', () => {
     it('passes cancellable: true to withProgress', async () => {
-      await uploadSelected(resource, undefined, deps());
+      await uploadSelected(resource, undefined, dependencies());
       expect(vscode.window.withProgress).toHaveBeenCalledWith(
         expect.objectContaining({ cancellable: true }),
         expect.any(Function)
@@ -332,8 +313,7 @@ describe('uploadSelected command', () => {
       (vscode.window.withProgress as any) = jest.fn().mockImplementation(
         (_opts: any, task: (p: any, token: any) => Promise<any>) => task({ report: jest.fn() }, fakeToken)
       );
-
-      await uploadSelected(resource, undefined, deps());
+      await uploadSelected(resource, undefined, dependencies());
       expect(mockUpload).toHaveBeenCalledWith(
         expect.any(Array),
         expect.any(Object),
@@ -350,13 +330,10 @@ describe('uploadSelected command', () => {
       );
       mockUpload.mockResolvedValue({
         succeeded: [{ localPath: '/workspace/src/app.php', remotePath: '/var/www/src/app.php' }],
-        failed: [],
-        deleted: [],
-        deleteFailed: [],
+        failed: [], deleted: [], deleteFailed: [],
         cancelled: [{ localPath: '/workspace/src/b.php', remotePath: '/var/www/src/b.php' }],
       });
-
-      await uploadSelected(resource, undefined, deps());
+      await uploadSelected(resource, undefined, dependencies());
       expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
         expect.stringContaining('cancelled')
       );

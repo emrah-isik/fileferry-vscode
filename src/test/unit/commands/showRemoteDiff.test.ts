@@ -8,8 +8,7 @@ import { PathResolver } from '../../../path/PathResolver';
 import { DiffService } from '../../../diffService';
 import { showRemoteDiff } from '../../../commands/showRemoteDiff';
 import type { CredentialManager } from '../../../storage/CredentialManager';
-import type { ServerManager } from '../../../storage/ServerManager';
-import type { ProjectBindingManager } from '../../../storage/ProjectBindingManager';
+import type { ProjectConfigManager } from '../../../storage/ProjectConfigManager';
 
 const mockResolve = jest.fn();
 const mockDownloadRemoteFile = jest.fn();
@@ -24,24 +23,30 @@ const mockCredentialManager = {
   }),
 } as unknown as CredentialManager;
 
-const mockServerManager = {
-  getServer: jest.fn(),
-} as unknown as ServerManager;
-
-const mockBindingManager = {
-  getBinding: jest.fn(),
-} as unknown as ProjectBindingManager;
+const mockConfigManager = {
+  getConfig: jest.fn(),
+  getServerById: jest.fn(),
+  toggleUploadOnSave: jest.fn(),
+} as unknown as ProjectConfigManager;
 
 const serverFixture = {
-  id: 'srv-1', name: 'Production', type: 'sftp',
-  host: 'example.com', port: 22, username: 'deploy',
-  authMethod: 'password', credentialId: 'cred-1', rootPath: '/var/www',
+  id: 'srv-1', type: 'sftp',
+  credentialId: 'cred-1', credentialName: 'deploy@prod',
+  rootPath: '/var/www',
+  mappings: [{ localPath: '/', remotePath: '' }],
+  excludedPaths: [],
 };
 
-const bindingFixture = {
+const configFixture = {
   defaultServerId: 'srv-1',
+  uploadOnSave: false,
   servers: {
-    'srv-1': {
+    Production: {
+      id: 'srv-1',
+      type: 'sftp',
+      credentialId: 'cred-1',
+      credentialName: 'deploy@prod',
+      rootPath: '/var/www',
       mappings: [{ localPath: '/', remotePath: '' }],
       excludedPaths: [],
     },
@@ -55,8 +60,7 @@ const resource = {
 function deps() {
   return {
     credentialManager: mockCredentialManager,
-    serverManager: mockServerManager,
-    bindingManager: mockBindingManager,
+    configManager: mockConfigManager,
   };
 }
 
@@ -65,8 +69,8 @@ describe('showRemoteDiff command', () => {
     jest.clearAllMocks();
     mockResolve.mockReturnValue({ localPath: '/workspace/src/index.php', remotePath: '/var/www/src/index.php' });
     mockDownloadRemoteFile.mockResolvedValue('/tmp/fileferry/index.remote.a1b2c3d4.php');
-    (mockServerManager.getServer as jest.Mock).mockResolvedValue(serverFixture);
-    (mockBindingManager.getBinding as jest.Mock).mockResolvedValue(bindingFixture);
+    (mockConfigManager.getConfig as jest.Mock).mockResolvedValue(configFixture);
+    (mockConfigManager.getServerById as jest.Mock).mockResolvedValue({ name: 'Production', server: serverFixture });
     (vscode.workspace as any).workspaceFolders = [{ uri: vscode.Uri.file('/workspace') }];
     (vscode.window.showErrorMessage as jest.Mock).mockResolvedValue(undefined);
     (vscode.window.withProgress as any) = jest.fn().mockImplementation(
@@ -98,26 +102,26 @@ describe('showRemoteDiff command', () => {
     expect(mockDownloadRemoteFile).toHaveBeenCalled();
   });
 
-  it('shows error when project binding is missing', async () => {
-    (mockBindingManager.getBinding as jest.Mock).mockResolvedValue(null);
+  it('shows error when project configuration is missing', async () => {
+    (mockConfigManager.getConfig as jest.Mock).mockResolvedValue(null);
     await showRemoteDiff(resource, deps());
     expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
-      expect.stringContaining('No project binding')
+      expect.stringContaining('No project configuration found')
     );
   });
 
   it('shows error when default server is not found', async () => {
-    (mockServerManager.getServer as jest.Mock).mockResolvedValue(undefined);
+    (mockConfigManager.getServerById as jest.Mock).mockResolvedValue(undefined);
     await showRemoteDiff(resource, deps());
     expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
       expect.stringContaining('Default server not found')
     );
   });
 
-  it('shows error when no server binding exists for the server', async () => {
-    (mockBindingManager.getBinding as jest.Mock).mockResolvedValue({
-      defaultServerId: 'srv-1',
-      servers: {},
+  it('shows error when no mappings exist for the server', async () => {
+    (mockConfigManager.getServerById as jest.Mock).mockResolvedValue({
+      name: 'Production',
+      server: { ...serverFixture, mappings: [] },
     });
     await showRemoteDiff(resource, deps());
     expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(

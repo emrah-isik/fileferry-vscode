@@ -6,20 +6,18 @@ import { UploadOrchestratorV2 } from '../services/UploadOrchestratorV2';
 import { FileDateGuard } from '../services/FileDateGuard';
 import { UploadConfirmation } from '../uploadConfirmation';
 import { CredentialManager } from '../storage/CredentialManager';
-import { ServerManager } from '../storage/ServerManager';
-import { ProjectBindingManager } from '../storage/ProjectBindingManager';
+import { ProjectConfigManager } from '../storage/ProjectConfigManager';
 
-interface Deps {
+interface Dependencies {
   credentialManager: CredentialManager;
-  serverManager: ServerManager;
-  bindingManager: ProjectBindingManager;
+  configManager: ProjectConfigManager;
   context: vscode.ExtensionContext;
 }
 
 export async function uploadSelected(
   primaryResource: vscode.SourceControlResourceState | undefined,
   allResources: vscode.SourceControlResourceState[] | undefined,
-  deps: Deps
+  dependencies: Dependencies
 ): Promise<void> {
   // Fall back to active editor when invoked via keybinding with no SCM selection
   if (!primaryResource && !allResources) {
@@ -37,26 +35,27 @@ export async function uploadSelected(
     return;
   }
 
-  const binding = await deps.bindingManager.getBinding();
-  if (!binding) {
+  const config = await dependencies.configManager.getConfig();
+  if (!config) {
     vscode.window.showErrorMessage(
-      'FileFerry: No project binding found. Run "FileFerry: Deployment Settings" to configure.'
+      'FileFerry: No project configuration found. Run "FileFerry: Deployment Settings" to configure.'
     );
     return;
   }
 
-  const server = await deps.serverManager.getServer(binding.defaultServerId);
-  if (!server) {
+  const match = await dependencies.configManager.getServerById(config.defaultServerId);
+  if (!match) {
     vscode.window.showErrorMessage(
       'FileFerry: Default server not found. Open Deployment Settings to fix.'
     );
     return;
   }
 
-  const serverBinding = binding.servers[server.id];
-  if (!serverBinding) {
+  const { name: serverName, server } = match;
+
+  if (server.mappings.length === 0) {
     vscode.window.showErrorMessage(
-      `FileFerry: No mappings configured for server "${server.name}".`
+      `FileFerry: No mappings configured for server "${serverName}".`
     );
     return;
   }
@@ -65,9 +64,8 @@ export async function uploadSelected(
   const pathResolver = new PathResolver();
   const serverConfig = {
     rootPath: server.rootPath,
-    rootPathOverride: serverBinding.rootPathOverride,
-    mappings: serverBinding.mappings,
-    excludedPaths: serverBinding.excludedPaths,
+    mappings: server.mappings,
+    excludedPaths: server.excludedPaths,
   };
 
   let uploadItems: ResolvedUploadItem[];
@@ -101,10 +99,10 @@ export async function uploadSelected(
   }
 
   // Confirmation dialog
-  const confirmation = new UploadConfirmation(deps.context.globalState);
+  const confirmation = new UploadConfirmation(dependencies.context.globalState);
   let confirmed: boolean;
   if (deleteRemotePaths.length > 0) {
-    confirmed = await confirmation.confirmWithDeletions(server.name, uploadItems.length, deleteRemotePaths.length);
+    confirmed = await confirmation.confirmWithDeletions(serverName, uploadItems.length, deleteRemotePaths.length);
   } else {
     confirmed = await confirmation.confirm(server.id, uploadItems.length);
   }
@@ -112,11 +110,11 @@ export async function uploadSelected(
     return;
   }
 
-  const credential = await deps.credentialManager.getWithSecret(server.credentialId);
+  const credential = await dependencies.credentialManager.getWithSecret(server.credentialId);
 
   // File date guard: warn if remote files are newer than local
   const guard = new FileDateGuard();
-  const newerOnRemote = await guard.check(uploadItems, credential, server);
+  const newerOnRemote = await guard.check(uploadItems, credential);
   if (newerOnRemote.length > 0) {
     const fileNames = newerOnRemote.map(f => path.basename(f.localPath)).join(', ');
     const choice = await vscode.window.showWarningMessage(
@@ -133,7 +131,7 @@ export async function uploadSelected(
   await vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Notification,
-      title: `FileFerry: Deploying to "${server.name}"`,
+      title: `FileFerry: Deploying to "${serverName}"`,
       cancellable: true,
     },
     async (_progress, token) => {

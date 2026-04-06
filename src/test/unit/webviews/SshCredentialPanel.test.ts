@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { SshCredentialPanel } from '../../../ui/webviews/SshCredentialPanel';
 import type { CredentialManager } from '../../../storage/CredentialManager';
-import type { ServerManager } from '../../../storage/ServerManager';
+import type { ProjectConfigManager } from '../../../storage/ProjectConfigManager';
 
 jest.mock('../../../sftpService');
 jest.mock('fs/promises', () => ({ stat: jest.fn() }));
@@ -63,12 +63,12 @@ const mockCredentialManager = {
   delete: jest.fn().mockResolvedValue(undefined),
 } as unknown as CredentialManager;
 
-const mockServerManager = {
-  getAll: jest.fn().mockResolvedValue([]),
-} as unknown as ServerManager;
+const mockConfigManager = {
+  getConfig: jest.fn().mockResolvedValue({ defaultServerId: '', servers: {} }),
+} as unknown as ProjectConfigManager;
 
 function deps() {
-  return { credentialManager: mockCredentialManager, serverManager: mockServerManager };
+  return { credentialManager: mockCredentialManager, configManager: mockConfigManager };
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -79,7 +79,7 @@ describe('SshCredentialPanel message handling', () => {
     (vscode.window.createWebviewPanel as jest.Mock).mockReturnValue(mockPanel);
     (mockCredentialManager.getAll as jest.Mock).mockResolvedValue([credentialFixture]);
     (mockCredentialManager.getWithSecret as jest.Mock).mockResolvedValue({ ...credentialFixture, password: 'stored-password' });
-    (mockServerManager.getAll as jest.Mock).mockResolvedValue([]);
+    (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({ defaultServerId: '', servers: {} });
     mockStat.mockResolvedValue({ mode: 0o100600 }); // 600 by default
     (DeploymentSettingsPanel_reset as any)();
     (SshCredentialPanel as any).currentPanel = undefined;
@@ -154,9 +154,12 @@ describe('SshCredentialPanel message handling', () => {
   });
 
   it('deleteCredential that is referenced by a server shows warning before deleting', async () => {
-    (mockServerManager.getAll as jest.Mock).mockResolvedValue([
-      { id: 'srv-1', name: 'Production', credentialId: 'cred-1' },
-    ]);
+    (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({
+      defaultServerId: 'srv-1',
+      servers: {
+        Production: { id: 'srv-1', type: 'sftp', credentialId: 'cred-1', credentialName: 'Prod SSH', rootPath: '/var/www', mappings: [], excludedPaths: [] },
+      },
+    });
     (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(undefined); // user cancels
     SshCredentialPanel.createOrShow(mockContext, deps());
     await messageHandler({ command: 'deleteCredential', id: 'cred-1' });

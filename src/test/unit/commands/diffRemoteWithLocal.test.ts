@@ -15,12 +15,36 @@ const mockConnection = {
   onDidDisconnect: jest.fn(),
 };
 
-const mockBindingManager = {
-  getBinding: jest.fn(),
+const mockConfigManager = {
+  getConfig: jest.fn(),
+  getServerById: jest.fn(),
+  toggleUploadOnSave: jest.fn(),
 };
 
-const mockServerManager = {
-  getServer: jest.fn(),
+const serverFixture = {
+  id: 'srv1',
+  type: 'sftp',
+  credentialId: 'cred-1',
+  credentialName: 'deploy@prod',
+  rootPath: '/var/www',
+  mappings: [{ localPath: '/', remotePath: 'html' }],
+  excludedPaths: [],
+};
+
+const configFixture = {
+  defaultServerId: 'srv1',
+  uploadOnSave: false,
+  servers: {
+    Production: {
+      id: 'srv1',
+      type: 'sftp',
+      credentialId: 'cred-1',
+      credentialName: 'deploy@prod',
+      rootPath: '/var/www',
+      mappings: [{ localPath: '/', remotePath: 'html' }],
+      excludedPaths: [],
+    },
+  },
 };
 
 describe('diffRemoteWithLocal', () => {
@@ -33,20 +57,8 @@ describe('diffRemoteWithLocal', () => {
     mockFs.mkdir.mockResolvedValue(undefined);
     mockFs.writeFile.mockResolvedValue(undefined);
 
-    mockBindingManager.getBinding.mockResolvedValue({
-      defaultServerId: 'srv1',
-      servers: {
-        srv1: {
-          mappings: [{ localPath: '/', remotePath: 'html' }],
-          excludedPaths: [],
-        },
-      },
-    });
-    mockServerManager.getServer.mockResolvedValue({
-      id: 'srv1',
-      name: 'Production',
-      rootPath: '/var/www',
-    });
+    mockConfigManager.getConfig.mockResolvedValue(configFixture);
+    mockConfigManager.getServerById.mockResolvedValue({ name: 'Production', server: serverFixture });
   });
 
   it('opens diff editor between remote temp file and local file', async () => {
@@ -61,8 +73,7 @@ describe('diffRemoteWithLocal', () => {
     await diffRemoteWithLocal(
       entry,
       mockConnection as any,
-      mockBindingManager as any,
-      mockServerManager as any,
+      mockConfigManager as any,
     );
 
     expect(mockConnection.downloadFile).toHaveBeenCalledWith('/var/www/html/src/app.php');
@@ -89,8 +100,7 @@ describe('diffRemoteWithLocal', () => {
     await diffRemoteWithLocal(
       entry,
       mockConnection as any,
-      mockBindingManager as any,
-      mockServerManager as any,
+      mockConfigManager as any,
     );
 
     expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
@@ -99,8 +109,8 @@ describe('diffRemoteWithLocal', () => {
     expect(vscode.commands.executeCommand).not.toHaveBeenCalled();
   });
 
-  it('shows error when no binding exists', async () => {
-    mockBindingManager.getBinding.mockResolvedValue(null);
+  it('shows error when no configuration exists', async () => {
+    mockConfigManager.getConfig.mockResolvedValue(null);
 
     const entry: RemoteEntry = {
       name: 'app.php',
@@ -113,26 +123,21 @@ describe('diffRemoteWithLocal', () => {
     await diffRemoteWithLocal(
       entry,
       mockConnection as any,
-      mockBindingManager as any,
-      mockServerManager as any,
+      mockConfigManager as any,
     );
 
     expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
-      expect.stringContaining('No project binding'),
+      expect.stringContaining('No project configuration found'),
     );
   });
 
-  it('uses rootPathOverride when set', async () => {
-    mockBindingManager.getBinding.mockResolvedValue({
-      defaultServerId: 'srv1',
-      servers: {
-        srv1: {
-          mappings: [{ localPath: '/', remotePath: '' }],
-          excludedPaths: [],
-          rootPathOverride: '/home/deploy/app',
-        },
-      },
-    });
+  it('uses rootPath override when server has different rootPath', async () => {
+    const overrideServer = {
+      ...serverFixture,
+      rootPath: '/home/deploy/app',
+      mappings: [{ localPath: '/', remotePath: '' }],
+    };
+    mockConfigManager.getServerById.mockResolvedValue({ name: 'Production', server: overrideServer });
 
     const entry: RemoteEntry = {
       name: 'index.php',
@@ -145,8 +150,7 @@ describe('diffRemoteWithLocal', () => {
     await diffRemoteWithLocal(
       entry,
       mockConnection as any,
-      mockBindingManager as any,
-      mockServerManager as any,
+      mockConfigManager as any,
     );
 
     expect(vscode.commands.executeCommand).toHaveBeenCalledWith(

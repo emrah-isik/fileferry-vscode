@@ -4,14 +4,12 @@ import * as fs from 'fs/promises';
 import { RemoteEntry } from '../remoteBrowser/RemoteFileItem';
 import { RemoteBrowserConnection } from '../remoteBrowser/RemoteBrowserConnection';
 import { PathResolver } from '../path/PathResolver';
-import { ProjectBindingManager } from '../storage/ProjectBindingManager';
-import { ServerManager } from '../storage/ServerManager';
+import { ProjectConfigManager } from '../storage/ProjectConfigManager';
 
 export async function downloadToWorkspace(
   entry: RemoteEntry,
   connection: RemoteBrowserConnection,
-  bindingManager: ProjectBindingManager,
-  serverManager: ServerManager
+  configManager: ProjectConfigManager
 ): Promise<void> {
   const workspaceFolders = vscode.workspace.workspaceFolders;
   if (!workspaceFolders || workspaceFolders.length === 0) {
@@ -22,17 +20,16 @@ export async function downloadToWorkspace(
 
   // Resolve local path via reverse path mapping
   let localPath: string | null = null;
-  const binding = await bindingManager.getBinding();
-  if (binding?.defaultServerId) {
-    const server = await serverManager.getServer(binding.defaultServerId);
-    if (server) {
-      const serverBinding = binding.servers?.[server.id];
+  const config = await configManager.getConfig();
+  if (config?.defaultServerId) {
+    const match = await configManager.getServerById(config.defaultServerId);
+    if (match) {
+      const { server } = match;
       const resolver = new PathResolver();
       localPath = resolver.resolveLocalPath(entry.remotePath, workspaceRoot, {
         rootPath: server.rootPath,
-        rootPathOverride: serverBinding?.rootPathOverride,
-        mappings: serverBinding?.mappings ?? [],
-        excludedPaths: serverBinding?.excludedPaths ?? [],
+        mappings: server.mappings,
+        excludedPaths: server.excludedPaths,
       });
     }
   }

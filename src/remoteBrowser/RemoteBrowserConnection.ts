@@ -1,8 +1,7 @@
 import * as vscode from 'vscode';
 import { SftpService } from '../sftpService';
 import { CredentialManager } from '../storage/CredentialManager';
-import { ServerManager } from '../storage/ServerManager';
-import { ProjectBindingManager } from '../storage/ProjectBindingManager';
+import { ProjectConfigManager } from '../storage/ProjectConfigManager';
 import { ServerConfig } from '../types';
 import { HostKeyManager } from '../ssh/HostKeyManager';
 import { showHostKeyPrompt } from '../ssh/hostKeyPrompt';
@@ -22,8 +21,7 @@ export class RemoteBrowserConnection {
 
   constructor(
     private readonly credentialManager: CredentialManager,
-    private readonly serverManager: ServerManager,
-    private readonly bindingManager: ProjectBindingManager,
+    private readonly configManager: ProjectConfigManager,
     private readonly output: vscode.OutputChannel,
     globalStoragePath: string
   ) {
@@ -32,15 +30,17 @@ export class RemoteBrowserConnection {
   }
 
   async ensureConnected(): Promise<void> {
-    const binding = await this.bindingManager.getBinding();
-    if (!binding || !binding.defaultServerId) {
+    const config = await this.configManager.getConfig();
+    if (!config || !config.defaultServerId) {
       throw new Error('No server configured. Open Deployment Settings to add one.');
     }
 
-    const server = await this.serverManager.getServer(binding.defaultServerId);
-    if (!server) {
+    const match = await this.configManager.getServerById(config.defaultServerId);
+    if (!match) {
       throw new Error('Server not found. It may have been deleted.');
     }
+
+    const { name: serverName, server } = match;
 
     // Already connected to the same server — no-op
     if (server.id === this.currentServerId && this.sftp.connected) {
@@ -56,7 +56,7 @@ export class RemoteBrowserConnection {
 
     const serverConfig: ServerConfig = {
       id: server.id,
-      name: server.name,
+      name: serverName,
       type: server.type,
       host: credential.host,
       port: credential.port,
@@ -94,9 +94,8 @@ export class RemoteBrowserConnection {
     });
 
     this.currentServerId = server.id;
-    const serverBinding = binding.servers?.[server.id];
-    this.currentRootPath = serverBinding?.rootPathOverride || server.rootPath;
-    this.output.appendLine(`[remote-browser] Connected to ${server.name} (${credential.host})`);
+    this.currentRootPath = server.rootPath;
+    this.output.appendLine(`[remote-browser] Connected to ${serverName} (${credential.host})`);
   }
 
   async listDirectory(remotePath: string): Promise<SftpClient.FileInfo[]> {

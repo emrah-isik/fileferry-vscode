@@ -15,7 +15,6 @@ jest.mock('../../../sftpService', () => ({
 }));
 
 const credential = { id: 'c1', host: 'h', port: 22, username: 'u', authMethod: 'password', password: 'p' } as any;
-const server = { id: 's1', name: 'Prod', rootPath: '/var/www' } as any;
 
 function item(name: string): ResolvedUploadItem {
   return { localPath: `/workspace/${name}`, remotePath: `/var/www/${name}` };
@@ -39,7 +38,7 @@ describe('FileDateGuard', () => {
       .mockReturnValueOnce({ mtimeMs: new Date('2026-04-05T12:00:00Z').getTime() })
       .mockReturnValueOnce({ mtimeMs: new Date('2026-04-05T12:00:00Z').getTime() });
 
-    const result = await guard.check(items, credential, server);
+    const result = await guard.check(items, credential);
 
     expect(result).toEqual([]);
   });
@@ -54,7 +53,7 @@ describe('FileDateGuard', () => {
       .mockReturnValueOnce({ mtimeMs: new Date('2026-04-01T12:00:00Z').getTime() })
       .mockReturnValueOnce({ mtimeMs: new Date('2026-04-05T12:00:00Z').getTime() });
 
-    const result = await guard.check(items, credential, server);
+    const result = await guard.check(items, credential);
 
     expect(result).toEqual([item('a.php')]);
   });
@@ -63,7 +62,7 @@ describe('FileDateGuard', () => {
     const items = [item('new.php')];
     mockSftp.stat.mockResolvedValueOnce(null);
 
-    const result = await guard.check(items, credential, server);
+    const result = await guard.check(items, credential);
 
     expect(result).toEqual([]);
     expect(fs.statSync).not.toHaveBeenCalled();
@@ -73,7 +72,7 @@ describe('FileDateGuard', () => {
     const items = [item('a.php')];
     mockSftp.stat.mockResolvedValueOnce(null);
 
-    await guard.check(items, credential, server);
+    await guard.check(items, credential);
 
     expect(mockSftp.connect).toHaveBeenCalledWith(
       credential,
@@ -86,12 +85,12 @@ describe('FileDateGuard', () => {
     const items = [item('a.php')];
     mockSftp.stat.mockRejectedValueOnce(new Error('Network error'));
 
-    await expect(guard.check(items, credential, server)).rejects.toThrow('Network error');
+    await expect(guard.check(items, credential)).rejects.toThrow('Network error');
     expect(mockSftp.disconnect).toHaveBeenCalled();
   });
 
   it('returns empty array for empty items list', async () => {
-    const result = await guard.check([], credential, server);
+    const result = await guard.check([], credential);
 
     expect(result).toEqual([]);
     expect(mockSftp.stat).not.toHaveBeenCalled();
@@ -103,7 +102,7 @@ describe('FileDateGuard', () => {
     mockSftp.stat.mockResolvedValueOnce({ mtime: sameTime });
     (fs.statSync as jest.Mock).mockReturnValueOnce({ mtimeMs: sameTime.getTime() });
 
-    const result = await guard.check(items, credential, server);
+    const result = await guard.check(items, credential);
 
     expect(result).toEqual([]);
   });
