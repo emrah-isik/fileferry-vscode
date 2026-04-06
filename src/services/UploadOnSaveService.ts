@@ -3,6 +3,7 @@ import * as path from 'path';
 import { execFile } from 'child_process';
 import { PathResolver } from '../path/PathResolver';
 import { UploadOrchestratorV2 } from './UploadOrchestratorV2';
+import { FileDateGuard } from './FileDateGuard';
 import { CredentialManager } from '../storage/CredentialManager';
 import { ServerManager } from '../storage/ServerManager';
 import { ProjectBindingManager } from '../storage/ProjectBindingManager';
@@ -77,6 +78,22 @@ export class UploadOnSaveService {
     const orchestrator = new UploadOrchestratorV2();
     try {
       const credential = await this.deps.credentialManager.getWithSecret(server.credentialId);
+
+      // File date guard: skip upload if remote is newer (non-blocking on errors)
+      try {
+        const guard = new FileDateGuard();
+        const newerOnRemote = await guard.check([resolved], credential, server);
+        if (newerOnRemote.length > 0) {
+          const fileName = path.basename(doc.uri.fsPath);
+          vscode.window.showWarningMessage(
+            `FileFerry: ${fileName} is newer on the remote — upload skipped. Use Alt+U to overwrite.`
+          );
+          return;
+        }
+      } catch {
+        // Date guard failure should not block the upload
+      }
+
       const result = await orchestrator.upload([resolved], credential, server, []);
 
       if (result.failed.length > 0) {

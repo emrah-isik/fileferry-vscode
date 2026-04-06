@@ -3,10 +3,12 @@ import * as child_process from 'child_process';
 
 jest.mock('../../../path/PathResolver');
 jest.mock('../../../services/UploadOrchestratorV2');
+jest.mock('../../../services/FileDateGuard');
 jest.mock('child_process');
 
 import { PathResolver } from '../../../path/PathResolver';
 import { UploadOrchestratorV2 } from '../../../services/UploadOrchestratorV2';
+import { FileDateGuard } from '../../../services/FileDateGuard';
 import { UploadOnSaveService } from '../../../services/UploadOnSaveService';
 import type { CredentialManager } from '../../../storage/CredentialManager';
 import type { ServerManager } from '../../../storage/ServerManager';
@@ -14,9 +16,11 @@ import type { ProjectBindingManager } from '../../../storage/ProjectBindingManag
 
 const mockResolve = jest.fn();
 const mockUpload = jest.fn().mockResolvedValue({ succeeded: [], failed: [], deleted: [], deleteFailed: [] });
+const mockDateGuardCheck = jest.fn().mockResolvedValue([]);
 
 (PathResolver as jest.Mock).mockImplementation(() => ({ resolve: mockResolve }));
 (UploadOrchestratorV2 as jest.Mock).mockImplementation(() => ({ upload: mockUpload }));
+(FileDateGuard as jest.Mock).mockImplementation(() => ({ check: mockDateGuardCheck }));
 
 const mockCredentialManager = {
   getWithSecret: jest.fn().mockResolvedValue({
@@ -71,6 +75,7 @@ function makeSavedDoc(fsPath: string) {
 describe('UploadOnSaveService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockDateGuardCheck.mockResolvedValue([]);
     (vscode.workspace.onDidSaveTextDocument as jest.Mock).mockImplementation((cb: any) => {
       saveCallback = cb;
       return mockDisposable;
@@ -247,6 +252,43 @@ describe('UploadOnSaveService', () => {
     await saveCallback(makeSavedDoc('/workspace/.vscode/fileferry.json'));
 
     expect(mockUpload).not.toHaveBeenCalled();
+  });
+
+  describe('file date guard', () => {
+    it('skips upload and warns when remote file is newer', async () => {
+      mockDateGuardCheck.mockResolvedValue([
+        { localPath: '/workspace/src/app.php', remotePath: '/var/www/src/app.php' },
+      ]);
+      const service = createService();
+      service.register();
+
+      await saveCallback(makeSavedDoc('/workspace/src/app.php'));
+
+      expect(mockUpload).not.toHaveBeenCalled();
+      expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+        expect.stringContaining('newer on the remote')
+      );
+    });
+
+    it('uploads normally when date guard returns no conflicts', async () => {
+      mockDateGuardCheck.mockResolvedValue([]);
+      const service = createService();
+      service.register();
+
+      await saveCallback(makeSavedDoc('/workspace/src/app.php'));
+
+      expect(mockUpload).toHaveBeenCalled();
+    });
+
+    it('still uploads when date guard check throws (non-blocking)', async () => {
+      mockDateGuardCheck.mockRejectedValue(new Error('Connection timeout'));
+      const service = createService();
+      service.register();
+
+      await saveCallback(makeSavedDoc('/workspace/src/app.php'));
+
+      expect(mockUpload).toHaveBeenCalled();
+    });
   });
 
   describe('gitignore respect', () => {

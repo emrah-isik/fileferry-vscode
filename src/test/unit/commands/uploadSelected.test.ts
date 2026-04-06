@@ -4,10 +4,12 @@ import * as vscode from 'vscode';
 jest.mock('../../../scm/ScmResourceResolver');
 jest.mock('../../../path/PathResolver');
 jest.mock('../../../services/UploadOrchestratorV2');
+jest.mock('../../../services/FileDateGuard');
 
 import { ScmResourceResolver } from '../../../scm/ScmResourceResolver';
 import { PathResolver } from '../../../path/PathResolver';
 import { UploadOrchestratorV2 } from '../../../services/UploadOrchestratorV2';
+import { FileDateGuard } from '../../../services/FileDateGuard';
 import { uploadSelected } from '../../../commands/uploadSelected';
 import type { CredentialManager } from '../../../storage/CredentialManager';
 import type { ServerManager } from '../../../storage/ServerManager';
@@ -16,10 +18,12 @@ import type { ProjectBindingManager } from '../../../storage/ProjectBindingManag
 const mockResolve = jest.fn();
 const mockResolveAll = jest.fn();
 const mockUpload = jest.fn().mockResolvedValue({ succeeded: [], failed: [], deleted: [], deleteFailed: [] });
+const mockDateGuardCheck = jest.fn().mockResolvedValue([]);
 
 (ScmResourceResolver as jest.Mock).mockImplementation(() => ({ resolve: mockResolve }));
 (PathResolver as jest.Mock).mockImplementation(() => ({ resolveAll: mockResolveAll }));
 (UploadOrchestratorV2 as jest.Mock).mockImplementation(() => ({ upload: mockUpload }));
+(FileDateGuard as jest.Mock).mockImplementation(() => ({ check: mockDateGuardCheck }));
 
 const mockCredentialManager = {
   getWithSecret: jest.fn().mockResolvedValue({
@@ -64,6 +68,7 @@ function deps() {
 describe('uploadSelected command', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockDateGuardCheck.mockResolvedValue([]);
     mockResolve.mockReturnValue({ toUpload: ['/workspace/src/app.php'], toDelete: [] });
     mockResolveAll.mockReturnValue([{ localPath: '/workspace/src/app.php', remotePath: '/var/www/src/app.php' }]);
     mockUpload.mockResolvedValue({ succeeded: [{ localPath: '/workspace/src/app.php', remotePath: '/var/www/src/app.php' }], failed: [], deleted: [], deleteFailed: [] });
@@ -266,6 +271,49 @@ describe('uploadSelected command', () => {
 
       expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
         expect.stringContaining('No files selected')
+      );
+    });
+  });
+
+  describe('file date guard', () => {
+    it('proceeds with upload when no remote files are newer', async () => {
+      mockDateGuardCheck.mockResolvedValue([]);
+      await uploadSelected(resource, undefined, deps());
+      expect(mockUpload).toHaveBeenCalled();
+    });
+
+    it('warns user when remote files are newer and aborts on dismiss', async () => {
+      mockDateGuardCheck.mockResolvedValue([
+        { localPath: '/workspace/src/app.php', remotePath: '/var/www/src/app.php' },
+      ]);
+      (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(undefined);
+
+      await uploadSelected(resource, undefined, deps());
+
+      expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+        expect.stringContaining('newer on the remote'),
+        'Overwrite'
+      );
+      expect(mockUpload).not.toHaveBeenCalled();
+    });
+
+    it('uploads when user clicks Overwrite on date guard warning', async () => {
+      mockDateGuardCheck.mockResolvedValue([
+        { localPath: '/workspace/src/app.php', remotePath: '/var/www/src/app.php' },
+      ]);
+      (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue('Overwrite');
+
+      await uploadSelected(resource, undefined, deps());
+
+      expect(mockUpload).toHaveBeenCalled();
+    });
+
+    it('passes credential and server to date guard check', async () => {
+      await uploadSelected(resource, undefined, deps());
+      expect(mockDateGuardCheck).toHaveBeenCalledWith(
+        expect.any(Array),
+        expect.objectContaining({ password: 'secret' }),
+        serverFixture
       );
     });
   });

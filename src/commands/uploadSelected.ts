@@ -1,7 +1,9 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { ScmResourceResolver } from '../scm/ScmResourceResolver';
 import { PathResolver, ResolvedUploadItem } from '../path/PathResolver';
 import { UploadOrchestratorV2 } from '../services/UploadOrchestratorV2';
+import { FileDateGuard } from '../services/FileDateGuard';
 import { UploadConfirmation } from '../uploadConfirmation';
 import { CredentialManager } from '../storage/CredentialManager';
 import { ServerManager } from '../storage/ServerManager';
@@ -111,6 +113,21 @@ export async function uploadSelected(
   }
 
   const credential = await deps.credentialManager.getWithSecret(server.credentialId);
+
+  // File date guard: warn if remote files are newer than local
+  const guard = new FileDateGuard();
+  const newerOnRemote = await guard.check(uploadItems, credential, server);
+  if (newerOnRemote.length > 0) {
+    const fileNames = newerOnRemote.map(f => path.basename(f.localPath)).join(', ');
+    const choice = await vscode.window.showWarningMessage(
+      `FileFerry: ${newerOnRemote.length} file(s) newer on the remote: ${fileNames}`,
+      'Overwrite'
+    );
+    if (choice !== 'Overwrite') {
+      return;
+    }
+  }
+
   const orchestrator = new UploadOrchestratorV2();
 
   await vscode.window.withProgress(

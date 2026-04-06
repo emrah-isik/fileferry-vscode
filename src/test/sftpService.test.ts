@@ -23,6 +23,7 @@ const mockMethods = {
   rmdir: jest.fn(),
   rename: jest.fn(),
   posixRename: jest.fn(),
+  stat: jest.fn(),
   client: mockSsh2Client,
 };
 
@@ -539,6 +540,37 @@ describe('SftpService', () => {
     it('throws if not connected', async () => {
       const fresh = new SftpService();
       await expect(fresh.deleteDirectory('/var/www/old-folder')).rejects.toThrow('Not connected');
+    });
+  });
+
+  describe('stat', () => {
+    beforeEach(async () => {
+      mockMethods.connect.mockResolvedValue(undefined);
+      await service.connect(serverConfig, { password: 'secret' });
+    });
+
+    it('returns mtime for an existing remote file', async () => {
+      const mtime = new Date('2026-04-01T12:00:00Z');
+      mockMethods.stat.mockResolvedValue({ mtime: mtime.getTime() / 1000 });
+      const result = await service.stat('/var/www/index.php');
+      expect(mockMethods.stat).toHaveBeenCalledWith('/var/www/index.php');
+      expect(result).toEqual({ mtime });
+    });
+
+    it('returns null when remote file does not exist', async () => {
+      mockMethods.stat.mockRejectedValue({ code: 2, message: 'No such file' });
+      const result = await service.stat('/var/www/missing.php');
+      expect(result).toBeNull();
+    });
+
+    it('propagates unexpected errors', async () => {
+      mockMethods.stat.mockRejectedValue(new Error('Permission denied'));
+      await expect(service.stat('/var/www/secret.php')).rejects.toThrow('Permission denied');
+    });
+
+    it('throws if not connected', async () => {
+      const fresh = new SftpService();
+      await expect(fresh.stat('/var/www/index.php')).rejects.toThrow('Not connected');
     });
   });
 

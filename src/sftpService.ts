@@ -217,6 +217,22 @@ export class SftpService {
     return await (this.client as any).realPath(remotePath);
   }
 
+  async stat(remotePath: string): Promise<{ mtime: Date } | null> {
+    if (!this.client) {
+      throw new Error('Not connected. Call connect() before stat.');
+    }
+    try {
+      const stats = await (this.client as any).stat(remotePath);
+      return { mtime: new Date(stats.mtime * 1000) };
+    } catch (err: unknown) {
+      const error = err as { code?: number };
+      if (error.code === 2) {
+        return null; // File does not exist
+      }
+      throw err;
+    }
+  }
+
   async deleteFile(remotePath: string): Promise<void> {
     if (!this.client) {
       throw new Error('Not connected. Call connect() before deleting files.');
