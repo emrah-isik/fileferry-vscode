@@ -86,6 +86,98 @@ describe('PathResolver', () => {
     ).toThrow(/excluded/i);
   });
 
+  describe('glob-based excludedPaths', () => {
+    const serverConfig = (excludedPaths: string[]) => ({
+      rootPath: '/var/www',
+      mappings: [{ localPath: '/', remotePath: '' }] as Array<{ localPath: string; remotePath: string }>,
+      excludedPaths,
+    });
+
+    it('excludes files matching a wildcard extension pattern like *.log', () => {
+      expect(() =>
+        resolver.resolve('/workspace/debug.log', workspaceRoot, serverConfig(['*.log']))
+      ).toThrow(/excluded/i);
+    });
+
+    it('excludes nested files matching a wildcard extension pattern', () => {
+      expect(() =>
+        resolver.resolve('/workspace/logs/app.log', workspaceRoot, serverConfig(['*.log']))
+      ).toThrow(/excluded/i);
+    });
+
+    it('does not exclude files that do not match the glob', () => {
+      const result = resolver.resolve('/workspace/src/app.php', workspaceRoot, serverConfig(['*.log']));
+      expect(result.remotePath).toBe('/var/www/src/app.php');
+    });
+
+    it('excludes dotfiles like .env', () => {
+      expect(() =>
+        resolver.resolve('/workspace/.env', workspaceRoot, serverConfig(['.env']))
+      ).toThrow(/excluded/i);
+    });
+
+    it('excludes files matching a double-star glob like **/*.tmp', () => {
+      expect(() =>
+        resolver.resolve('/workspace/src/deep/nested/cache.tmp', workspaceRoot, serverConfig(['**/*.tmp']))
+      ).toThrow(/excluded/i);
+    });
+
+    it('excludes a directory pattern with trailing slash glob', () => {
+      expect(() =>
+        resolver.resolve('/workspace/dist/bundle.js', workspaceRoot, serverConfig(['dist']))
+      ).toThrow(/excluded/i);
+    });
+
+    it('supports multiple exclude patterns', () => {
+      const config = serverConfig(['*.log', 'node_modules', '.env']);
+      expect(() => resolver.resolve('/workspace/error.log', workspaceRoot, config)).toThrow(/excluded/i);
+      expect(() => resolver.resolve('/workspace/node_modules/x/y.js', workspaceRoot, config)).toThrow(/excluded/i);
+      expect(() => resolver.resolve('/workspace/.env', workspaceRoot, config)).toThrow(/excluded/i);
+      // Non-excluded file should pass through
+      const result = resolver.resolve('/workspace/src/index.php', workspaceRoot, config);
+      expect(result.remotePath).toBe('/var/www/src/index.php');
+    });
+
+    it('excludes files matching a negated segment like vendor/**', () => {
+      expect(() =>
+        resolver.resolve('/workspace/vendor/autoload.php', workspaceRoot, serverConfig(['vendor/**']))
+      ).toThrow(/excluded/i);
+    });
+  });
+
+  describe('ignoreExclusions', () => {
+    it('skips exclusion checks when ignoreExclusions is true', () => {
+      const result = resolver.resolve('/workspace/debug.log', workspaceRoot, {
+        rootPath: '/var/www',
+        mappings: [{ localPath: '/', remotePath: '' }],
+        excludedPaths: ['*.log'],
+        ignoreExclusions: true,
+      });
+      expect(result.remotePath).toBe('/var/www/debug.log');
+    });
+
+    it('still excludes when ignoreExclusions is false', () => {
+      expect(() =>
+        resolver.resolve('/workspace/debug.log', workspaceRoot, {
+          rootPath: '/var/www',
+          mappings: [{ localPath: '/', remotePath: '' }],
+          excludedPaths: ['*.log'],
+          ignoreExclusions: false,
+        })
+      ).toThrow(/excluded/i);
+    });
+
+    it('still excludes when ignoreExclusions is not set', () => {
+      expect(() =>
+        resolver.resolve('/workspace/debug.log', workspaceRoot, {
+          rootPath: '/var/www',
+          mappings: [{ localPath: '/', remotePath: '' }],
+          excludedPaths: ['*.log'],
+        })
+      ).toThrow(/excluded/i);
+    });
+  });
+
   describe('rootPathOverride', () => {
     it('uses rootPathOverride instead of rootPath when set', () => {
       const result = resolver.resolve('/workspace/index.php', workspaceRoot, {

@@ -1,4 +1,5 @@
 import * as path from 'path';
+import { minimatch } from 'minimatch';
 
 export interface ResolvedUploadItem {
   localPath: string;
@@ -10,17 +11,28 @@ interface ServerConfig {
   rootPathOverride?: string;
   mappings: Array<{ localPath: string; remotePath: string }>;
   excludedPaths: string[];
+  ignoreExclusions?: boolean;
 }
 
 export class PathResolver {
   resolve(localPath: string, workspaceRoot: string, serverConfig: ServerConfig): ResolvedUploadItem {
     const relativeLocal = path.relative(workspaceRoot, localPath);
 
-    // Check excluded paths first
-    for (const excluded of serverConfig.excludedPaths) {
-      const excl = excluded.replace(/\/$/, '');
-      if (relativeLocal === excl || relativeLocal.startsWith(excl + '/')) {
+    // Check excluded paths using glob matching (gitignore-style patterns)
+    if (serverConfig.ignoreExclusions) {
+      // Skip exclusion checks — used for force-upload of excluded files
+    } else for (const pattern of serverConfig.excludedPaths) {
+      // Match the full relative path against the pattern
+      if (minimatch(relativeLocal, pattern, { matchBase: true, dot: true })) {
         throw new Error(`File is excluded: ${localPath}`);
+      }
+      // For bare names without glob chars (e.g. "node_modules", "dist"),
+      // also treat them as directory prefixes (gitignore-style)
+      if (!pattern.includes('*') && !pattern.includes('?') && !pattern.includes('{')) {
+        const excl = pattern.replace(/\/$/, '');
+        if (relativeLocal === excl || relativeLocal.startsWith(excl + '/')) {
+          throw new Error(`File is excluded: ${localPath}`);
+        }
       }
     }
 

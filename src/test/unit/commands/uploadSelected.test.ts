@@ -202,6 +202,47 @@ describe('uploadSelected command', () => {
     });
   });
 
+  describe('force upload excluded files', () => {
+    it('prompts user when resolveAll throws an exclusion error', async () => {
+      mockResolveAll.mockImplementation(() => { throw new Error('File is excluded: /workspace/debug.log'); });
+      (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(undefined);
+
+      await uploadSelected(resource, undefined, deps());
+
+      expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+        expect.stringContaining('excluded'),
+        'Upload Anyway'
+      );
+    });
+
+    it('retries with ignoreExclusions when user clicks "Upload Anyway"', async () => {
+      // First call throws exclusion error, second call (with ignoreExclusions) succeeds
+      mockResolveAll
+        .mockImplementationOnce(() => { throw new Error('File is excluded: /workspace/debug.log'); })
+        .mockReturnValueOnce([{ localPath: '/workspace/debug.log', remotePath: '/var/www/debug.log' }])
+        .mockReturnValueOnce([]); // delete resolveAll if called
+      (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue('Upload Anyway');
+
+      await uploadSelected(resource, undefined, deps());
+
+      // Second resolveAll call should have ignoreExclusions: true in serverConfig
+      const secondCallConfig = mockResolveAll.mock.calls[1]?.[2];
+      expect(secondCallConfig).toHaveProperty('ignoreExclusions', true);
+      expect(mockUpload).toHaveBeenCalled();
+    });
+
+    it('does not upload when user dismisses the exclusion prompt', async () => {
+      mockResolveAll.mockReset();
+      mockResolveAll.mockImplementation(() => { throw new Error('File is excluded: /workspace/debug.log'); });
+      (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(undefined);
+      (vscode.window.showInformationMessage as jest.Mock).mockResolvedValue(undefined);
+
+      await uploadSelected(resource, undefined, deps());
+
+      expect(mockUpload).not.toHaveBeenCalled();
+    });
+  });
+
   describe('active editor fallback', () => {
     it('uses activeTextEditor URI when called with no resource args', async () => {
       (vscode.window as any).activeTextEditor = {

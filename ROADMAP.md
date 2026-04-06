@@ -15,8 +15,8 @@
 - **Folder upload** — recursive directory expansion from Explorer context menu
 - **Upload on save** — auto-deploy with gitignore respect, status bar menu toggle
 - **Editor keybindings** — `Alt+U` to upload, `Alt+P` to compare with remote from the editor
-- Ignore patterns (gitignore-style globs in config or `.fileferryignore`)
-- Atomic upload (temp file + rename, prevents partial state)
+- **Atomic upload** — temp file + rename prevents partial file states
+- **Ignore patterns** — gitignore-style glob exclusions with force-upload prompt
 - File date guard (warn if remote file is newer than local)
 
 ---

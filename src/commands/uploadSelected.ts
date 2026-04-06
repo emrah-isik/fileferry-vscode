@@ -76,8 +76,26 @@ export async function uploadSelected(
       ? pathResolver.resolveAll(toDelete, workspaceRoot, serverConfig).map(item => item.remotePath)
       : [];
   } catch (err: unknown) {
-    vscode.window.showErrorMessage(`FileFerry: ${(err as Error).message}`);
-    return;
+    const message = (err as Error).message;
+    // Offer force-upload when a file is excluded by ignore patterns
+    if (message.startsWith('File is excluded:')) {
+      const choice = await vscode.window.showWarningMessage(
+        `FileFerry: ${message}`,
+        'Upload Anyway'
+      );
+      if (choice === 'Upload Anyway') {
+        const forceConfig = { ...serverConfig, ignoreExclusions: true };
+        uploadItems = pathResolver.resolveAll(toUpload, workspaceRoot, forceConfig);
+        deleteRemotePaths = toDelete.length > 0
+          ? pathResolver.resolveAll(toDelete, workspaceRoot, forceConfig).map(item => item.remotePath)
+          : [];
+      } else {
+        return;
+      }
+    } else {
+      vscode.window.showErrorMessage(`FileFerry: ${message}`);
+      return;
+    }
   }
 
   // Confirmation dialog
