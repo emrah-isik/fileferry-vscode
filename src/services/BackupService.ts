@@ -78,11 +78,14 @@ export class BackupService {
     const now = Date.now();
     const retentionMs = retentionDays * 24 * 60 * 60 * 1000;
 
-    // Step 1: Delete folders older than retentionDays
+    // Step 1: Delete folders older than retentionDays (skip non-backup folders)
     const remaining: string[] = [];
     for (const dir of dirs) {
       const timestamp = this.parseTimestamp(dir);
-      if (timestamp && now - timestamp.getTime() > retentionMs) {
+      if (!timestamp) {
+        continue; // Not a backup folder — leave it alone
+      }
+      if (now - timestamp.getTime() > retentionMs) {
         await fsPromises.rm(path.join(backupRoot, dir), { recursive: true });
       } else {
         remaining.push(dir);
