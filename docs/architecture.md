@@ -106,7 +106,7 @@ Using `ready`→`init` rather than injecting data into the HTML means the webvie
 **Message directions**:
 
 | Direction | Commands |
-|-----------|----------|
+| --------- | -------- |
 | Webview → Extension | `ready`, `saveServer`, `deleteServer`, `setDefaultServer`, `cloneServer`, `saveMapping`, `deleteMapping`, `testConnection`, `openCredentials`, `saveCredential`, `deleteCredential`, `cloneCredential`, `browsePrivateKey` |
 | Extension → Webview | `init`, `serverSaved`, `serverDeleted`, `bindingUpdated`, `mappingSaved`, `credentialSaved`, `credentialDeleted`, `testResult`, `validationError`, `warning`, `privateKeySelected` |
 

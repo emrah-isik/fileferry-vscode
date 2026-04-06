@@ -1,3 +1,5 @@
+# FileFerry
+
 ![FileFerry](resources/readme-banner.png)
 
 Deploy git-changed files to remote servers — directly from VSCode's Explorer panel and Source Control panel.
@@ -52,20 +54,21 @@ Or press `Alt+U` when the Source Control panel is focused.
 
 Two-panel layout — server list on the left, details on the right.
 
-**Connection tab**
+#### Connection tab
+
 | Field | Description |
-|-------|-------------|
+| ----- | ----------- |
 | Name | Display name for this server |
 | Protocol | SFTP (recommended) or FTP |
 | SSH Credential | Pick from your saved credentials |
 | Root Path | Base path on the remote server (e.g. `/var/www`) |
 
-**Mappings tab**
+#### Mappings tab
 
 Optionally override the root path for this project only, then add rows to map local workspace paths to remote paths:
 
 | Local Path | Remote Path | Result |
-|-----------|-------------|--------|
+| ---------- | ----------- | ------ |
 | `/` | `html` | `src/app.php` → `/var/www/html/src/app.php` |
 | `/public` | `public_html` | `public/index.php` → `/var/www/public_html/index.php` |
 
@@ -74,7 +77,7 @@ More specific paths (longer prefix) take priority. If no mappings are configured
 ### SSH Credentials (`Ctrl+Shift+P` → `FileFerry: Manage SSH Credentials`)
 
 | Auth Method | Extra Fields | Secret Storage |
-|-------------|-------------|----------------|
+| ----------- | ------------ | -------------- |
 | Password | — | Password → OS keychain |
 | Private Key | Key file path | Passphrase (if any) → OS keychain |
 | SSH Agent | — | Uses `ssh-agent` / Pageant — no storage |
@@ -108,7 +111,7 @@ It is safe to commit `.vscode/fileferry.json` to git. SSH credentials are global
 ## Keyboard Shortcuts
 
 | Key | Action | When |
-|-----|--------|------|
+| --- | ------ | ---- |
 | `Alt+U` | Upload selected files | Source Control panel focused |
 | `Alt+P` | Compare with Remote | Source Control panel focused |
 
@@ -119,7 +122,7 @@ Configurable via `Preferences → Keyboard Shortcuts` → search `fileferry`.
 ## Commands
 
 | Command | Description |
-|---------|-------------|
+| ------- | ----------- |
 | `FileFerry: Upload` | Upload selected files (SCM panel or Explorer right-click) |
 | `FileFerry: Compare with Remote` | Diff local file against the server version |
 | `FileFerry: Deployment Settings` | Open server and mapping configuration |
@@ -147,22 +150,28 @@ When you delete a file it appears in the Source Control panel as deleted. Select
 
 ## Troubleshooting
 
-**"No project binding found"**
+### "No project binding found"
+
 Open Deployment Settings, configure a server and path mappings for this project.
 
-**"Default server not found"**
+### "Default server not found"
+
 The server saved in `.vscode/fileferry.json` no longer exists. Open Deployment Settings and save the server configuration again.
 
-**"Authentication failed"**
+### "Authentication failed"
+
 Your saved credential may be stale. Open SSH Credentials Manager, edit the credential, and re-enter the password.
 
-**"No such file" on upload**
+### "No such file" on upload
+
 FileFerry creates missing remote directories automatically. If this still fails, check that your username has write permission on the remote path.
 
-**Upload or compare goes to the wrong path**
+### Upload or compare goes to the wrong path
+
 Check the path mappings in Deployment Settings. The most specific (longest) matching local path wins. If no mappings are set, all files map directly to the server root.
 
-**SSH key not working**
+### SSH key not working
+
 Key file permissions must be `600`: `chmod 600 ~/.ssh/id_rsa`. SSH rejects keys with loose permissions. FileFerry will warn you when saving a key credential with wrong permissions.
 
 ---
