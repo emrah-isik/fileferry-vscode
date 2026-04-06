@@ -16,6 +16,7 @@ import { copyRemotePath } from './commands/copyRemotePath';
 import { downloadToWorkspace } from './commands/downloadToWorkspace';
 import { diffRemoteWithLocal } from './commands/diffRemoteWithLocal';
 import { deleteRemoteItem } from './commands/deleteRemoteItem';
+import { UploadOnSaveService } from './services/UploadOnSaveService';
 
 let output: vscode.OutputChannel;
 
@@ -41,6 +42,9 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const statusBar = new StatusBarItem(context, bindingManager, serverManager);
   context.subscriptions.push(statusBar);
+
+  const uploadOnSave = new UploadOnSaveService({ credentialManager, serverManager, bindingManager });
+  context.subscriptions.push(uploadOnSave.register());
 
   const credentialsChangedEmitter = new vscode.EventEmitter<void>();
   context.subscriptions.push(credentialsChangedEmitter);
@@ -109,6 +113,22 @@ export function activate(context: vscode.ExtensionContext): void {
       'fileferry.resetConfirmations',
       withErrorHandling('resetConfirmations', async () => {
         vscode.window.showInformationMessage('FileFerry: Upload confirmations reset.');
+      })
+    ),
+
+    vscode.commands.registerCommand(
+      'fileferry.statusBarMenu',
+      withErrorHandling('statusBarMenu', () => statusBar.showMenu())
+    ),
+
+    vscode.commands.registerCommand(
+      'fileferry.toggleUploadOnSave',
+      withErrorHandling('toggleUploadOnSave', async () => {
+        const newValue = await bindingManager.toggleUploadOnSave();
+        statusBar.refresh();
+        vscode.window.showInformationMessage(
+          `FileFerry: Upload on save ${newValue ? 'enabled' : 'disabled'}.`
+        );
       })
     )
   );

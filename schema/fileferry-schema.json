@@ -1,57 +1,24 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "FileFerry Configuration",
-  "description": "Deployment server configuration for the FileFerry VSCode extension",
+  "description": "Per-project deployment bindings for the FileFerry VSCode extension",
   "type": "object",
   "properties": {
-    "defaultServer": {
+    "defaultServerId": {
       "type": "string",
       "description": "ID of the default server used for Alt+U uploads"
     },
+    "uploadOnSave": {
+      "type": "boolean",
+      "description": "When true, files are automatically uploaded to the default server on save"
+    },
     "servers": {
-      "type": "array",
-      "description": "List of deployment server profiles",
-      "items": {
+      "type": "object",
+      "description": "Per-server bindings keyed by server ID",
+      "additionalProperties": {
         "type": "object",
-        "required": ["id", "name", "type", "host", "port", "username", "authMethod", "mappings"],
+        "required": ["mappings", "excludedPaths"],
         "properties": {
-          "id": {
-            "type": "string",
-            "description": "Unique identifier for this server (auto-generated)"
-          },
-          "name": {
-            "type": "string",
-            "description": "Display name shown in the UI (e.g. 'Production', 'Staging')"
-          },
-          "type": {
-            "type": "string",
-            "enum": ["sftp", "ftp"],
-            "description": "Connection protocol"
-          },
-          "host": {
-            "type": "string",
-            "description": "Server hostname or IP address"
-          },
-          "port": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 65535,
-            "default": 22,
-            "description": "SSH/SFTP port (default: 22)"
-          },
-          "username": {
-            "type": "string",
-            "description": "Login username on the remote server"
-          },
-          "authMethod": {
-            "type": "string",
-            "enum": ["password", "key", "agent"],
-            "description": "Authentication method. Passwords and passphrases are stored in the OS keychain, never in this file."
-          },
-          "privateKeyPath": {
-            "type": "string",
-            "description": "Path to SSH private key file. Use ~ for home directory. Only required when authMethod is 'key'."
-          },
           "mappings": {
             "type": "array",
             "description": "Local-to-remote path mappings. More specific paths take priority.",
@@ -77,20 +44,17 @@
             "description": "Glob patterns for files/folders to never upload (e.g. 'node_modules', '*.log', '.env')",
             "items": {
               "type": "string"
-            },
-            "default": ["node_modules", ".git", "*.log", ".env", ".DS_Store"]
+            }
+          },
+          "rootPathOverride": {
+            "type": "string",
+            "description": "Overrides the server's root path for this project only"
           }
         },
-        "additionalProperties": false,
-        "if": {
-          "properties": { "authMethod": { "const": "key" } }
-        },
-        "then": {
-          "required": ["privateKeyPath"]
-        }
+        "additionalProperties": false
       }
     }
   },
-  "required": ["servers"],
+  "required": ["defaultServerId", "servers"],
   "additionalProperties": false
 }

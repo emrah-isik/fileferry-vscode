@@ -91,6 +91,13 @@ export class ProjectBindingManager {
     await this.saveBinding(binding);
   }
 
+  async toggleUploadOnSave(): Promise<boolean> {
+    const binding = (await this.getBinding()) ?? { defaultServerId: '', servers: {} };
+    binding.uploadOnSave = !binding.uploadOnSave;
+    await this.saveBinding(binding);
+    return binding.uploadOnSave;
+  }
+
   validateBinding(serverBinding: ServerBinding): BindingValidationError[] {
     const errors: BindingValidationError[] = [];
 

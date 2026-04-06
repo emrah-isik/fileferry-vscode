@@ -12,6 +12,7 @@ export interface ServerBinding {
 // ProjectBinding is stored in .vscode/fileferry.json — safe to commit (no secrets)
 export interface ProjectBinding {
   defaultServerId: string;
+  uploadOnSave?: boolean;
   servers: {
     [serverId: string]: ServerBinding;
   };

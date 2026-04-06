@@ -191,3 +191,40 @@ describe('ProjectBindingManager — mapping operations', () => {
     expect(errors).toHaveLength(0);
   });
 });
+
+describe('ProjectBindingManager — toggleUploadOnSave', () => {
+  let manager: ProjectBindingManager;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    manager = new ProjectBindingManager();
+  });
+
+  it('enables uploadOnSave when currently undefined', async () => {
+    mockReadFile.mockResolvedValue(JSON.stringify(bindingFixture));
+    await manager.toggleUploadOnSave();
+    const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string);
+    expect(written.uploadOnSave).toBe(true);
+  });
+
+  it('enables uploadOnSave when currently false', async () => {
+    mockReadFile.mockResolvedValue(JSON.stringify({ ...bindingFixture, uploadOnSave: false }));
+    await manager.toggleUploadOnSave();
+    const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string);
+    expect(written.uploadOnSave).toBe(true);
+  });
+
+  it('disables uploadOnSave when currently true', async () => {
+    mockReadFile.mockResolvedValue(JSON.stringify({ ...bindingFixture, uploadOnSave: true }));
+    await manager.toggleUploadOnSave();
+    const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string);
+    expect(written.uploadOnSave).toBe(false);
+  });
+
+  it('creates a new binding if none exists', async () => {
+    mockReadFile.mockRejectedValue({ code: 'ENOENT' });
+    await manager.toggleUploadOnSave();
+    const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string);
+    expect(written.uploadOnSave).toBe(true);
+  });
+});
