@@ -1,6 +1,29 @@
 # FileFerry Roadmap
 
-## Current — v0.2.1
+## Current — v0.3
+
+- Everything in v0.2.1, plus:
+- Modern OpenSSH algorithm support (rsa-sha2-256 / rsa-sha2-512)
+- PEM key support (`.pem` files — common for AWS EC2)
+- Host key verification warning
+- SSH agent support (system agent + 1Password SSH agent)
+- Keyboard-interactive auth (2FA / challenge-response)
+
+## In Progress — v0.4 — Upload Reliability
+
+- **Cancel all transfers** — cancellable progress notification with token forwarding
+- **Folder upload** — recursive directory expansion from Explorer context menu
+- **Upload on save** — auto-deploy with gitignore respect, status bar menu toggle
+- **Editor keybindings** — `Alt+U` to upload, `Alt+P` to compare with remote from the editor
+- Ignore patterns (gitignore-style globs in config or `.fileferryignore`)
+- Atomic upload (temp file + rename, prevents partial state)
+- File date guard (warn if remote file is newer than local)
+
+---
+
+## Previous Releases
+
+### v0.2.1
 
 - Upload git-changed or Explorer-selected files via SFTP
 - Delete remote files that were locally deleted
@@ -22,23 +45,6 @@
 ---
 
 ## Upcoming
-
-### v0.3 — SSH Compatibility
-
-- Modern OpenSSH algorithm support (rsa-sha2-256 / rsa-sha2-512)
-- PEM key support (`.pem` files — common for AWS EC2)
-- Host key verification warning
-- SSH agent support (system agent + 1Password SSH agent)
-- Keyboard-interactive auth (2FA / challenge-response)
-
-### v0.4 — Upload Reliability
-
-- Upload on save (configurable per-project)
-- Folder upload from Explorer
-- Ignore patterns (gitignore-style globs in config or `.fileferryignore`)
-- Atomic upload (temp file + rename, prevents partial state)
-- File date guard (warn if remote file is newer than local)
-- Cancel all transfers
 
 ### v0.5 — Multi-Target & Remote Operations
 
