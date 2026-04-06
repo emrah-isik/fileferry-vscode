@@ -2,6 +2,20 @@
 
 All notable changes to FileFerry will be documented in this file.
 
+## [0.4.0] - 2026-04-06
+
+### Added
+
+- **Upload on save** — auto-deploy when a file is saved. Toggle per-project via status bar menu or `fileferry.json`. Respects `.gitignore` via `git check-ignore`. Status bar icon switches between `$(cloud-upload)` (ON) and `$(server)` (OFF), flashes on upload
+- **Folder upload** — right-click a folder in Explorer to upload all files within it recursively. Existing auto-mkdir creates remote directories on the fly
+- **Ignore patterns** — gitignore-style glob exclusions in `fileferry.json`. `matchBase` enabled so bare patterns like `*.log` match at any depth. Dotfiles matched by default. "Upload Anyway" prompt when exclusions block a manual upload
+- **Atomic upload** — uploads write to a `.fileferry.tmp` temp file first, then rename to the final path using POSIX rename (atomic overwrite). Falls back to standard rename for servers without the OpenSSH extension. Orphaned temp files cleaned up on failure
+- **File date guard** — warns before overwriting a remote file that has a newer timestamp than the local file. Runs before both manual uploads and upload-on-save. Always on (config toggle planned for v0.5)
+- **Cancel all transfers** — cancel button in the progress notification stops all in-flight uploads. Completed files are kept, remaining files reported as cancelled
+- **Editor keybindings** — `Alt+U` (upload) and `Alt+P` (compare with remote) now work from the editor when no SCM selection is active, using the active editor's file
+
+---
+
 ## [0.3.0] - 2026-04-05
 
 ### Added
