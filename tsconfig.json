@@ -8,7 +8,8 @@
     "esModuleInterop": true,
     "sourceMap": true,
     "lib": ["ES2020"],
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "types": ["node", "jest"]
   },
   "exclude": ["node_modules", ".vscode-test"],
   "include": ["src/**/*.ts"]
