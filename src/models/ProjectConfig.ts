@@ -16,6 +16,7 @@ export interface ProjectServer {
 export interface ProjectConfig {
   defaultServerId: string;   // server UUID (ProjectServer.id)
   uploadOnSave?: boolean;
+  fileDateGuard?: boolean;   // warn before overwriting newer remote files (default: true)
   servers: {
     [serverName: string]: ProjectServer;
   };

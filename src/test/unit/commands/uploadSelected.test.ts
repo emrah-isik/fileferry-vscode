@@ -297,6 +297,21 @@ describe('uploadSelected command', () => {
         expect.objectContaining({ password: 'secret' })
       );
     });
+
+    it('skips date guard entirely when config.fileDateGuard is false', async () => {
+      (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({ ...configFixture, fileDateGuard: false });
+      await uploadSelected(resource, undefined, dependencies());
+      expect(mockDateGuardCheck).not.toHaveBeenCalled();
+      expect(mockUpload).toHaveBeenCalled();
+    });
+
+    it('runs date guard when config.fileDateGuard is undefined (default on)', async () => {
+      const noFlag = { ...configFixture };
+      delete (noFlag as any).fileDateGuard;
+      (mockConfigManager.getConfig as jest.Mock).mockResolvedValue(noFlag);
+      await uploadSelected(resource, undefined, dependencies());
+      expect(mockDateGuardCheck).toHaveBeenCalled();
+    });
   });
 
   describe('cancellation support', () => {

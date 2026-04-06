@@ -113,8 +113,10 @@ export async function uploadSelected(
   const credential = await dependencies.credentialManager.getWithSecret(server.credentialId);
 
   // File date guard: warn if remote files are newer than local
-  const guard = new FileDateGuard();
-  const newerOnRemote = await guard.check(uploadItems, credential);
+  const fileDateGuardEnabled = config.fileDateGuard !== false;
+  const newerOnRemote = fileDateGuardEnabled
+    ? await new FileDateGuard().check(uploadItems, credential)
+    : [];
   if (newerOnRemote.length > 0) {
     const fileNames = newerOnRemote.map(f => path.basename(f.localPath)).join(', ');
     const choice = await vscode.window.showWarningMessage(

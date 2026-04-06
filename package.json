@@ -108,6 +108,10 @@
       {
         "command": "fileferry.servers.testConnection",
         "title": "Test Connection"
+      },
+      {
+        "command": "fileferry.openProjectSettings",
+        "title": "FileFerry: Project Settings"
       }
     ],
     "viewsContainers": {

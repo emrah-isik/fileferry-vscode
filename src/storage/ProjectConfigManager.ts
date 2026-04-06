@@ -96,4 +96,12 @@ export class ProjectConfigManager {
     await this.saveConfig(config);
     return config.uploadOnSave;
   }
+
+  async toggleFileDateGuard(): Promise<boolean> {
+    const config = (await this.getConfig()) ?? this.emptyConfig();
+    // fileDateGuard defaults to true when undefined, so toggling undefined → false
+    config.fileDateGuard = config.fileDateGuard === false;
+    await this.saveConfig(config);
+    return config.fileDateGuard;
+  }
 }

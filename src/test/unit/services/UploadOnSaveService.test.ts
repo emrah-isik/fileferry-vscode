@@ -294,6 +294,29 @@ describe('UploadOnSaveService', () => {
 
       expect(mockUpload).toHaveBeenCalled();
     });
+
+    it('skips date guard entirely when config.fileDateGuard is false', async () => {
+      (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({ ...configFixture, fileDateGuard: false });
+      const service = createService();
+      service.register();
+
+      await saveCallback(makeSavedDoc('/workspace/src/app.php'));
+
+      expect(mockDateGuardCheck).not.toHaveBeenCalled();
+      expect(mockUpload).toHaveBeenCalled();
+    });
+
+    it('runs date guard when config.fileDateGuard is undefined (default on)', async () => {
+      const noFlag = { ...configFixture };
+      delete (noFlag as any).fileDateGuard;
+      (mockConfigManager.getConfig as jest.Mock).mockResolvedValue(noFlag);
+      const service = createService();
+      service.register();
+
+      await saveCallback(makeSavedDoc('/workspace/src/app.php'));
+
+      expect(mockDateGuardCheck).toHaveBeenCalled();
+    });
   });
 
   describe('gitignore respect', () => {

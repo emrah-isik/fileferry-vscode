@@ -230,3 +230,38 @@ describe('ProjectConfigManager — toggleUploadOnSave', () => {
     expect(result).toBe(true);
   });
 });
+
+describe('ProjectConfigManager — toggleFileDateGuard', () => {
+  let manager: ProjectConfigManager;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    manager = new ProjectConfigManager();
+  });
+
+  it('disables fileDateGuard when currently undefined (default is on)', async () => {
+    const noFlag = { ...configFixture };
+    delete (noFlag as Record<string, unknown>).fileDateGuard;
+    mockReadFile.mockResolvedValue(JSON.stringify(noFlag));
+    const result = await manager.toggleFileDateGuard();
+    const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string);
+    expect(written.fileDateGuard).toBe(false);
+    expect(result).toBe(false);
+  });
+
+  it('enables fileDateGuard when currently false', async () => {
+    mockReadFile.mockResolvedValue(JSON.stringify({ ...configFixture, fileDateGuard: false }));
+    const result = await manager.toggleFileDateGuard();
+    const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string);
+    expect(written.fileDateGuard).toBe(true);
+    expect(result).toBe(true);
+  });
+
+  it('creates a new config if none exists', async () => {
+    mockReadFile.mockRejectedValue({ code: 'ENOENT' });
+    const result = await manager.toggleFileDateGuard();
+    const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string);
+    expect(written.fileDateGuard).toBe(false);
+    expect(result).toBe(false);
+  });
+});

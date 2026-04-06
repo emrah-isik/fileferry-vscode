@@ -1,24 +1,49 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "FileFerry Configuration",
-  "description": "Per-project deployment bindings for the FileFerry VSCode extension",
+  "description": "Per-project deployment configuration for the FileFerry VSCode extension",
   "type": "object",
   "properties": {
     "defaultServerId": {
       "type": "string",
-      "description": "ID of the default server used for Alt+U uploads"
+      "description": "UUID of the default server used for Alt+U uploads"
     },
     "uploadOnSave": {
       "type": "boolean",
       "description": "When true, files are automatically uploaded to the default server on save"
     },
+    "fileDateGuard": {
+      "type": "boolean",
+      "description": "When false, disables the remote mtime check before uploading. Defaults to true when omitted."
+    },
     "servers": {
       "type": "object",
-      "description": "Per-server bindings keyed by server ID",
+      "description": "Server definitions keyed by display name",
       "additionalProperties": {
         "type": "object",
-        "required": ["mappings", "excludedPaths"],
+        "required": ["id", "type", "credentialId", "credentialName", "rootPath", "mappings", "excludedPaths"],
         "properties": {
+          "id": {
+            "type": "string",
+            "description": "Internal UUID — stable across renames"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["sftp", "ftp"],
+            "description": "Connection protocol"
+          },
+          "credentialId": {
+            "type": "string",
+            "description": "UUID reference to an SSH credential"
+          },
+          "credentialName": {
+            "type": "string",
+            "description": "Human-readable credential name for documentation and teammate onboarding"
+          },
+          "rootPath": {
+            "type": "string",
+            "description": "Absolute path on the remote server"
+          },
           "mappings": {
             "type": "array",
             "description": "Local-to-remote path mappings. More specific paths take priority.",
@@ -32,12 +57,11 @@
                 },
                 "remotePath": {
                   "type": "string",
-                  "description": "Absolute path on the remote server."
+                  "description": "Remote path relative to rootPath."
                 }
               },
               "additionalProperties": false
-            },
-            "minItems": 1
+            }
           },
           "excludedPaths": {
             "type": "array",
@@ -45,10 +69,6 @@
             "items": {
               "type": "string"
             }
-          },
-          "rootPathOverride": {
-            "type": "string",
-            "description": "Overrides the server's root path for this project only"
           }
         },
         "additionalProperties": false

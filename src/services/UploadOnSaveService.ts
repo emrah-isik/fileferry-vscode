@@ -78,9 +78,11 @@ export class UploadOnSaveService {
       const credential = await this.dependencies.credentialManager.getWithSecret(server.credentialId);
 
       // File date guard: skip upload if remote is newer (non-blocking on errors)
+      const fileDateGuardEnabled = config.fileDateGuard !== false;
       try {
-        const guard = new FileDateGuard();
-        const newerOnRemote = await guard.check([resolved], credential);
+        const newerOnRemote = fileDateGuardEnabled
+          ? await new FileDateGuard().check([resolved], credential)
+          : [];
         if (newerOnRemote.length > 0) {
           const fileName = path.basename(doc.uri.fsPath);
           vscode.window.showWarningMessage(

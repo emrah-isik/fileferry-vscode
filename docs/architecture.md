@@ -21,6 +21,7 @@ Project Config  (per workspace — .vscode/fileferry.json)
 
 - `defaultServerId` — UUID of the active server
 - `uploadOnSave` — optional per-project toggle
+- `fileDateGuard` — optional toggle (defaults to `true`); when false, skips the remote mtime check before upload
 - `servers` — a map of display names to `ProjectServer` objects
 
 Each `ProjectServer` holds its UUID (`id`), protocol (`type`), credential reference (`credentialId` + human-readable `credentialName`), `rootPath`, path `mappings`, and `excludedPaths`. It contains no secrets and is safe to commit to git.
@@ -97,7 +98,7 @@ If no mapping matches and there is no `/` catch-all, a `NoMappingError` is throw
 
 ## 5. Webview Message Protocol
 
-Both webview panels (Deployment Settings, SSH Credentials) use the same handshake pattern:
+All three webview panels (Deployment Settings, SSH Credentials, Project Settings) use the same handshake pattern:
 
 ```
 Webview boots → sends { command: 'ready' }
@@ -114,16 +115,18 @@ Using `ready`→`init` rather than injecting data into the HTML means the webvie
 | Extension → Webview | Deployment Settings | `init` (`{ config, credentials }`), `configUpdated` (`{ config }`), `credentialsUpdated`, `testResult`, `validationError`, `directorySelected`, `browseDone`, `browseError` |
 | Webview → Extension | SSH Credentials | `ready`, `saveCredential`, `deleteCredential`, `cloneCredential`, `testConnection`, `browsePrivateKey` |
 | Extension → Webview | SSH Credentials | `init`, `credentialSaved`, `credentialDeleted`, `testResult`, `validationError`, `warning`, `privateKeySelected` |
+| Webview → Extension | Project Settings | `ready`, `toggleUploadOnSave`, `toggleFileDateGuard` |
+| Extension → Webview | Project Settings | `init` (`{ config }`), `configUpdated` (`{ config }`) |
 
 **Validation flow**: All validation runs in the extension process (pure `src/utils/validation.ts` functions with no VSCode dependencies). The webview receives `{ command: 'validationError', errors: { [field]: message } }` and renders inline field errors. This keeps the webview thin and ensures validation logic is unit-testable without a webview environment.
 
-**CSP**: Both panels use `default-src 'none'; style-src ${cspSource}; script-src 'nonce-${nonce}'` — no inline scripts, no external resources, bundled JS loaded via nonce.
+**CSP**: All three panels use `default-src 'none'; style-src ${cspSource}; script-src 'nonce-${nonce}'` — no inline scripts, no external resources, bundled JS loaded via nonce.
 
 ---
 
 ## 6. Singleton Panel Pattern
 
-Both webview panels (`DeploymentSettingsPanel`, `SshCredentialPanel`) use a static singleton pattern:
+All three webview panels (`DeploymentSettingsPanel`, `SshCredentialPanel`, `ProjectSettingsPanel`) use a static singleton pattern:
 
 ```typescript
 class DeploymentSettingsPanel {
@@ -150,4 +153,4 @@ class DeploymentSettingsPanel {
 
 **Cross-panel navigation**: The "Manage Credentials" button in Deployment Settings sends `{ command: 'openCredentials' }` to the extension, which calls `vscode.commands.executeCommand('fileferry.openCredentials')`. This keeps the two panels decoupled — neither panel holds a reference to the other.
 
-**`retainContextWhenHidden: true`**: Both panels keep their JavaScript state alive when the tab is hidden. This preserves in-progress form edits when the user briefly switches tabs.
+**`retainContextWhenHidden: true`**: All three panels keep their JavaScript state alive when the tab is hidden. This preserves in-progress form edits when the user briefly switches tabs.
