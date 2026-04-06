@@ -2,6 +2,19 @@
 
 All notable changes to FileFerry will be documented in this file.
 
+## [0.5.0] - 2026-04-07
+
+### Added
+
+- **Project-scoped server definitions** — server configs moved from global `servers.json` into per-project `.vscode/fileferry.json`. Two-tier model: credentials (global, keychain) → project config (per-workspace). Auto-migration from v0.4 format on activation
+- **Project settings UI** — dedicated webview for project-level toggles (upload on save, file date guard, backup before overwrite). Separate from the server-scoped Deployment Settings panel
+- **Multi-server simultaneous push** — new "Upload to Servers" command (`Alt+Shift+U`) with multi-select QuickPick. Per-server path resolution, FileDateGuard, and credentials. Parallel uploads via Promise.all with shared cancellation token
+- **Backup before overwrite** — downloads remote files to `.vscode/fileferry-backups/<timestamp>-<server>/` before uploading. Configurable retention days and max size via Project Settings. Cleanup runs automatically at the start of each upload
+- **Progress stage notifications** — deploy notification now shows live stages: "Checking remote files...", "Backing up remote files...", "Uploading..." instead of appearing only after pre-upload checks complete
+- **Explorer keybindings** — `Alt+U`, `Alt+P`, and `Alt+Shift+U` now work when the Explorer panel has focus (previously only worked in SCM panel and editor)
+
+---
+
 ## [0.4.0] - 2026-04-06
 
 ### Added
