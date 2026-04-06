@@ -5,6 +5,7 @@ import { CredentialManager } from './storage/CredentialManager';
 import { ProjectConfigManager } from './storage/ProjectConfigManager';
 import { migrateIfNeeded } from './storage/ConfigMigration';
 import { uploadSelected } from './commands/uploadSelected';
+import { uploadToServers } from './commands/uploadToServers';
 import { showRemoteDiff } from './commands/showRemoteDiff';
 import { normalizeCommandArgs } from './utils/normalizeCommandArgs';
 import { StatusBarItem } from './ui/StatusBarItem';
@@ -89,6 +90,14 @@ export function activate(context: vscode.ExtensionContext): void {
       (arg1, arg2) => {
         const { resource, allResources } = normalizeCommandArgs(arg1, arg2);
         return uploadSelected(resource, allResources, { credentialManager, configManager, context });
+      }
+    ),
+
+    vscode.commands.registerCommand(
+      'fileferry.uploadToServers',
+      (arg1, arg2) => {
+        const { resource, allResources } = normalizeCommandArgs(arg1, arg2);
+        return uploadToServers(resource, allResources, { credentialManager, configManager, context });
       }
     ),
 

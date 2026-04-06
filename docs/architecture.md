@@ -54,19 +54,20 @@ FileFerry hooks into VSCode's native Source Control panel rather than building i
 ```json
 "menus": {
   "scm/resourceState/context": [
-    { "command": "fileferry.uploadSelected", "group": "fileferry@1" }
+    { "command": "fileferry.uploadSelected", "group": "fileferry@1" },
+    { "command": "fileferry.uploadToServers", "group": "fileferry@2" }
   ]
 }
 ```
 
-**Argument shape**: When invoked from the SCM context menu, VSCode passes `(primaryResource: SourceControlResourceState, allSelected: SourceControlResourceState[])`. When invoked via keyboard shortcut (`Alt+U`), `allSelected` contains everything currently highlighted in the SCM panel.
+**Argument shape**: When invoked from the SCM context menu, VSCode passes `(primaryResource: SourceControlResourceState, allSelected: SourceControlResourceState[])`. When invoked via keyboard shortcut (`Alt+U` / `Alt+Shift+U`), `allSelected` contains everything currently highlighted in the SCM panel.
 
 **`ScmResourceResolver`** normalises both call shapes:
 - If `allSelected` is non-empty, use it (multi-select case).
 - Otherwise, fall back to `[primaryResource]` (single right-click case).
 - Filter out resources where `resourceUri.fsPath` no longer exists on disk (deleted files).
 
-The `uploadSelected` command is hidden from the Command Palette (`"when": "false"`) to prevent accidental invocation outside the SCM context.
+Both `uploadSelected` and `uploadToServers` are hidden from the Command Palette (`"when": "false"`) to prevent accidental invocation outside the SCM/Explorer context.
 
 ---
 

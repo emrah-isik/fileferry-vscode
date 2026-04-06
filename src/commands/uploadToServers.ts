@@ -1,0 +1,218 @@
+import * as vscode from 'vscode';
+import * as path from 'path';
+import { ScmResourceResolver } from '../scm/ScmResourceResolver';
+import { PathResolver, ResolvedUploadItem } from '../path/PathResolver';
+import { UploadOrchestratorV2, UploadSummaryV2 } from '../services/UploadOrchestratorV2';
+import { FileDateGuard } from '../services/FileDateGuard';
+import { CredentialManager } from '../storage/CredentialManager';
+import { ProjectConfigManager } from '../storage/ProjectConfigManager';
+import { ProjectServer } from '../models/ProjectConfig';
+
+interface Dependencies {
+  credentialManager: CredentialManager;
+  configManager: ProjectConfigManager;
+  context: vscode.ExtensionContext;
+}
+
+interface ServerQuickPickItem extends vscode.QuickPickItem {
+  serverId: string;
+}
+
+interface ServerUploadResult {
+  serverName: string;
+  summary?: UploadSummaryV2;
+  error?: string;
+}
+
+export async function uploadToServers(
+  primaryResource: vscode.SourceControlResourceState | undefined,
+  allResources: vscode.SourceControlResourceState[] | undefined,
+  dependencies: Dependencies
+): Promise<void> {
+  // Fall back to active editor when invoked via keybinding with no SCM selection
+  if (!primaryResource && !allResources) {
+    const editorUri = vscode.window.activeTextEditor?.document.uri;
+    if (editorUri) {
+      primaryResource = { resourceUri: editorUri } as vscode.SourceControlResourceState;
+    }
+  }
+
+  const resolver = new ScmResourceResolver();
+  const { toUpload, toDelete } = resolver.resolve(primaryResource, allResources);
+
+  if (toUpload.length === 0 && toDelete.length === 0) {
+    vscode.window.showWarningMessage('FileFerry: No files selected.');
+    return;
+  }
+
+  const config = await dependencies.configManager.getConfig();
+  if (!config) {
+    vscode.window.showErrorMessage(
+      'FileFerry: No project configuration found. Run "FileFerry: Deployment Settings" to configure.'
+    );
+    return;
+  }
+
+  const serverEntries = Object.entries(config.servers);
+  if (serverEntries.length === 0) {
+    vscode.window.showErrorMessage(
+      'FileFerry: No servers configured. Open Deployment Settings to add servers.'
+    );
+    return;
+  }
+
+  // Show multi-select QuickPick
+  const items: ServerQuickPickItem[] = serverEntries.map(([name, server]) => ({
+    label: name,
+    serverId: server.id,
+    description: server.id === config.defaultServerId ? '(default)' : undefined,
+  }));
+
+  const selected = await vscode.window.showQuickPick(items, {
+    canPickMany: true,
+    placeHolder: 'Select target servers for upload',
+  });
+
+  if (!selected || selected.length === 0) {
+    return;
+  }
+
+  const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+  const fileDateGuardEnabled = config.fileDateGuard !== false;
+
+  // Build per-server upload plans
+  type ServerPlan = {
+    serverName: string;
+    server: ProjectServer;
+    uploadItems: ResolvedUploadItem[];
+    deleteRemotePaths: string[];
+  };
+
+  const plans: ServerPlan[] = [];
+
+  for (const pick of selected) {
+    const entry = serverEntries.find(([, s]) => s.id === pick.serverId);
+    if (!entry) { continue; }
+    const [serverName, server] = entry;
+
+    if (server.mappings.length === 0) {
+      continue;
+    }
+
+    const pathResolver = new PathResolver();
+    const serverConfig = {
+      rootPath: server.rootPath,
+      mappings: server.mappings,
+      excludedPaths: server.excludedPaths,
+    };
+
+    try {
+      const uploadItems = pathResolver.resolveAll(toUpload, workspaceRoot, serverConfig);
+      const deleteRemotePaths = toDelete.length > 0
+        ? pathResolver.resolveAll(toDelete, workspaceRoot, serverConfig).map(item => item.remotePath)
+        : [];
+
+      // File date guard per server
+      if (fileDateGuardEnabled && uploadItems.length > 0) {
+        const credential = await dependencies.credentialManager.getWithSecret(server.credentialId);
+        const newerOnRemote = await new FileDateGuard().check(uploadItems, credential);
+        if (newerOnRemote.length > 0) {
+          const fileNames = newerOnRemote.map(f => path.basename(f.localPath)).join(', ');
+          const choice = await vscode.window.showWarningMessage(
+            `FileFerry: ${newerOnRemote.length} file(s) newer on "${serverName}": ${fileNames}`,
+            'Overwrite'
+          );
+          if (choice !== 'Overwrite') {
+            continue; // Skip this server
+          }
+        }
+      }
+
+      plans.push({ serverName, server, uploadItems, deleteRemotePaths });
+    } catch (err: unknown) {
+      const message = (err as Error).message;
+      vscode.window.showErrorMessage(`FileFerry: ${serverName}: ${message}`);
+    }
+  }
+
+  if (plans.length === 0) {
+    return;
+  }
+
+  await vscode.window.withProgress(
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: `FileFerry: Deploying to ${plans.length} server(s)`,
+      cancellable: true,
+    },
+    async (_progress, token) => {
+      const results: ServerUploadResult[] = await Promise.all(
+        plans.map(async (plan): Promise<ServerUploadResult> => {
+          try {
+            const credential = await dependencies.credentialManager.getWithSecret(plan.server.credentialId);
+            const orchestrator = new UploadOrchestratorV2();
+            const summary = await orchestrator.upload(
+              plan.uploadItems, credential, plan.server, plan.deleteRemotePaths, token
+            );
+            return { serverName: plan.serverName, summary };
+          } catch (err: unknown) {
+            return {
+              serverName: plan.serverName,
+              error: err instanceof Error ? err.message : String(err),
+            };
+          }
+        })
+      );
+
+      // Aggregate results
+      const succeeded: ServerUploadResult[] = [];
+      const failed: ServerUploadResult[] = [];
+      let anyCancelled = false;
+
+      for (const result of results) {
+        if (result.error) {
+          failed.push(result);
+        } else if (result.summary) {
+          const totalFailed = result.summary.failed.length + result.summary.deleteFailed.length;
+          if (totalFailed > 0) {
+            failed.push(result);
+          } else {
+            succeeded.push(result);
+          }
+          if (result.summary.cancelled && result.summary.cancelled.length > 0) {
+            anyCancelled = true;
+          }
+        }
+      }
+
+      if (anyCancelled) {
+        const totalDone = results.reduce((sum, r) =>
+          sum + (r.summary?.succeeded.length ?? 0) + (r.summary?.deleted.length ?? 0), 0);
+        const totalCancelled = results.reduce((sum, r) =>
+          sum + (r.summary?.cancelled?.length ?? 0), 0);
+        vscode.window.showWarningMessage(
+          `FileFerry: Transfer cancelled. ${totalDone} file(s) completed, ${totalCancelled} cancelled.`
+        );
+      } else if (failed.length === 0) {
+        const totalFiles = results.reduce((sum, r) =>
+          sum + (r.summary?.succeeded.length ?? 0) + (r.summary?.deleted.length ?? 0), 0);
+        vscode.window.showInformationMessage(
+          `FileFerry: ${totalFiles} file(s) deployed to ${succeeded.length} server(s) successfully.`
+        );
+      } else if (succeeded.length === 0) {
+        const failNames = failed.map(f => f.serverName).join(', ');
+        vscode.window.showErrorMessage(
+          `FileFerry: All servers failed: ${failNames}`,
+          'Show Log'
+        );
+      } else {
+        const succNames = succeeded.map(s => s.serverName).join(', ');
+        const failNames = failed.map(f => f.serverName).join(', ');
+        vscode.window.showErrorMessage(
+          `FileFerry: Succeeded: ${succNames}. Failed: ${failNames}`,
+          'Show Log'
+        );
+      }
+    }
+  );
+}

@@ -112,6 +112,10 @@
       {
         "command": "fileferry.openProjectSettings",
         "title": "FileFerry: Project Settings"
+      },
+      {
+        "command": "fileferry.uploadToServers",
+        "title": "FileFerry: Upload to Servers"
       }
     ],
     "viewsContainers": {
@@ -154,8 +158,12 @@
           "group": "fileferry@1"
         },
         {
-          "command": "fileferry.showRemoteDiff",
+          "command": "fileferry.uploadToServers",
           "group": "fileferry@2"
+        },
+        {
+          "command": "fileferry.showRemoteDiff",
+          "group": "fileferry@3"
         }
       ],
       "explorer/context": [
@@ -165,9 +173,14 @@
           "group": "fileferry@1"
         },
         {
+          "command": "fileferry.uploadToServers",
+          "when": "resourceScheme == file",
+          "group": "fileferry@2"
+        },
+        {
           "command": "fileferry.showRemoteDiff",
           "when": "resourceScheme == file && !explorerResourceIsFolder",
-          "group": "fileferry@2"
+          "group": "fileferry@3"
         }
       ],
       "view/title": [
@@ -240,6 +253,10 @@
           "when": "false"
         },
         {
+          "command": "fileferry.uploadToServers",
+          "when": "false"
+        },
+        {
           "command": "fileferry.showRemoteDiff",
           "when": "false"
         },
@@ -296,6 +313,16 @@
       {
         "command": "fileferry.showRemoteDiff",
         "key": "alt+p",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "fileferry.uploadToServers",
+        "key": "alt+shift+u",
+        "when": "focusedView == workbench.scm"
+      },
+      {
+        "command": "fileferry.uploadToServers",
+        "key": "alt+shift+u",
         "when": "editorTextFocus"
       }
     ],
