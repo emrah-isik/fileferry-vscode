@@ -18,9 +18,15 @@ export async function showRemoteDiff(
   resource: vscode.SourceControlResourceState | undefined,
   deps: Deps
 ): Promise<void> {
+  // Fall back to active editor when invoked via keybinding with no SCM selection
   if (!resource) {
-    vscode.window.showErrorMessage('FileFerry: No file selected.');
-    return;
+    const editorUri = vscode.window.activeTextEditor?.document.uri;
+    if (editorUri) {
+      resource = { resourceUri: editorUri } as vscode.SourceControlResourceState;
+    } else {
+      vscode.window.showErrorMessage('FileFerry: No file selected.');
+      return;
+    }
   }
 
   const binding = await deps.bindingManager.getBinding();

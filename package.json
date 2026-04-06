@@ -283,6 +283,16 @@
         "command": "fileferry.showRemoteDiff",
         "key": "alt+p",
         "when": "focusedView == workbench.scm"
+      },
+      {
+        "command": "fileferry.uploadSelected",
+        "key": "alt+u",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "fileferry.showRemoteDiff",
+        "key": "alt+p",
+        "when": "editorTextFocus"
       }
     ],
     "configuration": {

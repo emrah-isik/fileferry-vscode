@@ -75,11 +75,27 @@ describe('showRemoteDiff command', () => {
     (vscode.commands.executeCommand as jest.Mock).mockResolvedValue(undefined);
   });
 
-  it('shows error when no resource is provided', async () => {
+  it('shows error when no resource is provided and no active editor', async () => {
+    (vscode.window as any).activeTextEditor = undefined;
     await showRemoteDiff(undefined, deps());
     expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
       expect.stringContaining('No file selected')
     );
+  });
+
+  it('uses activeTextEditor URI when called with no resource arg', async () => {
+    (vscode.window as any).activeTextEditor = {
+      document: { uri: vscode.Uri.file('/workspace/src/index.php') },
+    };
+
+    await showRemoteDiff(undefined, deps());
+
+    expect(mockResolve).toHaveBeenCalledWith(
+      '/workspace/src/index.php',
+      expect.any(String),
+      expect.any(Object)
+    );
+    expect(mockDownloadRemoteFile).toHaveBeenCalled();
   });
 
   it('shows error when project binding is missing', async () => {

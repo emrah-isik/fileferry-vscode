@@ -18,6 +18,7 @@ const vscode = {
     showInputBox: jest.fn(),
     showOpenDialog: jest.fn(),
     showQuickPick: jest.fn(),
+    activeTextEditor: undefined as any,
     withProgress: jest.fn(),
     setStatusBarMessage: jest.fn().mockReturnValue({ dispose: jest.fn() }),
     createWebviewPanel: jest.fn(),

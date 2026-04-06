@@ -19,6 +19,14 @@ export async function uploadSelected(
   allResources: vscode.SourceControlResourceState[] | undefined,
   deps: Deps
 ): Promise<void> {
+  // Fall back to active editor when invoked via keybinding with no SCM selection
+  if (!primaryResource && !allResources) {
+    const editorUri = vscode.window.activeTextEditor?.document.uri;
+    if (editorUri) {
+      primaryResource = { resourceUri: editorUri } as vscode.SourceControlResourceState;
+    }
+  }
+
   const resolver = new ScmResourceResolver();
   const { toUpload, toDelete } = resolver.resolve(primaryResource, allResources);
 

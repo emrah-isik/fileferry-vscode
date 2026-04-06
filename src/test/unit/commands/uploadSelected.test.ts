@@ -202,6 +202,33 @@ describe('uploadSelected command', () => {
     });
   });
 
+  describe('active editor fallback', () => {
+    it('uses activeTextEditor URI when called with no resource args', async () => {
+      (vscode.window as any).activeTextEditor = {
+        document: { uri: vscode.Uri.file('/workspace/src/app.php') },
+      };
+      mockResolve.mockReturnValue({ toUpload: ['/workspace/src/app.php'], toDelete: [] });
+
+      await uploadSelected(undefined, undefined, deps());
+
+      expect(mockResolve).toHaveBeenCalledWith(
+        expect.objectContaining({ resourceUri: expect.objectContaining({ fsPath: '/workspace/src/app.php' }) }),
+        undefined
+      );
+    });
+
+    it('shows warning when no resource args and no active editor', async () => {
+      (vscode.window as any).activeTextEditor = undefined;
+      mockResolve.mockReturnValue({ toUpload: [], toDelete: [] });
+
+      await uploadSelected(undefined, undefined, deps());
+
+      expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+        expect.stringContaining('No files selected')
+      );
+    });
+  });
+
   describe('cancellation support', () => {
     it('passes cancellable: true to withProgress', async () => {
       await uploadSelected(resource, undefined, deps());
