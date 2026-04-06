@@ -21,6 +21,8 @@ const mockMethods = {
   realPath: jest.fn(),
   delete: jest.fn(),
   rmdir: jest.fn(),
+  rename: jest.fn(),
+  posixRename: jest.fn(),
   client: mockSsh2Client,
 };
 
@@ -237,11 +239,12 @@ describe('SftpService', () => {
       await service.connect(serverConfig, { password: 'secret' });
     });
 
-    it('calls sftp.put with local and remote paths', async () => {
+    it('calls sftp.put with local path and temp remote path', async () => {
+      mockMethods.posixRename.mockResolvedValue(undefined);
       await service.uploadFile('/local/src/index.php', '/var/www/src/index.php');
       expect(mockMethods.put).toHaveBeenCalledWith(
         '/local/src/index.php',
-        '/var/www/src/index.php'
+        '/var/www/src/index.php.fileferry.tmp'
       );
     });
 
@@ -249,6 +252,7 @@ describe('SftpService', () => {
       mockMethods.put
         .mockRejectedValueOnce({ code: 'ERR_BAD_PATH' })
         .mockResolvedValueOnce(undefined);
+      mockMethods.posixRename.mockResolvedValue(undefined);
       await service.uploadFile('/local/src/new/index.php', '/var/www/src/new/index.php');
       expect(mockMethods.mkdir).toHaveBeenCalledWith('/var/www/src/new', true);
       expect(mockMethods.put).toHaveBeenCalledTimes(2);
@@ -258,6 +262,83 @@ describe('SftpService', () => {
       const fresh = new SftpService();
       mockMethods.connect.mockResolvedValue(undefined);
       await expect(fresh.uploadFile('/a', '/b')).rejects.toThrow('Not connected');
+    });
+
+    it('uploads to a temp file then posixRenames for atomic write', async () => {
+      mockMethods.posixRename.mockResolvedValue(undefined);
+      await service.uploadFile('/local/src/index.php', '/var/www/src/index.php');
+      // Step 1: put to temp path
+      expect(mockMethods.put).toHaveBeenCalledWith(
+        '/local/src/index.php',
+        '/var/www/src/index.php.fileferry.tmp'
+      );
+      // Step 2: posixRename temp → final (atomic overwrite)
+      expect(mockMethods.posixRename).toHaveBeenCalledWith(
+        '/var/www/src/index.php.fileferry.tmp',
+        '/var/www/src/index.php'
+      );
+    });
+
+    it('falls back to rename when posixRename is not supported', async () => {
+      mockMethods.posixRename.mockRejectedValue(new Error('Not supported'));
+      mockMethods.rename.mockResolvedValue(undefined);
+      await service.uploadFile('/local/a.php', '/var/www/a.php');
+      expect(mockMethods.posixRename).toHaveBeenCalledWith(
+        '/var/www/a.php.fileferry.tmp',
+        '/var/www/a.php'
+      );
+      expect(mockMethods.rename).toHaveBeenCalledWith(
+        '/var/www/a.php.fileferry.tmp',
+        '/var/www/a.php'
+      );
+    });
+
+    it('does not rename when put to temp file fails', async () => {
+      mockMethods.put.mockRejectedValue(new Error('Connection lost'));
+      await expect(
+        service.uploadFile('/local/a.php', '/var/www/a.php')
+      ).rejects.toThrow('Connection lost');
+      expect(mockMethods.posixRename).not.toHaveBeenCalled();
+      expect(mockMethods.rename).not.toHaveBeenCalled();
+    });
+
+    it('cleans up temp file when both rename methods fail', async () => {
+      mockMethods.posixRename.mockRejectedValue(new Error('Not supported'));
+      mockMethods.rename.mockRejectedValue(new Error('Permission denied'));
+      mockMethods.delete.mockResolvedValue(undefined);
+      await expect(
+        service.uploadFile('/local/a.php', '/var/www/a.php')
+      ).rejects.toThrow('Permission denied');
+      // Should try to delete the orphaned temp file
+      expect(mockMethods.delete).toHaveBeenCalledWith(
+        '/var/www/a.php.fileferry.tmp'
+      );
+    });
+
+    it('creates directory and retries with temp file on ERR_BAD_PATH', async () => {
+      mockMethods.put
+        .mockRejectedValueOnce({ code: 'ERR_BAD_PATH' })
+        .mockResolvedValueOnce(undefined);
+      mockMethods.posixRename.mockResolvedValue(undefined);
+      await service.uploadFile('/local/src/new/index.php', '/var/www/src/new/index.php');
+      // mkdir for the real directory
+      expect(mockMethods.mkdir).toHaveBeenCalledWith('/var/www/src/new', true);
+      // Both put calls should target the temp path
+      expect(mockMethods.put).toHaveBeenNthCalledWith(
+        1,
+        '/local/src/new/index.php',
+        '/var/www/src/new/index.php.fileferry.tmp'
+      );
+      expect(mockMethods.put).toHaveBeenNthCalledWith(
+        2,
+        '/local/src/new/index.php',
+        '/var/www/src/new/index.php.fileferry.tmp'
+      );
+      // posixRename after successful retry
+      expect(mockMethods.posixRename).toHaveBeenCalledWith(
+        '/var/www/src/new/index.php.fileferry.tmp',
+        '/var/www/src/new/index.php'
+      );
     });
   });
 

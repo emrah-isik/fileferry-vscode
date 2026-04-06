@@ -122,18 +122,40 @@ export class SftpService {
       throw new Error('Not connected. Call connect() before uploading.');
     }
 
+    // Atomic upload: write to a temp file, then rename in one operation.
+    // If the transfer is interrupted, the original file remains intact.
+    const tempPath = remotePath + '.fileferry.tmp';
+
     try {
-      await this.client.put(localPath, remotePath);
+      await this.client.put(localPath, tempPath);
     } catch (err: unknown) {
       const error = err as { code?: string; message?: string };
       // Remote directory doesn't exist — create it recursively and retry
       if (error.code === 'ERR_BAD_PATH' || error.message?.includes('No such file')) {
         const remoteDir = path.posix.dirname(remotePath);
         await this.client.mkdir(remoteDir, true);
-        await this.client.put(localPath, remotePath);
+        await this.client.put(localPath, tempPath);
       } else {
         throw err;
       }
+    }
+
+    try {
+      // posixRename uses OpenSSH's POSIX rename extension — atomic overwrite.
+      // Falls back to regular rename (works when the target doesn't exist yet).
+      try {
+        await (this.client as any).posixRename(tempPath, remotePath);
+      } catch {
+        await (this.client as any).rename(tempPath, remotePath);
+      }
+    } catch (err: unknown) {
+      // Clean up the orphaned temp file
+      try {
+        await (this.client as any).delete(tempPath);
+      } catch {
+        // Best effort — ignore cleanup failure
+      }
+      throw err;
     }
   }
 

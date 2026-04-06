@@ -37,6 +37,8 @@ const mockMethods = {
   mkdir: jest.fn(),
   end: jest.fn(),
   get: jest.fn(),
+  rename: jest.fn(),
+  posixRename: jest.fn(),
 };
 
 jest.mock('ssh2-sftp-client', () => jest.fn().mockImplementation(() => mockMethods));
@@ -214,12 +216,14 @@ describe('SftpService edge cases', () => {
 
   it('uploads a 0-byte file without error', async () => {
     await service.uploadFile('/local/empty.txt', '/remote/empty.txt');
-    expect(mockMethods.put).toHaveBeenCalledWith('/local/empty.txt', '/remote/empty.txt');
+    expect(mockMethods.put).toHaveBeenCalledWith('/local/empty.txt', '/remote/empty.txt.fileferry.tmp');
+    expect(mockMethods.posixRename).toHaveBeenCalledWith('/remote/empty.txt.fileferry.tmp', '/remote/empty.txt');
   });
 
   it('handles remote path with spaces', async () => {
     await service.uploadFile('/local/app.php', '/var/www/my site/app.php');
-    expect(mockMethods.put).toHaveBeenCalledWith('/local/app.php', '/var/www/my site/app.php');
+    expect(mockMethods.put).toHaveBeenCalledWith('/local/app.php', '/var/www/my site/app.php.fileferry.tmp');
+    expect(mockMethods.posixRename).toHaveBeenCalledWith('/var/www/my site/app.php.fileferry.tmp', '/var/www/my site/app.php');
   });
 
   it('disconnect is safe to call when already disconnected', async () => {
