@@ -265,3 +265,82 @@ describe('ProjectConfigManager — toggleFileDateGuard', () => {
     expect(result).toBe(false);
   });
 });
+
+describe('ProjectConfigManager — toggleBackupBeforeOverwrite', () => {
+  let manager: ProjectConfigManager;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    manager = new ProjectConfigManager();
+  });
+
+  it('enables backupBeforeOverwrite when currently undefined (default is off)', async () => {
+    mockReadFile.mockResolvedValue(JSON.stringify(configFixture));
+    const result = await manager.toggleBackupBeforeOverwrite();
+    const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string);
+    expect(written.backupBeforeOverwrite).toBe(true);
+    expect(result).toBe(true);
+  });
+
+  it('disables backupBeforeOverwrite when currently true', async () => {
+    mockReadFile.mockResolvedValue(JSON.stringify({ ...configFixture, backupBeforeOverwrite: true }));
+    const result = await manager.toggleBackupBeforeOverwrite();
+    const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string);
+    expect(written.backupBeforeOverwrite).toBe(false);
+    expect(result).toBe(false);
+  });
+
+  it('creates a new config if none exists', async () => {
+    mockReadFile.mockRejectedValue({ code: 'ENOENT' });
+    const result = await manager.toggleBackupBeforeOverwrite();
+    const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string);
+    expect(written.backupBeforeOverwrite).toBe(true);
+    expect(result).toBe(true);
+  });
+});
+
+describe('ProjectConfigManager — setBackupRetentionDays', () => {
+  let manager: ProjectConfigManager;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    manager = new ProjectConfigManager();
+  });
+
+  it('sets backupRetentionDays to the given value', async () => {
+    mockReadFile.mockResolvedValue(JSON.stringify(configFixture));
+    await manager.setBackupRetentionDays(14);
+    const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string);
+    expect(written.backupRetentionDays).toBe(14);
+  });
+
+  it('creates a new config if none exists', async () => {
+    mockReadFile.mockRejectedValue({ code: 'ENOENT' });
+    await manager.setBackupRetentionDays(3);
+    const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string);
+    expect(written.backupRetentionDays).toBe(3);
+  });
+});
+
+describe('ProjectConfigManager — setBackupMaxSizeMB', () => {
+  let manager: ProjectConfigManager;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    manager = new ProjectConfigManager();
+  });
+
+  it('sets backupMaxSizeMB to the given value', async () => {
+    mockReadFile.mockResolvedValue(JSON.stringify(configFixture));
+    await manager.setBackupMaxSizeMB(200);
+    const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string);
+    expect(written.backupMaxSizeMB).toBe(200);
+  });
+
+  it('creates a new config if none exists', async () => {
+    mockReadFile.mockRejectedValue({ code: 'ENOENT' });
+    await manager.setBackupMaxSizeMB(50);
+    const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string);
+    expect(written.backupMaxSizeMB).toBe(50);
+  });
+});

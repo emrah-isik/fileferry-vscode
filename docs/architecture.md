@@ -22,6 +22,9 @@ Project Config  (per workspace — .vscode/fileferry.json)
 - `defaultServerId` — UUID of the active server
 - `uploadOnSave` — optional per-project toggle
 - `fileDateGuard` — optional toggle (defaults to `true`); when false, skips the remote mtime check before upload
+- `backupBeforeOverwrite` — optional toggle (defaults to `false`); when true, downloads remote files to `.vscode/fileferry-backups/` before uploading
+- `backupRetentionDays` — optional number (defaults to `7`); days to keep backup folders before cleanup deletes them
+- `backupMaxSizeMB` — optional number (defaults to `100`); max total backup size in MB; oldest folders are deleted until under the limit
 - `servers` — a map of display names to `ProjectServer` objects
 
 Each `ProjectServer` holds its UUID (`id`), protocol (`type`), credential reference (`credentialId` + human-readable `credentialName`), `rootPath`, path `mappings`, and `excludedPaths`. It contains no secrets and is safe to commit to git.
@@ -116,7 +119,7 @@ Using `ready`→`init` rather than injecting data into the HTML means the webvie
 | Extension → Webview | Deployment Settings | `init` (`{ config, credentials }`), `configUpdated` (`{ config }`), `credentialsUpdated`, `testResult`, `validationError`, `directorySelected`, `browseDone`, `browseError` |
 | Webview → Extension | SSH Credentials | `ready`, `saveCredential`, `deleteCredential`, `cloneCredential`, `testConnection`, `browsePrivateKey` |
 | Extension → Webview | SSH Credentials | `init`, `credentialSaved`, `credentialDeleted`, `testResult`, `validationError`, `warning`, `privateKeySelected` |
-| Webview → Extension | Project Settings | `ready`, `toggleUploadOnSave`, `toggleFileDateGuard` |
+| Webview → Extension | Project Settings | `ready`, `toggleUploadOnSave`, `toggleFileDateGuard`, `toggleBackupBeforeOverwrite`, `setBackupRetentionDays`, `setBackupMaxSizeMB` |
 | Extension → Webview | Project Settings | `init` (`{ config }`), `configUpdated` (`{ config }`) |
 
 **Validation flow**: All validation runs in the extension process (pure `src/utils/validation.ts` functions with no VSCode dependencies). The webview receives `{ command: 'validationError', errors: { [field]: message } }` and renders inline field errors. This keeps the webview thin and ensures validation logic is unit-testable without a webview environment.

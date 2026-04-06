@@ -5,11 +5,13 @@ jest.mock('../../../scm/ScmResourceResolver');
 jest.mock('../../../path/PathResolver');
 jest.mock('../../../services/UploadOrchestratorV2');
 jest.mock('../../../services/FileDateGuard');
+jest.mock('../../../services/BackupService');
 
 import { ScmResourceResolver } from '../../../scm/ScmResourceResolver';
 import { PathResolver } from '../../../path/PathResolver';
 import { UploadOrchestratorV2 } from '../../../services/UploadOrchestratorV2';
 import { FileDateGuard } from '../../../services/FileDateGuard';
+import { BackupService } from '../../../services/BackupService';
 import { uploadToServers } from '../../../commands/uploadToServers';
 import type { CredentialManager } from '../../../storage/CredentialManager';
 import type { ProjectConfigManager } from '../../../storage/ProjectConfigManager';
@@ -19,11 +21,14 @@ const mockResolve = jest.fn();
 const mockResolveAll = jest.fn();
 const mockUpload = jest.fn().mockResolvedValue({ succeeded: [], failed: [], deleted: [], deleteFailed: [] });
 const mockDateGuardCheck = jest.fn().mockResolvedValue([]);
+const mockBackup = jest.fn().mockResolvedValue(undefined);
+const mockCleanup = jest.fn().mockResolvedValue(undefined);
 
 (ScmResourceResolver as jest.Mock).mockImplementation(() => ({ resolve: mockResolve }));
 (PathResolver as jest.Mock).mockImplementation(() => ({ resolveAll: mockResolveAll }));
 (UploadOrchestratorV2 as jest.Mock).mockImplementation(() => ({ upload: mockUpload }));
 (FileDateGuard as jest.Mock).mockImplementation(() => ({ check: mockDateGuardCheck }));
+(BackupService as jest.Mock).mockImplementation(() => ({ backup: mockBackup, cleanup: mockCleanup }));
 
 const prodServer: ProjectServer = {
   id: 'srv-1',
@@ -327,6 +332,95 @@ describe('uploadToServers command', () => {
       await uploadToServers(resource, undefined, dependencies());
       // Should only upload to Production
       expect(mockUpload).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('backup before overwrite', () => {
+    it('runs cleanup once and backup per server when backupBeforeOverwrite is true', async () => {
+      (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({
+        ...configFixture,
+        backupBeforeOverwrite: true,
+        backupRetentionDays: 14,
+        backupMaxSizeMB: 200,
+      });
+      await uploadToServers(resource, undefined, dependencies());
+      expect(mockCleanup).toHaveBeenCalledWith('/workspace', 14, 200);
+      expect(mockBackup).toHaveBeenCalledTimes(2);
+      expect(mockBackup).toHaveBeenCalledWith(
+        expect.any(Array),
+        expect.objectContaining({ password: 'secret1' }),
+        'Production',
+        '/workspace'
+      );
+      expect(mockBackup).toHaveBeenCalledWith(
+        expect.any(Array),
+        expect.objectContaining({ password: 'secret2' }),
+        'Staging',
+        '/workspace'
+      );
+    });
+
+    it('uses default retention (7) and max size (100) when not configured', async () => {
+      (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({
+        ...configFixture,
+        backupBeforeOverwrite: true,
+      });
+      await uploadToServers(resource, undefined, dependencies());
+      expect(mockCleanup).toHaveBeenCalledWith('/workspace', 7, 100);
+    });
+
+    it('skips backup when backupBeforeOverwrite is false', async () => {
+      await uploadToServers(resource, undefined, dependencies());
+      expect(mockBackup).not.toHaveBeenCalled();
+      expect(mockCleanup).not.toHaveBeenCalled();
+    });
+
+    it('reports all three progress stages in order when backup is enabled', async () => {
+      const mockReport = jest.fn();
+      (vscode.window.withProgress as any) = jest.fn().mockImplementation(
+        (_opts: any, task: (p: any, token: any) => Promise<any>) =>
+          task({ report: mockReport }, { isCancellationRequested: false, onCancellationRequested: jest.fn() })
+      );
+      (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({
+        ...configFixture,
+        backupBeforeOverwrite: true,
+      });
+      await uploadToServers(resource, undefined, dependencies());
+      const messages = mockReport.mock.calls.map((c: any[]) => c[0].message);
+      expect(messages).toEqual([
+        'Checking remote files...',
+        'Backing up remote files...',
+        'Uploading...',
+      ]);
+    });
+
+    it('reports "Checking remote files..." then "Uploading..." when backup is disabled', async () => {
+      const mockReport = jest.fn();
+      (vscode.window.withProgress as any) = jest.fn().mockImplementation(
+        (_opts: any, task: (p: any, token: any) => Promise<any>) =>
+          task({ report: mockReport }, { isCancellationRequested: false, onCancellationRequested: jest.fn() })
+      );
+      await uploadToServers(resource, undefined, dependencies());
+      const messages = mockReport.mock.calls.map((c: any[]) => c[0].message);
+      expect(messages).toEqual([
+        'Checking remote files...',
+        'Uploading...',
+      ]);
+    });
+
+    it('skips "Checking remote files..." when fileDateGuard is false', async () => {
+      const mockReport = jest.fn();
+      (vscode.window.withProgress as any) = jest.fn().mockImplementation(
+        (_opts: any, task: (p: any, token: any) => Promise<any>) =>
+          task({ report: mockReport }, { isCancellationRequested: false, onCancellationRequested: jest.fn() })
+      );
+      (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({
+        ...configFixture,
+        fileDateGuard: false,
+      });
+      await uploadToServers(resource, undefined, dependencies());
+      const messages = mockReport.mock.calls.map((c: any[]) => c[0].message);
+      expect(messages).toEqual(['Uploading...']);
     });
   });
 });

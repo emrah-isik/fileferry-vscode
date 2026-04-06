@@ -39,6 +39,9 @@ function render() {
   const uploadOnSave = !!state.config.uploadOnSave;
   // fileDateGuard defaults to true when undefined
   const fileDateGuard = state.config.fileDateGuard !== false;
+  const backupBeforeOverwrite = !!state.config.backupBeforeOverwrite;
+  const backupRetentionDays = state.config.backupRetentionDays ?? 7;
+  const backupMaxSizeMB = state.config.backupMaxSizeMB ?? 100;
 
   app.innerHTML = `
     <h2>Project Settings</h2>
@@ -63,6 +66,28 @@ function render() {
         </span>
       </label>
     </div>
+
+    <div class="setting-row">
+      <label class="toggle-label">
+        <input type="checkbox" id="chk-backup-before-overwrite" ${backupBeforeOverwrite ? 'checked' : ''}>
+        <span class="toggle-text">
+          <strong>Backup Before Overwrite</strong>
+          <span class="toggle-description">Download remote files to a local backup before uploading.</span>
+        </span>
+      </label>
+      ${backupBeforeOverwrite ? `
+      <div class="sub-settings">
+        <div class="number-field">
+          <label for="input-retention-days">Retention days</label>
+          <input type="number" id="input-retention-days" min="1" value="${backupRetentionDays}">
+        </div>
+        <div class="number-field">
+          <label for="input-max-size-mb">Max size (MB)</label>
+          <input type="number" id="input-max-size-mb" min="1" value="${backupMaxSizeMB}">
+        </div>
+      </div>
+      ` : ''}
+    </div>
   `;
 
   document.getElementById('chk-upload-on-save')?.addEventListener('change', () => {
@@ -71,5 +96,23 @@ function render() {
 
   document.getElementById('chk-file-date-guard')?.addEventListener('change', () => {
     vscode.postMessage({ command: 'toggleFileDateGuard' });
+  });
+
+  document.getElementById('chk-backup-before-overwrite')?.addEventListener('change', () => {
+    vscode.postMessage({ command: 'toggleBackupBeforeOverwrite' });
+  });
+
+  document.getElementById('input-retention-days')?.addEventListener('change', (e) => {
+    const value = parseInt(e.target.value, 10);
+    if (value > 0) {
+      vscode.postMessage({ command: 'setBackupRetentionDays', value });
+    }
+  });
+
+  document.getElementById('input-max-size-mb')?.addEventListener('change', (e) => {
+    const value = parseInt(e.target.value, 10);
+    if (value > 0) {
+      vscode.postMessage({ command: 'setBackupMaxSizeMB', value });
+    }
   });
 }

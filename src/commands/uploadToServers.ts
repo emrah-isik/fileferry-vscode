@@ -4,6 +4,7 @@ import { ScmResourceResolver } from '../scm/ScmResourceResolver';
 import { PathResolver, ResolvedUploadItem } from '../path/PathResolver';
 import { UploadOrchestratorV2, UploadSummaryV2 } from '../services/UploadOrchestratorV2';
 import { FileDateGuard } from '../services/FileDateGuard';
+import { BackupService } from '../services/BackupService';
 import { CredentialManager } from '../storage/CredentialManager';
 import { ProjectConfigManager } from '../storage/ProjectConfigManager';
 import { ProjectServer } from '../models/ProjectConfig';
@@ -79,8 +80,9 @@ export async function uploadToServers(
 
   const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
   const fileDateGuardEnabled = config.fileDateGuard !== false;
+  const backupEnabled = !!config.backupBeforeOverwrite;
 
-  // Build per-server upload plans
+  // Build per-server upload plans (path resolution only — no SFTP yet)
   type ServerPlan = {
     serverName: string;
     server: ProjectServer;
@@ -112,22 +114,6 @@ export async function uploadToServers(
         ? pathResolver.resolveAll(toDelete, workspaceRoot, serverConfig).map(item => item.remotePath)
         : [];
 
-      // File date guard per server
-      if (fileDateGuardEnabled && uploadItems.length > 0) {
-        const credential = await dependencies.credentialManager.getWithSecret(server.credentialId);
-        const newerOnRemote = await new FileDateGuard().check(uploadItems, credential);
-        if (newerOnRemote.length > 0) {
-          const fileNames = newerOnRemote.map(f => path.basename(f.localPath)).join(', ');
-          const choice = await vscode.window.showWarningMessage(
-            `FileFerry: ${newerOnRemote.length} file(s) newer on "${serverName}": ${fileNames}`,
-            'Overwrite'
-          );
-          if (choice !== 'Overwrite') {
-            continue; // Skip this server
-          }
-        }
-      }
-
       plans.push({ serverName, server, uploadItems, deleteRemotePaths });
     } catch (err: unknown) {
       const message = (err as Error).message;
@@ -145,7 +131,52 @@ export async function uploadToServers(
       title: `FileFerry: Deploying to ${plans.length} server(s)`,
       cancellable: true,
     },
-    async (_progress, token) => {
+    async (progress, token) => {
+      // File date guard per server
+      if (fileDateGuardEnabled) {
+        progress.report({ message: 'Checking remote files...' });
+        const approvedPlans: ServerPlan[] = [];
+        for (const plan of plans) {
+          if (plan.uploadItems.length > 0) {
+            const credential = await dependencies.credentialManager.getWithSecret(plan.server.credentialId);
+            const newerOnRemote = await new FileDateGuard().check(plan.uploadItems, credential);
+            if (newerOnRemote.length > 0) {
+              const fileNames = newerOnRemote.map(f => path.basename(f.localPath)).join(', ');
+              const choice = await vscode.window.showWarningMessage(
+                `FileFerry: ${newerOnRemote.length} file(s) newer on "${plan.serverName}": ${fileNames}`,
+                'Overwrite'
+              );
+              if (choice !== 'Overwrite') {
+                continue; // Skip this server
+              }
+            }
+          }
+          approvedPlans.push(plan);
+        }
+        plans.length = 0;
+        plans.push(...approvedPlans);
+      }
+
+      if (plans.length === 0) {
+        return;
+      }
+
+      // Backup before overwrite: cleanup once, then backup per server
+      if (backupEnabled) {
+        progress.report({ message: 'Backing up remote files...' });
+        const retentionDays = config.backupRetentionDays ?? 7;
+        const maxSizeMB = config.backupMaxSizeMB ?? 100;
+        const backupService = new BackupService();
+        await backupService.cleanup(workspaceRoot, retentionDays, maxSizeMB);
+        for (const plan of plans) {
+          if (plan.uploadItems.length > 0) {
+            const backupCredential = await dependencies.credentialManager.getWithSecret(plan.server.credentialId);
+            await backupService.backup(plan.uploadItems, backupCredential, plan.serverName, workspaceRoot);
+          }
+        }
+      }
+
+      progress.report({ message: 'Uploading...' });
       const results: ServerUploadResult[] = await Promise.all(
         plans.map(async (plan): Promise<ServerUploadResult> => {
           try {

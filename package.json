@@ -324,6 +324,21 @@
         "command": "fileferry.uploadToServers",
         "key": "alt+shift+u",
         "when": "editorTextFocus"
+      },
+      {
+        "command": "fileferry.uploadSelected",
+        "key": "alt+u",
+        "when": "filesExplorerFocus"
+      },
+      {
+        "command": "fileferry.showRemoteDiff",
+        "key": "alt+p",
+        "when": "filesExplorerFocus"
+      },
+      {
+        "command": "fileferry.uploadToServers",
+        "key": "alt+shift+u",
+        "when": "filesExplorerFocus"
       }
     ],
     "configuration": {

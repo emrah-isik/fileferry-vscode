@@ -4,6 +4,7 @@ import { ScmResourceResolver } from '../scm/ScmResourceResolver';
 import { PathResolver, ResolvedUploadItem } from '../path/PathResolver';
 import { UploadOrchestratorV2 } from '../services/UploadOrchestratorV2';
 import { FileDateGuard } from '../services/FileDateGuard';
+import { BackupService } from '../services/BackupService';
 import { UploadConfirmation } from '../uploadConfirmation';
 import { CredentialManager } from '../storage/CredentialManager';
 import { ProjectConfigManager } from '../storage/ProjectConfigManager';
@@ -111,22 +112,7 @@ export async function uploadSelected(
   }
 
   const credential = await dependencies.credentialManager.getWithSecret(server.credentialId);
-
-  // File date guard: warn if remote files are newer than local
   const fileDateGuardEnabled = config.fileDateGuard !== false;
-  const newerOnRemote = fileDateGuardEnabled
-    ? await new FileDateGuard().check(uploadItems, credential)
-    : [];
-  if (newerOnRemote.length > 0) {
-    const fileNames = newerOnRemote.map(f => path.basename(f.localPath)).join(', ');
-    const choice = await vscode.window.showWarningMessage(
-      `FileFerry: ${newerOnRemote.length} file(s) newer on the remote: ${fileNames}`,
-      'Overwrite'
-    );
-    if (choice !== 'Overwrite') {
-      return;
-    }
-  }
 
   const orchestrator = new UploadOrchestratorV2();
 
@@ -136,7 +122,34 @@ export async function uploadSelected(
       title: `FileFerry: Deploying to "${serverName}"`,
       cancellable: true,
     },
-    async (_progress, token) => {
+    async (progress, token) => {
+      // File date guard: warn if remote files are newer than local
+      if (fileDateGuardEnabled) {
+        progress.report({ message: 'Checking remote files...' });
+        const newerOnRemote = await new FileDateGuard().check(uploadItems, credential);
+        if (newerOnRemote.length > 0) {
+          const fileNames = newerOnRemote.map(f => path.basename(f.localPath)).join(', ');
+          const choice = await vscode.window.showWarningMessage(
+            `FileFerry: ${newerOnRemote.length} file(s) newer on the remote: ${fileNames}`,
+            'Overwrite'
+          );
+          if (choice !== 'Overwrite') {
+            return;
+          }
+        }
+      }
+
+      // Backup before overwrite: download remote files to local backup
+      if (config.backupBeforeOverwrite) {
+        progress.report({ message: 'Backing up remote files...' });
+        const retentionDays = config.backupRetentionDays ?? 7;
+        const maxSizeMB = config.backupMaxSizeMB ?? 100;
+        const backupService = new BackupService();
+        await backupService.cleanup(workspaceRoot, retentionDays, maxSizeMB);
+        await backupService.backup(uploadItems, credential, serverName, workspaceRoot);
+      }
+
+      progress.report({ message: 'Uploading...' });
       const result = await orchestrator.upload(uploadItems, credential, server, deleteRemotePaths, token);
 
       const totalFailed = result.failed.length + result.deleteFailed.length;

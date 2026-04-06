@@ -68,6 +68,21 @@ export class ProjectSettingsPanel {
         await this.dependencies.configManager.toggleFileDateGuard();
         await this.pushConfigUpdate();
         break;
+
+      case 'toggleBackupBeforeOverwrite':
+        await this.dependencies.configManager.toggleBackupBeforeOverwrite();
+        await this.pushConfigUpdate();
+        break;
+
+      case 'setBackupRetentionDays':
+        await this.dependencies.configManager.setBackupRetentionDays(msg.value);
+        await this.pushConfigUpdate();
+        break;
+
+      case 'setBackupMaxSizeMB':
+        await this.dependencies.configManager.setBackupMaxSizeMB(msg.value);
+        await this.pushConfigUpdate();
+        break;
     }
   }
 

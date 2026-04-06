@@ -64,3 +64,39 @@ h2 {
   font-size: 0.85em;
   color: var(--vscode-descriptionForeground);
 }
+
+/* ─── Sub-settings (conditional number inputs) ──────────────── */
+
+.sub-settings {
+  display: flex;
+  gap: 16px;
+  margin-top: 10px;
+  padding-left: 26px;
+}
+
+.number-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.number-field label {
+  font-size: 0.85em;
+  color: var(--vscode-descriptionForeground);
+}
+
+.number-field input[type="number"] {
+  width: 80px;
+  padding: 4px 6px;
+  font-size: var(--vscode-font-size);
+  font-family: var(--vscode-font-family);
+  color: var(--vscode-input-foreground);
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, transparent);
+  border-radius: 2px;
+}
+
+.number-field input[type="number"]:focus {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}

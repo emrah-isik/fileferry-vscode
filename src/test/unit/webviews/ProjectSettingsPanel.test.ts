@@ -57,6 +57,9 @@ const mockConfigManager = {
   saveConfig: jest.fn().mockResolvedValue(undefined),
   toggleUploadOnSave: jest.fn().mockResolvedValue(true),
   toggleFileDateGuard: jest.fn().mockResolvedValue(false),
+  toggleBackupBeforeOverwrite: jest.fn().mockResolvedValue(true),
+  setBackupRetentionDays: jest.fn().mockResolvedValue(undefined),
+  setBackupMaxSizeMB: jest.fn().mockResolvedValue(undefined),
 } as unknown as ProjectConfigManager;
 
 describe('ProjectSettingsPanel', () => {
@@ -115,5 +118,38 @@ describe('ProjectSettingsPanel', () => {
     // Now creating again should make a new panel
     ProjectSettingsPanel.createOrShow(mockContext, { configManager: mockConfigManager });
     expect(vscode.window.createWebviewPanel).toHaveBeenCalledTimes(2);
+  });
+
+  it('handles toggleBackupBeforeOverwrite: calls manager and posts configUpdated', async () => {
+    (mockConfigManager.toggleBackupBeforeOverwrite as jest.Mock).mockResolvedValue(true);
+    (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({ ...configFixture, backupBeforeOverwrite: true });
+    ProjectSettingsPanel.createOrShow(mockContext, { configManager: mockConfigManager });
+    await messageHandler({ command: 'toggleBackupBeforeOverwrite' });
+    expect(mockConfigManager.toggleBackupBeforeOverwrite).toHaveBeenCalled();
+    expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      command: 'configUpdated',
+    }));
+  });
+
+  it('handles setBackupRetentionDays: calls manager and posts configUpdated', async () => {
+    (mockConfigManager.setBackupRetentionDays as jest.Mock).mockResolvedValue(undefined);
+    (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({ ...configFixture, backupRetentionDays: 14 });
+    ProjectSettingsPanel.createOrShow(mockContext, { configManager: mockConfigManager });
+    await messageHandler({ command: 'setBackupRetentionDays', value: 14 });
+    expect(mockConfigManager.setBackupRetentionDays).toHaveBeenCalledWith(14);
+    expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      command: 'configUpdated',
+    }));
+  });
+
+  it('handles setBackupMaxSizeMB: calls manager and posts configUpdated', async () => {
+    (mockConfigManager.setBackupMaxSizeMB as jest.Mock).mockResolvedValue(undefined);
+    (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({ ...configFixture, backupMaxSizeMB: 200 });
+    ProjectSettingsPanel.createOrShow(mockContext, { configManager: mockConfigManager });
+    await messageHandler({ command: 'setBackupMaxSizeMB', value: 200 });
+    expect(mockConfigManager.setBackupMaxSizeMB).toHaveBeenCalledWith(200);
+    expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      command: 'configUpdated',
+    }));
   });
 });

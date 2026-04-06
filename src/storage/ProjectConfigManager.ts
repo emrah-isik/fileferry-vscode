@@ -104,4 +104,23 @@ export class ProjectConfigManager {
     await this.saveConfig(config);
     return config.fileDateGuard;
   }
+
+  async toggleBackupBeforeOverwrite(): Promise<boolean> {
+    const config = (await this.getConfig()) ?? this.emptyConfig();
+    config.backupBeforeOverwrite = !config.backupBeforeOverwrite;
+    await this.saveConfig(config);
+    return config.backupBeforeOverwrite;
+  }
+
+  async setBackupRetentionDays(days: number): Promise<void> {
+    const config = (await this.getConfig()) ?? this.emptyConfig();
+    config.backupRetentionDays = days;
+    await this.saveConfig(config);
+  }
+
+  async setBackupMaxSizeMB(mb: number): Promise<void> {
+    const config = (await this.getConfig()) ?? this.emptyConfig();
+    config.backupMaxSizeMB = mb;
+    await this.saveConfig(config);
+  }
 }
