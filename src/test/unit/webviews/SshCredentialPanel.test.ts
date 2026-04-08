@@ -3,10 +3,10 @@ import { SshCredentialPanel } from '../../../ui/webviews/SshCredentialPanel';
 import type { CredentialManager } from '../../../storage/CredentialManager';
 import type { ProjectConfigManager } from '../../../storage/ProjectConfigManager';
 
-jest.mock('../../../sftpService');
+jest.mock('../../../transferServiceFactory');
 jest.mock('fs/promises', () => ({ stat: jest.fn() }));
 
-import { SftpService } from '../../../sftpService';
+import { createTransferService } from '../../../transferServiceFactory';
 import * as fs from 'fs/promises';
 const mockStat = fs.stat as jest.Mock;
 
@@ -83,6 +83,16 @@ describe('SshCredentialPanel message handling', () => {
     mockStat.mockResolvedValue({ mode: 0o100600 }); // 600 by default
     (DeploymentSettingsPanel_reset as any)();
     (SshCredentialPanel as any).currentPanel = undefined;
+  });
+
+  it('creates panel with generic title "Credentials" (not SSH-specific)', () => {
+    SshCredentialPanel.createOrShow(mockContext, deps());
+    expect(vscode.window.createWebviewPanel).toHaveBeenCalledWith(
+      expect.anything(),
+      'FileFerry: Credentials',
+      expect.anything(),
+      expect.anything()
+    );
   });
 
   it('init message contains credentials without password or passphrase fields', async () => {
@@ -172,7 +182,7 @@ describe('SshCredentialPanel message handling', () => {
 
   it('testConnection temporarily assembles credential with provided password and tests', async () => {
     const mockConnect = jest.fn().mockResolvedValue(undefined);
-    (SftpService as jest.Mock).mockImplementation(() => ({
+    (createTransferService as jest.Mock).mockImplementation(() => ({
       connect: mockConnect,
       disconnect: jest.fn().mockResolvedValue(undefined),
     }));
@@ -195,7 +205,7 @@ describe('SshCredentialPanel message handling', () => {
 
   it('testConnection with blank password fetches stored secret from keychain', async () => {
     const mockConnect = jest.fn().mockResolvedValue(undefined);
-    (SftpService as jest.Mock).mockImplementation(() => ({
+    (createTransferService as jest.Mock).mockImplementation(() => ({
       connect: mockConnect,
       disconnect: jest.fn().mockResolvedValue(undefined),
     }));
@@ -218,7 +228,7 @@ describe('SshCredentialPanel message handling', () => {
   });
 
   it('testConnection does not persist any changes to storage', async () => {
-    (SftpService as jest.Mock).mockImplementation(() => ({
+    (createTransferService as jest.Mock).mockImplementation(() => ({
       connect: jest.fn().mockResolvedValue(undefined),
       disconnect: jest.fn().mockResolvedValue(undefined),
     }));

@@ -100,7 +100,7 @@ export function validateProjectServer(
   }
 
   if (!server.credentialId) {
-    errors.push({ field: 'credentialId', message: 'SSH Credential must be selected' });
+    errors.push({ field: 'credentialId', message: 'Credential must be selected' });
   } else if (!existingCredentials.some(c => c.id === server.credentialId)) {
     errors.push({ field: 'credentialId', message: 'Selected credential no longer exists' });
   }

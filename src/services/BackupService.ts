@@ -1,5 +1,6 @@
 import * as path from 'path';
 import * as fsPromises from 'fs/promises';
+import { TransferService } from '../transferService';
 import { SftpService } from '../sftpService';
 import { SshCredentialWithSecret } from '../models/SshCredential';
 import { ResolvedUploadItem } from '../path/PathResolver';
@@ -7,7 +8,7 @@ import { ResolvedUploadItem } from '../path/PathResolver';
 const BACKUP_DIR = path.join('.vscode', 'fileferry-backups');
 
 export class BackupService {
-  constructor(private readonly sftp: SftpService = new SftpService()) {}
+  constructor(private readonly sftp: TransferService = new SftpService()) {}
 
   async backup(
     items: ResolvedUploadItem[],

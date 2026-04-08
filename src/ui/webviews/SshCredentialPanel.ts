@@ -3,7 +3,7 @@ import * as fs from 'fs/promises';
 import { randomBytes } from 'crypto';
 import { CredentialManager } from '../../storage/CredentialManager';
 import { ProjectConfigManager } from '../../storage/ProjectConfigManager';
-import { SftpService } from '../../sftpService';
+import { createTransferService } from '../../transferServiceFactory';
 import { generateId } from '../../utils/uuid';
 import { SshCredential, SshCredentialWithSecret } from '../../models/SshCredential';
 import { validateSshCredential } from '../../utils/validation';
@@ -30,7 +30,7 @@ export class SshCredentialPanel {
 
     const panel = vscode.window.createWebviewPanel(
       'fileferryCredentials',
-      'FileFerry: SSH Credentials',
+      'FileFerry: Credentials',
       column,
       {
         enableScripts: true,
@@ -196,10 +196,10 @@ export class SshCredentialPanel {
       passphrase: resolvedPassphrase,
     };
 
-    const sftp = new SftpService();
+    const service = createTransferService('sftp');
     try {
-      await sftp.connect(tempCredential as any, { password: tempCredential.password, passphrase: tempCredential.passphrase });
-      await sftp.disconnect();
+      await service.connect(tempCredential as any, { password: tempCredential.password, passphrase: tempCredential.passphrase });
+      await service.disconnect();
       this.panel.webview.postMessage({ command: 'testResult', success: true, message: 'Connected successfully' });
     } catch (err: unknown) {
       this.panel.webview.postMessage({
@@ -266,7 +266,7 @@ export class SshCredentialPanel {
   <meta http-equiv="Content-Security-Policy"
     content="default-src 'none'; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
   <link rel="stylesheet" href="${styleUri}">
-  <title>FileFerry: SSH Credentials</title>
+  <title>FileFerry: Credentials</title>
 </head>
 <body>
   <div id="app">

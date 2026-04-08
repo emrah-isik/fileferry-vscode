@@ -1,16 +1,16 @@
 import * as vscode from 'vscode';
-import { SftpService } from '../sftpService';
+import { TransferService, FileEntry } from '../transferService';
+import { createTransferService } from '../transferServiceFactory';
 import { CredentialManager } from '../storage/CredentialManager';
 import { ProjectConfigManager } from '../storage/ProjectConfigManager';
 import { ServerConfig } from '../types';
 import { HostKeyManager } from '../ssh/HostKeyManager';
 import { showHostKeyPrompt } from '../ssh/hostKeyPrompt';
-import SftpClient from 'ssh2-sftp-client';
 
 const IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
 export class RemoteBrowserConnection {
-  private sftp: SftpService;
+  private sftp: TransferService;
   private hostKeyManager: HostKeyManager;
   private currentServerId: string | null = null;
   private currentRootPath: string = '/';
@@ -25,7 +25,7 @@ export class RemoteBrowserConnection {
     private readonly output: vscode.OutputChannel,
     globalStoragePath: string
   ) {
-    this.sftp = new SftpService();
+    this.sftp = createTransferService('sftp');
     this.hostKeyManager = new HostKeyManager(globalStoragePath);
   }
 
@@ -52,6 +52,9 @@ export class RemoteBrowserConnection {
       await this.sftp.disconnect();
     }
 
+    // Create the correct service type for this server
+    this.sftp = createTransferService(server.type);
+
     const credential = await this.credentialManager.getWithSecret(server.credentialId);
 
     const serverConfig: ServerConfig = {
@@ -67,15 +70,14 @@ export class RemoteBrowserConnection {
       excludedPaths: [],
     };
 
-    const hostKeyMgr = this.hostKeyManager;
-    const host = credential.host;
-    const port = credential.port;
-
-    await this.sftp.connect(serverConfig, {
-      password: credential.password,
-      passphrase: credential.passphrase,
-    }, {
+    // Host key verification only applies to SSH-based connections (SFTP).
+    // FTP/FTPS use TLS certificates, not SSH host keys.
+    const isSsh = server.type === 'sftp';
+    const connectOptions = isSsh ? {
       hostVerifier: async (key: Buffer | string) => {
+        const hostKeyMgr = this.hostKeyManager;
+        const host = credential.host;
+        const port = credential.port;
         const keyBase64 = Buffer.isBuffer(key) ? key.toString('base64') : key;
         const status = await hostKeyMgr.check(host, port, 'ssh-unknown', keyBase64);
 
@@ -91,21 +93,26 @@ export class RemoteBrowserConnection {
         }
         return accepted;
       },
-    });
+    } : undefined;
+
+    await this.sftp.connect(serverConfig, {
+      password: credential.password,
+      passphrase: credential.passphrase,
+    }, connectOptions);
 
     this.currentServerId = server.id;
     this.currentRootPath = server.rootPath;
     this.output.appendLine(`[remote-browser] Connected to ${serverName} (${credential.host})`);
   }
 
-  async listDirectory(remotePath: string): Promise<SftpClient.FileInfo[]> {
+  async listDirectory(remotePath: string): Promise<FileEntry[]> {
     await this.ensureConnected();
     this.resetIdleTimer();
     return this.sftp.listDirectoryDetailed(remotePath);
   }
 
   async resolveSymlinkTargets(
-    entries: SftpClient.FileInfo[],
+    entries: FileEntry[],
     parentPath: string
   ): Promise<Map<string, 'd' | '-' | null>> {
     const result = new Map<string, 'd' | '-' | null>();

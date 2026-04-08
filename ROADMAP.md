@@ -1,23 +1,12 @@
 # FileFerry Roadmap
 
-## Current — v0.3
+## Current — v0.6
 
-- Everything in v0.2.1, plus:
-- Modern OpenSSH algorithm support (rsa-sha2-256 / rsa-sha2-512)
-- PEM key support (`.pem` files — common for AWS EC2)
-- Host key verification warning
-- SSH agent support (system agent + 1Password SSH agent)
-- Keyboard-interactive auth (2FA / challenge-response)
-
-## In Progress — v0.4 — Upload Reliability
-
-- **Cancel all transfers** — cancellable progress notification with token forwarding
-- **Folder upload** — recursive directory expansion from Explorer context menu
-- **Upload on save** — auto-deploy with gitignore respect, status bar menu toggle
-- **Editor keybindings** — `Alt+U` to upload, `Alt+P` to compare with remote from the editor
-- **Atomic upload** — temp file + rename prevents partial file states
-- **Ignore patterns** — gitignore-style glob exclusions with force-upload prompt
-- File date guard (warn if remote file is newer than local)
+- Everything in v0.5, plus:
+- Symlink directory support in the Remote File Browser and directory picker
+- FTP / FTPS support (plain FTP, explicit TLS, implicit TLS)
+- Protocol-agnostic TransferService abstraction — all features work across SFTP and FTP
+- Credential filtering — FTP protocols only show password-auth credentials
 
 ---
 
@@ -46,17 +35,17 @@
 
 ## Upcoming
 
-### v0.5 — Multi-Target & Remote Operations
+### v0.5 — Multi-Target & Remote Operations (shipped)
 
-- Project-scoped server configs — servers defined per-project in `fileferry.json`, so teammates can share server setups without extra configuration. Credentials stay secure in your OS keychain.
+- Project-scoped server configs — servers defined per-project in `fileferry.json`
 - Push to multiple servers simultaneously (dev + staging + prod in one action)
-- Test connection command
+- Project settings UI for per-project toggles
 - Backup before overwrite (download remote version before replacing)
 
-### v0.6 — Protocol & Filesystem
+### v0.6 — Protocol & Filesystem (shipped)
 
-- Symlink and hidden file support
-- FTP / FTPS support
+- Symlink directory support in Remote File Browser
+- FTP / FTPS support (plain FTP, explicit TLS, implicit TLS)
 
 ### v0.7 — SSH Power Features
 

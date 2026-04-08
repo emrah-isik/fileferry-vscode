@@ -3,7 +3,7 @@ import * as path from 'path';
 import { randomBytes } from 'crypto';
 import { CredentialManager } from '../../storage/CredentialManager';
 import { ProjectConfigManager } from '../../storage/ProjectConfigManager';
-import { SftpService } from '../../sftpService';
+import { createTransferService } from '../../transferServiceFactory';
 import { generateId } from '../../utils/uuid';
 import { ProjectServer } from '../../models/ProjectConfig';
 import { validateProjectServer, validateMappings } from '../../utils/validation';
@@ -141,7 +141,7 @@ export class DeploymentSettingsPanel {
       }
 
       case 'browseDirectory':
-        await this.handleBrowseDirectory(msg.credentialId, msg.startPath ?? '/');
+        await this.handleBrowseDirectory(msg.credentialId, msg.startPath ?? '/', msg.serverType);
         break;
 
       case 'openCredentials':
@@ -252,10 +252,22 @@ export class DeploymentSettingsPanel {
     }
 
     const credential = await this.dependencies.credentialManager.getWithSecret(entry.server.credentialId);
-    const sftp = new SftpService();
+
+    // FTP/FTPS only supports password authentication
+    const isFtp = entry.server.type !== 'sftp';
+    if (isFtp && credential.authMethod !== 'password') {
+      this.panel.webview.postMessage({
+        command: 'testResult',
+        success: false,
+        message: 'FTP/FTPS only supports password authentication. Change the credential auth method to "Password".',
+      });
+      return;
+    }
+
+    const service = createTransferService(entry.server.type);
     try {
-      await sftp.connect(credential as any, { password: credential.password, passphrase: credential.passphrase });
-      await sftp.disconnect();
+      await service.connect(credential as any, { password: credential.password, passphrase: credential.passphrase });
+      await service.disconnect();
       this.panel.webview.postMessage({ command: 'testResult', success: true, message: 'Connected successfully' });
     } catch (err: unknown) {
       this.panel.webview.postMessage({
@@ -302,7 +314,7 @@ export class DeploymentSettingsPanel {
 </html>`;
   }
 
-  private async handleBrowseDirectory(credentialId: string, startPath: string): Promise<void> {
+  private async handleBrowseDirectory(credentialId: string, startPath: string, serverType?: string): Promise<void> {
     let credential;
     try {
       credential = await this.dependencies.credentialManager.getWithSecret(credentialId);
@@ -311,7 +323,7 @@ export class DeploymentSettingsPanel {
       return;
     }
 
-    const sftp = new SftpService();
+    const sftp = createTransferService((serverType as any) ?? 'sftp');
     try {
       await sftp.connect(credential as any, { password: credential.password, passphrase: credential.passphrase });
     } catch (err: unknown) {

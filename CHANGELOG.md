@@ -2,6 +2,16 @@
 
 All notable changes to FileFerry will be documented in this file.
 
+## [0.6.0] - 2026-04-08
+
+### Added
+
+- **FTP / FTPS support** — deploy over plain FTP, FTPS with explicit TLS, or FTPS with implicit TLS. Protocol-agnostic `TransferService` interface lets all existing features (upload, browse, compare, backup, file date guard) work identically across SFTP and FTP
+- **Protocol selection in Deployment Settings** — new dropdown with four options: SFTP, FTP, FTPS (Explicit TLS), FTPS (Implicit TLS). Credential dropdown filters to password-only credentials when an FTP protocol is selected
+- **Atomic FTP upload** — FTP uploads use temp file + rename, matching the existing SFTP atomic upload behavior
+
+---
+
 ## [0.5.0] - 2026-04-07
 
 ### Added

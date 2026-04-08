@@ -2,7 +2,7 @@ import * as path from 'path';
 import * as fs from 'fs/promises';
 import * as crypto from 'crypto';
 import { ServerConfig } from './types';
-import { SftpService } from './sftpService';
+import { TransferService } from './transferService';
 
 // DiffService downloads the remote version of a file to a local temp directory
 // so VSCode's built-in diff editor can compare it against the local copy.
@@ -13,7 +13,7 @@ import { SftpService } from './sftpService';
 
 export class DiffService {
   constructor(
-    private readonly sftpService: SftpService,
+    private readonly sftpService: TransferService,
     private readonly tempDir: string
   ) {}
 

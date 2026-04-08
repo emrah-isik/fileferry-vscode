@@ -1,6 +1,6 @@
 # FileFerry Architecture
 
-This document covers the six key design decisions that shape FileFerry's codebase.
+This document covers the seven key design decisions that shape FileFerry's codebase.
 
 ---
 
@@ -158,3 +158,35 @@ class DeploymentSettingsPanel {
 **Cross-panel navigation**: The "Manage Credentials" button in Deployment Settings sends `{ command: 'openCredentials' }` to the extension, which calls `vscode.commands.executeCommand('fileferry.openCredentials')`. This keeps the two panels decoupled — neither panel holds a reference to the other.
 
 **`retainContextWhenHidden: true`**: All three panels keep their JavaScript state alive when the tab is hidden. This preserves in-progress form edits when the user briefly switches tabs.
+
+---
+
+## 7. TransferService Abstraction
+
+FileFerry supports multiple protocols (SFTP, FTP, FTPS) through a shared `TransferService` interface:
+
+```typescript
+interface TransferService {
+  readonly connected: boolean;
+  connect(server, credentials, options?): Promise<void>;
+  uploadFile(localPath, remotePath): Promise<void>;
+  get(remotePath): Promise<Buffer>;
+  listDirectory(remotePath): Promise<Array<{ name: string; type: string }>>;
+  listDirectoryDetailed(remotePath): Promise<FileEntry[]>;
+  resolveRemotePath(remotePath): Promise<string>;
+  statType(remotePath): Promise<'d' | '-' | null>;
+  stat(remotePath): Promise<{ mtime: Date } | null>;
+  deleteFile(remotePath): Promise<void>;
+  deleteDirectory(remotePath): Promise<void>;
+  disconnect(): Promise<void>;
+}
+```
+
+**Implementations**: `SftpService` wraps `ssh2-sftp-client` for SSH-based transfers. `FtpService` wraps `basic-ftp` for plain FTP, FTPS with explicit TLS, and FTPS with implicit TLS.
+
+**Factory**: `createTransferService(type: ServerType)` returns the correct implementation based on the server's protocol type. All consumers (upload orchestrator, backup service, file date guard, diff service, remote browser) use this factory instead of instantiating a specific service directly.
+
+**Protocol-specific constraints**:
+- FTP/FTPS only supports password authentication. The Deployment Settings webview filters the credential dropdown to password-only credentials when an FTP protocol is selected. The backend also validates this before connecting.
+- Host key verification only applies to SFTP connections. FTP/FTPS connections skip the `hostVerifier` option.
+- `FileEntry` is a protocol-agnostic type (`{ name, type, size, modifyTime }`) that replaces the ssh2-specific `SftpClient.FileInfo` across the codebase.

@@ -1,6 +1,6 @@
 import { PathMapping } from './ProjectBinding';
 
-export type ServerType = 'sftp' | 'ftp';
+export type ServerType = 'sftp' | 'ftp' | 'ftps' | 'ftps-implicit';
 
 export interface ProjectServer {
   id: string;              // internal UUID — stable across renames

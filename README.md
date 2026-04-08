@@ -4,7 +4,7 @@
 
 Fast remote file deployment and management for VS Code.
 
-FileFerry lets you upload, download, browse, compare, and manage files between your local workspace and remote servers over **SFTP** or **FTP**, without leaving the editor.
+FileFerry lets you upload, download, browse, compare, and manage files between your local workspace and remote servers over **SFTP**, **FTP**, or **FTPS**, without leaving the editor.
 
 If you came from PhpStorm and miss its deployment workflow, FileFerry gives you exactly that experience: right-click changed files in the SCM panel, press `Alt+U`, done.
 
@@ -62,9 +62,9 @@ It works well for:
 
 ### Credentials
 
-- **SSH Credentials Manager** — add credentials once, reuse across projects
+- **Credentials Manager** — add credentials once, reuse across projects. Supports password, private key, SSH agent, and keyboard-interactive auth
 - **OS keychain security** — passwords and passphrases stored in macOS Keychain / Windows Credential Manager / Linux libsecret. Never written to disk
-- **SSH agent support** — works with system agent and 1Password SSH agent
+- **SSH agent support** — works with system agent and 1Password SSH agent (SFTP only)
 - **Servers panel** — see all configured servers at a glance. Active server shows a filled circle; click any server to switch
 
 ---
@@ -74,7 +74,7 @@ It works well for:
 1. Install FileFerry from the marketplace
 2. Open a project with a `.git` folder
 3. Open **Deployment Settings**: `Ctrl+Shift+P` → `FileFerry: Deployment Settings`
-4. Add a Credential (click **Manage...** next to the credential dropdown). SFTP with SSH keys is recommended
+4. Add a Credential (click **Manage...** next to the credential dropdown). For SFTP, SSH keys are recommended. For FTP/FTPS, use password authentication
 5. Add a Deployment Server and configure path mappings
 6. Press `Alt+U` in the Source Control panel to upload selected files — or right-click → **FileFerry: Upload**
 7. Click the **FileFerry icon** in the activity bar to browse remote files and manage servers
@@ -94,8 +94,8 @@ Two-panel layout — server list on the left, details on the right.
 | Field | Description |
 | ----- | ----------- |
 | Name | Display name for this server |
-| Protocol | SFTP (recommended) or FTP |
-| SSH Credential | Pick from your saved credentials |
+| Protocol | SFTP (recommended), FTP, FTPS (Explicit TLS), or FTPS (Implicit TLS) |
+| Credential | Pick from your saved credentials. FTP/FTPS protocols only show password-auth credentials |
 | Root Path | Base path on the remote server (e.g. `/var/www`) |
 
 #### Mappings tab
@@ -109,7 +109,7 @@ Optionally override the root path for this project only, then add rows to map lo
 
 More specific paths (longer prefix) take priority. If no mappings are configured, all files map directly to the server root. Excluded Paths accepts comma-separated glob patterns — e.g. `node_modules, *.log, .env`.
 
-### SSH Credentials (`Ctrl+Shift+P` → `FileFerry: Manage SSH Credentials`)
+### Credentials (`Ctrl+Shift+P` → `FileFerry: Manage SSH Credentials`)
 
 | Auth Method | Extra Fields | Secret Storage |
 | ----------- | ------------ | -------------- |
@@ -237,7 +237,7 @@ Before using it on a real server:
 - `.vscode/fileferry.json` contains no secrets and is safe to commit
 - Webview panels receive credential lists **without** secret fields — passwords only travel to the extension on explicit Save/Test actions
 - Private key file permission check warns when key is world-readable (`644` instead of `600`)
-- **SFTP is strongly recommended.** FTP is less secure and may expose credentials or file contents on untrusted networks
+- **SFTP is strongly recommended.** FTP transmits credentials and files in plaintext. Use FTPS (explicit or implicit TLS) if SFTP is not available. Plain FTP should only be used on trusted networks
 
 ---
 

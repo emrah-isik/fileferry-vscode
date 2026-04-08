@@ -1,10 +1,11 @@
 import * as fs from 'fs';
+import { TransferService } from '../transferService';
 import { SftpService } from '../sftpService';
 import { SshCredentialWithSecret } from '../models/SshCredential';
 import { ResolvedUploadItem } from '../path/PathResolver';
 
 export class FileDateGuard {
-  constructor(private readonly sftp: SftpService = new SftpService()) {}
+  constructor(private readonly sftp: TransferService = new SftpService()) {}
 
   async check(
     items: ResolvedUploadItem[],

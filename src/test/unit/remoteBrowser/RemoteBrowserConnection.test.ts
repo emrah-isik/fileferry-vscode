@@ -1,11 +1,12 @@
 import { RemoteBrowserConnection } from '../../../remoteBrowser/RemoteBrowserConnection';
-import { SftpService } from '../../../sftpService';
 import { HostKeyManager } from '../../../ssh/HostKeyManager';
 import * as hostKeyPrompt from '../../../ssh/hostKeyPrompt';
 
-jest.mock('../../../sftpService');
+jest.mock('../../../transferServiceFactory');
 jest.mock('../../../ssh/HostKeyManager');
 jest.mock('../../../ssh/hostKeyPrompt');
+
+import { createTransferService } from '../../../transferServiceFactory';
 
 const mockSftp = {
   connect: jest.fn(),
@@ -18,7 +19,7 @@ const mockSftp = {
   connected: false,
 };
 
-(SftpService as jest.Mock).mockImplementation(() => mockSftp);
+(createTransferService as jest.Mock).mockReturnValue(mockSftp);
 
 const mockCredentialManager = {
   getWithSecret: jest.fn(),
@@ -299,6 +300,52 @@ describe('RemoteBrowserConnection', () => {
 
       await connection.ensureConnected();
       expect(connection.getRootPath()).toBe('/home/deploy/myapp');
+    });
+  });
+
+  describe('protocol-aware connection', () => {
+    it('creates transfer service matching the server type for FTP', async () => {
+      const ftpServer = { ...fakeServer, id: 'server-ftp', type: 'ftp' as const };
+      const ftpConfig = { defaultServerId: 'server-ftp', servers: { 'FTP Server': ftpServer } };
+      mockConfigManager.getConfig.mockResolvedValue(ftpConfig);
+      mockConfigManager.getServerById.mockResolvedValue({ name: 'FTP Server', server: ftpServer });
+      (createTransferService as jest.Mock).mockClear();
+      await connection.ensureConnected();
+      expect(createTransferService).toHaveBeenCalledWith('ftp');
+    });
+
+    it('creates transfer service matching the server type for FTPS', async () => {
+      const ftpsServer = { ...fakeServer, id: 'server-ftps', type: 'ftps' as const };
+      const ftpsConfig = { defaultServerId: 'server-ftps', servers: { 'FTPS Server': ftpsServer } };
+      mockConfigManager.getConfig.mockResolvedValue(ftpsConfig);
+      mockConfigManager.getServerById.mockResolvedValue({ name: 'FTPS Server', server: ftpsServer });
+      (createTransferService as jest.Mock).mockClear();
+      await connection.ensureConnected();
+      expect(createTransferService).toHaveBeenCalledWith('ftps');
+    });
+  });
+
+  describe('FTP skips host key verification', () => {
+    it('does not pass hostVerifier for FTP connections', async () => {
+      const ftpServer = { ...fakeServer, id: 'server-ftp', type: 'ftp' as const };
+      const ftpConfig = { defaultServerId: 'server-ftp', servers: { 'FTP Server': ftpServer } };
+      mockConfigManager.getConfig.mockResolvedValue(ftpConfig);
+      mockConfigManager.getServerById.mockResolvedValue({ name: 'FTP Server', server: ftpServer });
+      await connection.ensureConnected();
+      const connectCall = mockSftp.connect.mock.calls[mockSftp.connect.mock.calls.length - 1];
+      const options = connectCall[2];
+      expect(options?.hostVerifier).toBeUndefined();
+    });
+
+    it('does not pass hostVerifier for FTPS connections', async () => {
+      const ftpsServer = { ...fakeServer, id: 'server-ftps', type: 'ftps' as const };
+      const ftpsConfig = { defaultServerId: 'server-ftps', servers: { 'FTPS Server': ftpsServer } };
+      mockConfigManager.getConfig.mockResolvedValue(ftpsConfig);
+      mockConfigManager.getServerById.mockResolvedValue({ name: 'FTPS Server', server: ftpsServer });
+      await connection.ensureConnected();
+      const connectCall = mockSftp.connect.mock.calls[mockSftp.connect.mock.calls.length - 1];
+      const options = connectCall[2];
+      expect(options?.hostVerifier).toBeUndefined();
     });
   });
 

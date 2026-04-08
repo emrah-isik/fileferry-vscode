@@ -1,5 +1,5 @@
 export type AuthMethod = 'password' | 'key' | 'agent' | 'keyboard-interactive';
-export type ServerType = 'sftp' | 'ftp';
+export type ServerType = 'sftp' | 'ftp' | 'ftps' | 'ftps-implicit';
 export type GitStatus = 'modified' | 'added' | 'deleted' | 'renamed' | 'untracked' | 'copied';
 
 export interface PathMapping {

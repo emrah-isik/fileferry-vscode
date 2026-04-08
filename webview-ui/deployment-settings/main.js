@@ -93,6 +93,35 @@ function escapeHtml(str) {
     .replace(/"/g, '&quot;');
 }
 
+function isFtpType(type) {
+  return type === 'ftp' || type === 'ftps' || type === 'ftps-implicit';
+}
+
+function buildCredentialOptions(serverType, selectedCredentialId) {
+  const isFtp = isFtpType(serverType);
+  const filtered = isFtp
+    ? state.credentials.filter(c => c.authMethod === 'password')
+    : state.credentials;
+  return `
+    <option value="">\u2014 Select credential \u2014</option>
+    ${filtered.map(c => `
+      <option value="${escapeHtml(c.id)}" ${selectedCredentialId === c.id ? 'selected' : ''}>
+        ${escapeHtml(c.name)} (${escapeHtml(c.username)}@${escapeHtml(c.host)})
+      </option>
+    `).join('')}
+  `;
+}
+
+function updateProtocolHint(type) {
+  const el = document.getElementById('protocol-hint');
+  if (!el) return;
+  if (isFtpType(type)) {
+    el.textContent = 'FTP/FTPS only supports password authentication. Default port: ' + (type === 'ftps-implicit' ? '990' : '21');
+  } else {
+    el.textContent = '';
+  }
+}
+
 function setBrowseLoading(loading) {
   const btn = document.getElementById('btn-browse-root');
   if (!btn) return;
@@ -232,21 +261,19 @@ function renderConnectionTab(server) {
       <select id="f-type">
         <option value="sftp" ${server.type === 'sftp' ? 'selected' : ''}>SFTP</option>
         <option value="ftp" ${server.type === 'ftp' ? 'selected' : ''}>FTP</option>
+        <option value="ftps" ${server.type === 'ftps' ? 'selected' : ''}>FTPS (Explicit TLS)</option>
+        <option value="ftps-implicit" ${server.type === 'ftps-implicit' ? 'selected' : ''}>FTPS (Implicit TLS)</option>
       </select>
+      <span class="field-hint" id="protocol-hint"></span>
     </div>
 
     <div class="form-group">
       <label for="f-credential">
-        SSH Credential
+        Credential
         <button id="btn-manage-creds" class="btn-inline-link" type="button">Manage\u2026</button>
       </label>
       <select id="f-credential">
-        <option value="">\u2014 Select credential \u2014</option>
-        ${state.credentials.map(c => `
-          <option value="${escapeHtml(c.id)}" ${server.credentialId === c.id ? 'selected' : ''}>
-            ${escapeHtml(c.name)} (${escapeHtml(c.username)}@${escapeHtml(c.host)})
-          </option>
-        `).join('')}
+        ${buildCredentialOptions(server.type, server.credentialId)}
       </select>
       <span class="field-error" id="err-credential"></span>
     </div>
@@ -283,6 +310,18 @@ function renderConnectionTab(server) {
     if (errEl) errEl.textContent = '';
   });
 
+  // Show protocol hint on initial render
+  updateProtocolHint(server.type);
+
+  document.getElementById('f-type')?.addEventListener('change', (e) => {
+    const newType = e.target.value;
+    updateProtocolHint(newType);
+    // Re-filter credential dropdown for the new protocol
+    const credSelect = document.getElementById('f-credential');
+    const currentCredId = credSelect.value;
+    credSelect.innerHTML = buildCredentialOptions(newType, currentCredId);
+  });
+
   document.getElementById('f-credential')?.addEventListener('change', () => {
     const errEl = document.getElementById('err-credential');
     if (errEl) errEl.textContent = '';
@@ -297,8 +336,9 @@ function renderConnectionTab(server) {
     }
     if (errEl) errEl.textContent = '';
     const currentRoot = document.getElementById('f-root-path').value || '/';
+    const serverType = document.getElementById('f-type').value;
     setBrowseLoading(true);
-    vscode.postMessage({ command: 'browseDirectory', credentialId, startPath: currentRoot });
+    vscode.postMessage({ command: 'browseDirectory', credentialId, startPath: currentRoot, serverType });
   });
 
   document.getElementById('btn-manage-creds')?.addEventListener('click', () => {

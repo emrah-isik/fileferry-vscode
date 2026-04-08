@@ -101,7 +101,7 @@ function renderList() {
 
   el.innerHTML = `
     <div class="panel-header">
-      <span>SSH Credentials</span>
+      <span>Credentials</span>
       <button id="add-btn" title="Add credential">+</button>
     </div>
     <ul class="server-list">

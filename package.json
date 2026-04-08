@@ -383,6 +383,7 @@
     "webpack-cli": "^7.0.2"
   },
   "dependencies": {
+    "basic-ftp": "^5.2.0",
     "minimatch": "^10.2.4",
     "ssh2-sftp-client": "^12.1.1"
   }

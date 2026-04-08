@@ -1,4 +1,5 @@
 import type { CancellationToken } from 'vscode';
+import { TransferService } from '../transferService';
 import { SftpService } from '../sftpService';
 import { SshCredentialWithSecret } from '../models/SshCredential';
 import { ResolvedUploadItem } from '../path/PathResolver';
@@ -12,7 +13,7 @@ export interface UploadSummaryV2 {
 }
 
 export class UploadOrchestratorV2 {
-  constructor(private readonly sftp: SftpService = new SftpService()) {}
+  constructor(private readonly sftp: TransferService = new SftpService()) {}
 
   async upload(
     items: ResolvedUploadItem[],

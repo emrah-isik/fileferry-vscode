@@ -4,6 +4,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { ServerConfig, UploadPair, UploadResult } from './types';
 import { resolveAgentSocket } from './ssh/agentResolver';
+import { TransferService } from './transferService';
 
 // Default algorithms that ensure compatibility with modern OpenSSH 8.8+ servers.
 // ssh2 1.17.0 supports these natively — we set them explicitly so they can't be
@@ -46,7 +47,7 @@ const DEFAULT_ALGORITHMS = {
   ],
 };
 
-export class SftpService {
+export class SftpService implements TransferService {
   private client: SftpClient | null = null;
 
   get connected(): boolean {

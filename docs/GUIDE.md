@@ -26,17 +26,20 @@ For a quick overview, see the [README](../README.md).
 
 ## Getting Started
 
-### 1. Create an SSH Credential
+### 1. Create a Credential
 
 Open the command palette (`Ctrl+Shift+P`) and run `FileFerry: Manage SSH Credentials`.
 
 Click **Add Credential** and fill in the details:
 
-| Auth Method | What you need |
-| --- | --- |
-| Password | Host, port, username, password |
-| Private Key | Host, port, username, path to key file, passphrase (optional) |
-| SSH Agent | Host, port, username (uses your running `ssh-agent`) |
+| Auth Method | What you need | Protocols |
+| --- | --- | --- |
+| Password | Host, port, username, password | SFTP, FTP, FTPS |
+| Private Key | Host, port, username, path to key file, passphrase (optional) | SFTP only |
+| SSH Agent | Host, port, username (uses your running `ssh-agent`) | SFTP only |
+| Keyboard Interactive | Host, port, username (server sends 2FA challenges) | SFTP only |
+
+**FTP/FTPS note:** FTP and FTPS protocols only support password authentication. When you select an FTP protocol in Deployment Settings, the credential dropdown automatically filters to show only password-auth credentials.
 
 Passwords and passphrases are stored in your OS keychain (macOS Keychain / Windows Credential Manager / Linux libsecret). They are never written to disk or included in project files.
 
@@ -47,8 +50,8 @@ Open `FileFerry: Deployment Settings` from the command palette.
 In the **Connection** tab:
 
 1. Give the server a name (e.g. "Production" or "Staging")
-2. Select **SFTP** as the protocol (recommended over FTP)
-3. Pick the credential you just created
+2. Select the protocol: **SFTP** (recommended), **FTP**, **FTPS (Explicit TLS)**, or **FTPS (Implicit TLS)**
+3. Pick the credential you just created (FTP/FTPS only shows password-auth credentials)
 4. Set the **Root Path** to the base directory on the server (e.g. `/var/www`)
 
 Click **Save**. Use **Test Connection** to verify everything works before deploying.

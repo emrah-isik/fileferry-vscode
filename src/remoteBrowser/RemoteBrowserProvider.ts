@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { RemoteFileItem, RemoteEntry } from './RemoteFileItem';
 import { RemoteBrowserConnection } from './RemoteBrowserConnection';
-import SftpClient from 'ssh2-sftp-client';
+import { FileEntry } from '../transferService';
 
 export class RemoteBrowserProvider implements vscode.TreeDataProvider<RemoteFileItem> {
   private userNavigatedPath: string | null = null;
@@ -59,7 +59,7 @@ export class RemoteBrowserProvider implements vscode.TreeDataProvider<RemoteFile
   }
 
   private async toTreeItems(
-    entries: SftpClient.FileInfo[],
+    entries: FileEntry[],
     parentPath: string
   ): Promise<RemoteFileItem[]> {
     const symlinkTargets = await this.connection.resolveSymlinkTargets(entries, parentPath);

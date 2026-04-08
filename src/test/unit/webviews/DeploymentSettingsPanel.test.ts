@@ -3,9 +3,9 @@ import { DeploymentSettingsPanel } from '../../../ui/webviews/DeploymentSettings
 import type { CredentialManager } from '../../../storage/CredentialManager';
 import type { ProjectConfigManager } from '../../../storage/ProjectConfigManager';
 
-jest.mock('../../../sftpService');
+jest.mock('../../../transferServiceFactory');
 
-import { SftpService } from '../../../sftpService';
+import { createTransferService } from '../../../transferServiceFactory';
 
 // --- Webview + panel mock setup ---
 let messageHandler: (msg: any) => void | Promise<void>;
@@ -214,7 +214,7 @@ describe('DeploymentSettingsPanel message handling', () => {
   it('handles testConnection message: calls SftpService, posts result', async () => {
     const mockConnect = jest.fn().mockResolvedValue(undefined);
     const mockDisconnect = jest.fn().mockResolvedValue(undefined);
-    (SftpService as jest.Mock).mockImplementation(() => ({
+    (createTransferService as jest.Mock).mockImplementation(() => ({
       connect: mockConnect,
       disconnect: mockDisconnect,
     }));
@@ -241,7 +241,7 @@ describe('DeploymentSettingsPanel message handling', () => {
     const serverWithNoCred = { ...serverFixture, credentialId: '' };
     (mockConfigManager.getServerById as jest.Mock).mockResolvedValue({ name: 'Production', server: serverWithNoCred });
     const mockConnect = jest.fn();
-    (SftpService as jest.Mock).mockImplementation(() => ({ connect: mockConnect, disconnect: jest.fn() }));
+    (createTransferService as jest.Mock).mockImplementation(() => ({ connect: mockConnect, disconnect: jest.fn() }));
     DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
     await messageHandler({ command: 'testConnection', serverId: 'srv-1' });
     expect(mockConnect).not.toHaveBeenCalled();
@@ -294,7 +294,7 @@ describe('DeploymentSettingsPanel message handling', () => {
       { name: 'html', type: 'd' },
       { name: 'logs', type: 'd' },
     ]);
-    (SftpService as jest.Mock).mockImplementation(() => ({
+    (createTransferService as jest.Mock).mockImplementation(() => ({
       connect: mockConnect,
       disconnect: mockDisconnect,
       listDirectory: mockListDirectory,
@@ -315,7 +315,7 @@ describe('DeploymentSettingsPanel message handling', () => {
     const mockConnect = jest.fn().mockResolvedValue(undefined);
     const mockDisconnect = jest.fn().mockResolvedValue(undefined);
     const mockListDirectory = jest.fn().mockResolvedValue([{ name: 'html', type: 'd' }]);
-    (SftpService as jest.Mock).mockImplementation(() => ({
+    (createTransferService as jest.Mock).mockImplementation(() => ({
       connect: mockConnect,
       disconnect: mockDisconnect,
       listDirectory: mockListDirectory,
@@ -333,7 +333,7 @@ describe('DeploymentSettingsPanel message handling', () => {
   it('browseDirectory: user dismisses QuickPick → no directorySelected message', async () => {
     const mockConnect = jest.fn().mockResolvedValue(undefined);
     const mockDisconnect = jest.fn().mockResolvedValue(undefined);
-    (SftpService as jest.Mock).mockImplementation(() => ({
+    (createTransferService as jest.Mock).mockImplementation(() => ({
       connect: mockConnect,
       disconnect: mockDisconnect,
       listDirectory: jest.fn().mockResolvedValue([]),
@@ -352,7 +352,7 @@ describe('DeploymentSettingsPanel message handling', () => {
       .mockRejectedValueOnce(new Error('Permission denied /'))
       .mockResolvedValue([{ name: 'html', type: 'd' }]);
     const mockResolveRemotePath = jest.fn().mockResolvedValue('/home/deploy');
-    (SftpService as jest.Mock).mockImplementation(() => ({
+    (createTransferService as jest.Mock).mockImplementation(() => ({
       connect: mockConnect,
       disconnect: mockDisconnect,
       listDirectory: mockListDirectory,
@@ -369,7 +369,7 @@ describe('DeploymentSettingsPanel message handling', () => {
   });
 
   it('browseDirectory: connection failure → posts browseError', async () => {
-    (SftpService as jest.Mock).mockImplementation(() => ({
+    (createTransferService as jest.Mock).mockImplementation(() => ({
       connect: jest.fn().mockRejectedValue(new Error('Auth failed')),
       disconnect: jest.fn().mockResolvedValue(undefined),
     }));
@@ -401,7 +401,7 @@ describe('DeploymentSettingsPanel message handling', () => {
     const mockStatType = jest.fn()
       .mockResolvedValueOnce('d')   // current -> directory
       .mockResolvedValueOnce('-');  // config.ini -> file
-    (SftpService as jest.Mock).mockImplementation(() => ({
+    (createTransferService as jest.Mock).mockImplementation(() => ({
       connect: mockConnect,
       disconnect: mockDisconnect,
       listDirectory: mockListDirectory,
@@ -444,5 +444,116 @@ describe('DeploymentSettingsPanel message handling', () => {
     DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
     expect(vscode.window.createWebviewPanel).toHaveBeenCalledTimes(1);
     expect(mockPanel.reveal).toHaveBeenCalledTimes(1);
+  });
+
+  // ── FTP/FTPS protocol support ────────────────────────────────────────────────
+
+  it('testConnection creates transfer service matching the server type', async () => {
+    const ftpServer = { ...serverFixture, type: 'ftp' as const };
+    (mockConfigManager.getServerById as jest.Mock).mockResolvedValue({ name: 'FTP Server', server: ftpServer });
+    const mockConnect = jest.fn().mockResolvedValue(undefined);
+    const mockDisconnect = jest.fn().mockResolvedValue(undefined);
+    (createTransferService as jest.Mock).mockImplementation(() => ({
+      connect: mockConnect,
+      disconnect: mockDisconnect,
+    }));
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    await messageHandler({ command: 'testConnection', serverId: 'srv-1' });
+    expect(createTransferService).toHaveBeenCalledWith('ftp');
+  });
+
+  it('testConnection creates transfer service for ftps server type', async () => {
+    const ftpsServer = { ...serverFixture, type: 'ftps' as const };
+    (mockConfigManager.getServerById as jest.Mock).mockResolvedValue({ name: 'FTPS Server', server: ftpsServer });
+    const mockConnect = jest.fn().mockResolvedValue(undefined);
+    const mockDisconnect = jest.fn().mockResolvedValue(undefined);
+    (createTransferService as jest.Mock).mockImplementation(() => ({
+      connect: mockConnect,
+      disconnect: mockDisconnect,
+    }));
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    await messageHandler({ command: 'testConnection', serverId: 'srv-1' });
+    expect(createTransferService).toHaveBeenCalledWith('ftps');
+  });
+
+  it('saveServer persists ftp type in project config', async () => {
+    (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({ defaultServerId: '', servers: {} });
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    const payload = { name: 'FTP Server', type: 'ftp', credentialId: 'cred-1', rootPath: '/var/www' };
+    await messageHandler({ command: 'saveServer', payload });
+    const savedConfig = (mockConfigManager.saveConfig as jest.Mock).mock.calls[0][0];
+    expect(savedConfig.servers['FTP Server'].type).toBe('ftp');
+  });
+
+  it('saveServer persists ftps type in project config', async () => {
+    (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({ defaultServerId: '', servers: {} });
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    const payload = { name: 'FTPS Server', type: 'ftps', credentialId: 'cred-1', rootPath: '/var/www' };
+    await messageHandler({ command: 'saveServer', payload });
+    const savedConfig = (mockConfigManager.saveConfig as jest.Mock).mock.calls[0][0];
+    expect(savedConfig.servers['FTPS Server'].type).toBe('ftps');
+  });
+
+  it('saveServer persists ftps-implicit type in project config', async () => {
+    (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({ defaultServerId: '', servers: {} });
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    const payload = { name: 'Implicit FTPS', type: 'ftps-implicit', credentialId: 'cred-1', rootPath: '/var/www' };
+    await messageHandler({ command: 'saveServer', payload });
+    const savedConfig = (mockConfigManager.saveConfig as jest.Mock).mock.calls[0][0];
+    expect(savedConfig.servers['Implicit FTPS'].type).toBe('ftps-implicit');
+  });
+
+  it('browseDirectory passes serverType to createTransferService', async () => {
+    const mockConnect = jest.fn().mockResolvedValue(undefined);
+    const mockDisconnect = jest.fn().mockResolvedValue(undefined);
+    const mockListDirectory = jest.fn().mockResolvedValue([]);
+    (createTransferService as jest.Mock).mockImplementation(() => ({
+      connect: mockConnect,
+      disconnect: mockDisconnect,
+      listDirectory: mockListDirectory,
+    }));
+    (vscode.window.showQuickPick as jest.Mock).mockResolvedValue({
+      label: '$(check) Select this folder',
+      description: '/',
+    });
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    await messageHandler({ command: 'browseDirectory', credentialId: 'cred-1', startPath: '/', serverType: 'ftps' });
+    expect(createTransferService).toHaveBeenCalledWith('ftps');
+  });
+
+  it('browseDirectory defaults to sftp when no serverType provided', async () => {
+    const mockConnect = jest.fn().mockResolvedValue(undefined);
+    const mockDisconnect = jest.fn().mockResolvedValue(undefined);
+    const mockListDirectory = jest.fn().mockResolvedValue([]);
+    (createTransferService as jest.Mock).mockImplementation(() => ({
+      connect: mockConnect,
+      disconnect: mockDisconnect,
+      listDirectory: mockListDirectory,
+    }));
+    (vscode.window.showQuickPick as jest.Mock).mockResolvedValue({
+      label: '$(check) Select this folder',
+      description: '/',
+    });
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    await messageHandler({ command: 'browseDirectory', credentialId: 'cred-1', startPath: '/' });
+    expect(createTransferService).toHaveBeenCalledWith('sftp');
+  });
+
+  it('testConnection rejects FTP server using non-password credential', async () => {
+    const keyCredentials = [{ id: 'cred-key', name: 'Key Auth', host: 'example.com', port: 22, username: 'deploy', authMethod: 'key', privateKeyPath: '~/.ssh/id_rsa' }];
+    const ftpServer = { ...serverFixture, type: 'ftp' as const, credentialId: 'cred-key' };
+    (mockConfigManager.getServerById as jest.Mock).mockResolvedValue({ name: 'FTP Server', server: ftpServer });
+    (mockCredentialManager.getAll as jest.Mock).mockResolvedValue(keyCredentials);
+    (mockCredentialManager.getWithSecret as jest.Mock).mockResolvedValue({ ...keyCredentials[0], passphrase: 'secret' });
+    const mockConnect = jest.fn();
+    (createTransferService as jest.Mock).mockImplementation(() => ({ connect: mockConnect, disconnect: jest.fn() }));
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    await messageHandler({ command: 'testConnection', serverId: 'srv-1' });
+    expect(mockConnect).not.toHaveBeenCalled();
+    expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      command: 'testResult',
+      success: false,
+      message: expect.stringContaining('password'),
+    }));
   });
 });

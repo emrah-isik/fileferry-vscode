@@ -3,7 +3,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { PathResolver } from '../path/PathResolver';
 import { DiffService } from '../diffService';
-import { SftpService } from '../sftpService';
+import { createTransferService } from '../transferServiceFactory';
 import { CredentialManager } from '../storage/CredentialManager';
 import { ProjectConfigManager } from '../storage/ProjectConfigManager';
 
@@ -71,7 +71,7 @@ export async function showRemoteDiff(
 
   const credential = await dependencies.credentialManager.getWithSecret(server.credentialId);
   const tempDir = path.join(os.tmpdir(), 'fileferry');
-  const diffService = new DiffService(new SftpService(), tempDir);
+  const diffService = new DiffService(createTransferService(server.type), tempDir);
   const fileName = path.basename(localPath);
 
   await vscode.window.withProgress(
