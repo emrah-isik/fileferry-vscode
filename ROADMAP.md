@@ -12,68 +12,78 @@
 
 ## Previous Releases
 
-### v0.2.1
-
-- Upload git-changed or Explorer-selected files via SFTP
-- Delete remote files that were locally deleted
-- Compare with remote (diff view)
-- Multi-server support with per-project binding (`.vscode/fileferry.json`)
-- SSH credentials stored securely in the OS keychain
-- Upload confirmation flow
-- Status bar showing active server
-- **Remote File Browser** — sidebar panel to browse remote filesystem with path indicator
-- **Servers panel** — see all configured servers, click to switch
-- **Welcome views** — onboarding guidance for new users
-- **Download to Workspace** — download remote files to mapped local paths
-- **Compare with Local** — diff remote files against local versions
-- **Delete from Server** — delete remote files and folders with confirmation
-- **Copy Remote Path** — copy any remote path to clipboard
-- **Reconnect from error state** — click error items to retry or open settings
-- **Context menus** — right-click actions for all remote browser operations
-
----
-
-## Upcoming
-
-### v0.5 — Multi-Target & Remote Operations (shipped)
+### v0.5
 
 - Project-scoped server configs — servers defined per-project in `fileferry.json`
 - Push to multiple servers simultaneously (dev + staging + prod in one action)
 - Project settings UI for per-project toggles
 - Backup before overwrite (download remote version before replacing)
 
-### v0.6 — Protocol & Filesystem (shipped)
+### v0.4
 
-- Symlink directory support in Remote File Browser
-- FTP / FTPS support (plain FTP, explicit TLS, implicit TLS)
+- Upload on save with gitignore respect
+- Folder upload from Explorer context menu
+- Atomic upload (temp file + rename)
+- Ignore patterns (gitignore-style glob exclusions)
+- File date guard (warn if remote is newer)
+- Cancel all transfers
 
-### v0.7 — SSH Power Features
+### v0.3
+
+- Modern OpenSSH algorithm support (rsa-sha2-256 / rsa-sha2-512)
+- PEM key support (`.pem` files — common for AWS EC2)
+- Host key verification warning
+- SSH agent support (system agent + 1Password SSH agent)
+- Keyboard-interactive auth (2FA / challenge-response)
+
+### v0.2.1
+
+- Remote File Browser — sidebar panel to browse remote filesystem
+- Servers panel — see all configured servers, click to switch
+- Download to Workspace, Compare with Local, Delete from Server
+- Copy Remote Path, context menus, reconnect from error state
+
+### v0.1
+
+- SCM panel integration, Explorer upload, multi-select upload
+- SFTP upload with password, private key, or SSH agent auth
+- Compare with Remote (diff view)
+- Multiple servers, path mappings, excluded paths
+- SSH Credentials Manager with OS keychain storage
+
+---
+
+## Upcoming
+
+### v0.7 — Polish & Safety
+
+- File and directory permission control (set octal permissions on upload)
+- Remote time offset (clock skew compensation for file date guard)
+- Dry run mode (preview what would be uploaded/deleted without transferring)
+- Upload history panel (filterable log of all deploy operations)
+
+### v0.8 — Stable Release
+
+- Documentation, marketplace screenshots, demo GIFs
+- Performance audit
+- `fileferry.json` schema documentation
+
+### v0.9 — Sync & Performance
+
+- Bidirectional sync (local→remote, remote→local, conflict resolution)
+- Concurrent file uploads (parallel connections)
+- File system watcher (auto-upload on any file change, not just save)
+
+### v0.10 — Automation
+
+- Pre/post deploy hooks (local shell or remote SSH command)
+- Batch deploy from branch diff (all files changed between two branches)
+
+### v0.11 — SSH Power Features
 
 - SSH connection hopping (jump hosts)
 - Full `~/.ssh/config` support (ProxyCommand, wildcard Host blocks)
 - Open SSH terminal to active server
-
-### v0.8 — Sync Modes
-
-- Local→remote, remote→local, and bidirectional sync
-- File and directory permission control
-- Concurrency control
-- Remote time offset (clock skew compensation)
-
-### v0.9 — Automation
-
-- File system watcher (auto-upload on change, configurable glob patterns)
-- Batch deploy from branch diff (all files changed between two branches)
-- Pre/post deploy hooks (local shell or remote SSH command)
-- Dry run mode
-
-### v0.10 — History & Safety
-
-- Upload history panel (filterable log of all deploy operations)
-
-### v1.0 — Stable Release
-
-- Documentation, marketplace screenshots, performance audit
 
 ---
 
