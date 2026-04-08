@@ -81,6 +81,26 @@ describe('deleteRemoteItem', () => {
     expect(mockRefresh).not.toHaveBeenCalled();
   });
 
+  it('deletes a symlink-to-directory with deleteFile (removes link, not target)', async () => {
+    (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue('Delete');
+
+    const entry: RemoteEntry = {
+      name: 'current',
+      type: 'l',
+      size: 11,
+      modifyTime: 1710000000000,
+      remotePath: '/var/www/current',
+      symlinkTarget: 'd',
+    };
+    const item = new RemoteFileItem(entry);
+
+    await deleteRemoteItem(item, mockConnection as any, mockRefresh);
+
+    expect(mockConnection.deleteRemoteFile).toHaveBeenCalledWith('/var/www/current');
+    expect(mockConnection.deleteRemoteDirectory).not.toHaveBeenCalled();
+    expect(mockRefresh).toHaveBeenCalled();
+  });
+
   it('shows error on failure', async () => {
     (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue('Delete');
     mockConnection.deleteRemoteFile.mockRejectedValue(new Error('Permission denied'));

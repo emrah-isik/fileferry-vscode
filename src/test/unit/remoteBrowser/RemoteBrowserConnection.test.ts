@@ -14,6 +14,7 @@ const mockSftp = {
   get: jest.fn(),
   deleteFile: jest.fn(),
   deleteDirectory: jest.fn(),
+  statType: jest.fn(),
   connected: false,
 };
 
@@ -234,6 +235,51 @@ describe('RemoteBrowserConnection', () => {
       await connection.deleteRemoteDirectory('/var/www/old-folder');
       expect(mockSftp.connect).toHaveBeenCalled();
       expect(mockSftp.deleteDirectory).toHaveBeenCalledWith('/var/www/old-folder');
+    });
+  });
+
+  describe('resolveSymlinkTargets', () => {
+    it('calls statType for each symlink entry and returns target type', async () => {
+      const entries = [
+        { name: 'logs', type: 'd', size: 4096, modifyTime: 1710000000000 },
+        { name: 'current', type: 'l', size: 11, modifyTime: 1710000000000 },
+        { name: 'index.php', type: '-', size: 1024, modifyTime: 1710000000000 },
+        { name: 'config', type: 'l', size: 11, modifyTime: 1710000000000 },
+      ];
+      mockSftp.statType = jest.fn()
+        .mockResolvedValueOnce('d')   // current -> directory
+        .mockResolvedValueOnce('-');  // config -> file
+
+      const result = await connection.resolveSymlinkTargets(entries as any, '/var/www');
+      expect(mockSftp.statType).toHaveBeenCalledTimes(2);
+      expect(mockSftp.statType).toHaveBeenCalledWith('/var/www/current');
+      expect(mockSftp.statType).toHaveBeenCalledWith('/var/www/config');
+      expect(result.get('current')).toBe('d');
+      expect(result.get('config')).toBe('-');
+      expect(result.has('logs')).toBe(false);
+      expect(result.has('index.php')).toBe(false);
+    });
+
+    it('returns null for broken/circular symlinks', async () => {
+      const entries = [
+        { name: 'broken', type: 'l', size: 11, modifyTime: 1710000000000 },
+      ];
+      mockSftp.statType = jest.fn().mockResolvedValue(null);
+
+      const result = await connection.resolveSymlinkTargets(entries as any, '/var/www');
+      expect(result.get('broken')).toBeNull();
+    });
+
+    it('returns empty map when no symlinks exist', async () => {
+      const entries = [
+        { name: 'logs', type: 'd', size: 4096, modifyTime: 1710000000000 },
+        { name: 'index.php', type: '-', size: 1024, modifyTime: 1710000000000 },
+      ];
+      mockSftp.statType = jest.fn();
+
+      const result = await connection.resolveSymlinkTargets(entries as any, '/var/www');
+      expect(mockSftp.statType).not.toHaveBeenCalled();
+      expect(result.size).toBe(0);
     });
   });
 

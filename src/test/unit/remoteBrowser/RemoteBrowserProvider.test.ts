@@ -6,6 +6,7 @@ const vscode = require('vscode');
 const mockConnection = {
   ensureConnected: jest.fn(),
   listDirectory: jest.fn(),
+  resolveSymlinkTargets: jest.fn().mockResolvedValue(new Map()),
   downloadFile: jest.fn(),
   disconnect: jest.fn(),
   getRootPath: jest.fn().mockReturnValue('/var/www'),
@@ -66,6 +67,70 @@ describe('RemoteBrowserProvider', () => {
       expect(mockConnection.listDirectory).toHaveBeenCalledWith('/var/www/logs');
       expect(children).toHaveLength(1);
       expect(children![0].entry.name).toBe('error.log');
+    });
+
+    it('resolves symlink targets and sets symlinkTarget on entries', async () => {
+      mockConnection.listDirectory.mockResolvedValue([
+        { name: 'current', type: 'l', size: 11, modifyTime: 1710000000000 },
+        { name: 'index.php', type: '-', size: 1024, modifyTime: 1710000000000 },
+      ]);
+      mockConnection.resolveSymlinkTargets.mockResolvedValue(new Map([['current', 'd']]));
+
+      const children = await provider.getChildren();
+      expect(mockConnection.resolveSymlinkTargets).toHaveBeenCalled();
+      const symlinkItem = children!.find(c => c.entry.name === 'current')!;
+      expect(symlinkItem.entry.symlinkTarget).toBe('d');
+    });
+
+    it('expands symlinked directories (lists children)', async () => {
+      const symlinkDirEntry: RemoteEntry = {
+        name: 'current',
+        type: 'l',
+        size: 11,
+        modifyTime: 1710000000000,
+        remotePath: '/var/www/current',
+        symlinkTarget: 'd',
+      };
+      const dirItem = new RemoteFileItem(symlinkDirEntry);
+
+      mockConnection.listDirectory.mockResolvedValue([
+        { name: 'app.php', type: '-', size: 2048, modifyTime: 1710100000000 },
+      ]);
+
+      const children = await provider.getChildren(dirItem);
+      expect(mockConnection.listDirectory).toHaveBeenCalledWith('/var/www/current');
+      expect(children).toHaveLength(1);
+      expect(children![0].entry.name).toBe('app.php');
+    });
+
+    it('returns empty array for symlink-to-file items', async () => {
+      const symlinkFileEntry: RemoteEntry = {
+        name: 'config.ini',
+        type: 'l',
+        size: 1024,
+        modifyTime: 1710000000000,
+        remotePath: '/var/www/config.ini',
+        symlinkTarget: '-',
+      };
+      const fileItem = new RemoteFileItem(symlinkFileEntry);
+
+      const children = await provider.getChildren(fileItem);
+      expect(children).toEqual([]);
+    });
+
+    it('sorts symlinked directories with real directories', async () => {
+      mockConnection.listDirectory.mockResolvedValue([
+        { name: 'zebra.txt', type: '-', size: 100, modifyTime: 1710000000000 },
+        { name: 'current', type: 'l', size: 11, modifyTime: 1710000000000 },
+        { name: 'beta', type: 'd', size: 4096, modifyTime: 1710000000000 },
+        { name: 'alpha.txt', type: '-', size: 200, modifyTime: 1710000000000 },
+      ]);
+      mockConnection.resolveSymlinkTargets.mockResolvedValue(new Map([['current', 'd']]));
+
+      const children = await provider.getChildren();
+      const names = children!.map(c => c.entry.name);
+      // symlinked dir 'current' should sort with directories
+      expect(names).toEqual(['beta', 'current', 'alpha.txt', 'zebra.txt']);
     });
 
     it('returns empty array for file items', async () => {

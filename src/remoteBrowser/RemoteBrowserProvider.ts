@@ -20,9 +20,11 @@ export class RemoteBrowserProvider implements vscode.TreeDataProvider<RemoteFile
   }
 
   async getChildren(element?: RemoteFileItem): Promise<RemoteFileItem[]> {
-    // File items have no children
-    if (element && element.entry.type !== 'd') {
-      return [];
+    // Only directories (and symlinks to directories) have children
+    if (element) {
+      const isExpandable = element.entry.type === 'd' ||
+        (element.entry.type === 'l' && element.entry.symlinkTarget === 'd');
+      if (!isExpandable) { return []; }
     }
 
     try {
@@ -40,7 +42,7 @@ export class RemoteBrowserProvider implements vscode.TreeDataProvider<RemoteFile
 
       const entries = await this.connection.listDirectory(targetPath);
       if (!element) { this._onDidChangePath.fire(targetPath); }
-      return this.toTreeItems(entries, targetPath);
+      return await this.toTreeItems(entries, targetPath);
     } catch (err: unknown) {
       if (!element) { this._onDidChangePath.fire(''); }
       return [this.createErrorItem(err)];
@@ -56,7 +58,12 @@ export class RemoteBrowserProvider implements vscode.TreeDataProvider<RemoteFile
     this.refresh();
   }
 
-  private toTreeItems(entries: SftpClient.FileInfo[], parentPath: string): RemoteFileItem[] {
+  private async toTreeItems(
+    entries: SftpClient.FileInfo[],
+    parentPath: string
+  ): Promise<RemoteFileItem[]> {
+    const symlinkTargets = await this.connection.resolveSymlinkTargets(entries, parentPath);
+
     const items = entries.map(entry => {
       const remoteEntry: RemoteEntry = {
         name: entry.name,
@@ -65,13 +72,16 @@ export class RemoteBrowserProvider implements vscode.TreeDataProvider<RemoteFile
         modifyTime: entry.modifyTime,
         remotePath: path.posix.join(parentPath, entry.name),
       };
+      if (entry.type === 'l' && symlinkTargets.has(entry.name)) {
+        remoteEntry.symlinkTarget = symlinkTargets.get(entry.name)!;
+      }
       return new RemoteFileItem(remoteEntry);
     });
 
-    // Sort: directories first, then alphabetical within each group
+    // Sort: directories (and symlinked dirs) first, then alphabetical
     return items.sort((a, b) => {
-      const aIsDir = a.entry.type === 'd' ? 0 : 1;
-      const bIsDir = b.entry.type === 'd' ? 0 : 1;
+      const aIsDir = (a.entry.type === 'd' || (a.entry.type === 'l' && a.entry.symlinkTarget === 'd')) ? 0 : 1;
+      const bIsDir = (b.entry.type === 'd' || (b.entry.type === 'l' && b.entry.symlinkTarget === 'd')) ? 0 : 1;
       if (aIsDir !== bIsDir) { return aIsDir - bIsDir; }
       return a.entry.name.localeCompare(b.entry.name);
     });

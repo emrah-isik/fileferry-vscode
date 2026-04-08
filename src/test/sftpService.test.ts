@@ -543,6 +543,49 @@ describe('SftpService', () => {
     });
   });
 
+  describe('statType', () => {
+    beforeEach(async () => {
+      mockMethods.connect.mockResolvedValue(undefined);
+      await service.connect(serverConfig, { password: 'secret' });
+    });
+
+    it('returns d when remote path is a directory', async () => {
+      mockMethods.stat.mockResolvedValue({ isDirectory: true });
+      const result = await service.statType('/var/www/uploads');
+      expect(mockMethods.stat).toHaveBeenCalledWith('/var/www/uploads');
+      expect(result).toBe('d');
+    });
+
+    it('returns - when remote path is a regular file', async () => {
+      mockMethods.stat.mockResolvedValue({ isDirectory: false });
+      const result = await service.statType('/var/www/index.php');
+      expect(result).toBe('-');
+    });
+
+    it('returns null when file does not exist (code 2)', async () => {
+      mockMethods.stat.mockRejectedValue({ code: 2, message: 'No such file' });
+      const result = await service.statType('/var/www/missing');
+      expect(result).toBeNull();
+    });
+
+    it('returns null on permission denied', async () => {
+      mockMethods.stat.mockRejectedValue(new Error('Permission denied'));
+      const result = await service.statType('/var/www/secret');
+      expect(result).toBeNull();
+    });
+
+    it('returns null on ELOOP (circular symlink)', async () => {
+      mockMethods.stat.mockRejectedValue({ code: 'ELOOP', message: 'Too many levels of symbolic links' });
+      const result = await service.statType('/var/www/circular');
+      expect(result).toBeNull();
+    });
+
+    it('throws if not connected', async () => {
+      const fresh = new SftpService();
+      await expect(fresh.statType('/var/www')).rejects.toThrow('Not connected');
+    });
+  });
+
   describe('stat', () => {
     beforeEach(async () => {
       mockMethods.connect.mockResolvedValue(undefined);

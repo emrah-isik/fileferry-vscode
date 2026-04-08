@@ -104,6 +104,24 @@ export class RemoteBrowserConnection {
     return this.sftp.listDirectoryDetailed(remotePath);
   }
 
+  async resolveSymlinkTargets(
+    entries: SftpClient.FileInfo[],
+    parentPath: string
+  ): Promise<Map<string, 'd' | '-' | null>> {
+    const result = new Map<string, 'd' | '-' | null>();
+    const symlinks = entries.filter(e => e.type === 'l');
+    await Promise.all(
+      symlinks.map(async (entry) => {
+        const fullPath = parentPath === '/'
+          ? `/${entry.name}`
+          : `${parentPath}/${entry.name}`;
+        const target = await this.sftp.statType(fullPath);
+        result.set(entry.name, target);
+      })
+    );
+    return result;
+  }
+
   async downloadFile(remotePath: string): Promise<Buffer> {
     await this.ensureConnected();
     this.resetIdleTimer();

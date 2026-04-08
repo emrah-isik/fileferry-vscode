@@ -346,7 +346,19 @@ export class DeploymentSettingsPanel {
           break;
         }
 
-        const dirs = items.filter(i => i.type === 'd').map(i => i.name).sort();
+        // Resolve symlinks to find which ones point to directories
+        const symlinks = items.filter(i => i.type === 'l');
+        const symlinkDirs: string[] = [];
+        await Promise.all(symlinks.map(async (s) => {
+          const fullPath = currentPath === '/' ? `/${s.name}` : `${currentPath}/${s.name}`;
+          const target = await sftp.statType(fullPath);
+          if (target === 'd') { symlinkDirs.push(s.name); }
+        }));
+
+        const dirs = [
+          ...items.filter(i => i.type === 'd').map(i => i.name),
+          ...symlinkDirs,
+        ].sort();
         const quickPickItems: vscode.QuickPickItem[] = [
           { label: '$(check) Select this folder', description: currentPath },
           ...(currentPath !== '/' ? [{ label: '$(arrow-up) ..', description: '(parent directory)' }] : []),

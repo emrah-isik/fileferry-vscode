@@ -217,6 +217,18 @@ export class SftpService {
     return await (this.client as any).realPath(remotePath);
   }
 
+  async statType(remotePath: string): Promise<'d' | '-' | null> {
+    if (!this.client) {
+      throw new Error('Not connected. Call connect() before stat.');
+    }
+    try {
+      const stats = await (this.client as any).stat(remotePath);
+      return stats.isDirectory ? 'd' : '-';
+    } catch {
+      return null;
+    }
+  }
+
   async stat(remotePath: string): Promise<{ mtime: Date } | null> {
     if (!this.client) {
       throw new Error('Not connected. Call connect() before stat.');

@@ -6,6 +6,7 @@ export interface RemoteEntry {
   size: number;
   modifyTime: number;
   remotePath: string;
+  symlinkTarget?: 'd' | '-' | null;
 }
 
 export function formatSize(bytes: number): string {
@@ -27,9 +28,11 @@ export function formatDate(timestamp: number): string {
 export class RemoteFileItem extends vscode.TreeItem {
   constructor(public readonly entry: RemoteEntry) {
     const isDir = entry.type === 'd';
+    const isSymlinkToDir = entry.type === 'l' && entry.symlinkTarget === 'd';
+    const isExpandable = isDir || isSymlinkToDir;
     super(
       entry.name,
-      isDir
+      isExpandable
         ? vscode.TreeItemCollapsibleState.Collapsed
         : vscode.TreeItemCollapsibleState.None
     );
@@ -40,6 +43,9 @@ export class RemoteFileItem extends vscode.TreeItem {
     if (isDir) {
       this.contextValue = 'remoteDirectory';
       this.resourceUri = vscode.Uri.file(entry.remotePath);
+    } else if (entry.type === 'l' && isSymlinkToDir) {
+      this.contextValue = 'remoteDirectory';
+      this.iconPath = new vscode.ThemeIcon('file-symlink-directory');
     } else if (entry.type === 'l') {
       this.contextValue = 'remoteFile';
       this.iconPath = new vscode.ThemeIcon('file-symlink-file');

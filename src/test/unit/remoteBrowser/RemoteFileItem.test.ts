@@ -77,13 +77,14 @@ describe('RemoteFileItem', () => {
     });
   });
 
-  describe('symlink entry', () => {
+  describe('symlink to file entry', () => {
     const entry: RemoteEntry = {
-      name: 'current',
+      name: 'config.ini',
       type: 'l',
       size: 1024,
       modifyTime: 1710000000000,
-      remotePath: '/var/log/current',
+      remotePath: '/var/log/config.ini',
+      symlinkTarget: '-',
     };
 
     it('has None collapsible state', () => {
@@ -91,7 +92,72 @@ describe('RemoteFileItem', () => {
       expect(item.collapsibleState).toBe(vscode.TreeItemCollapsibleState.None);
     });
 
-    it('uses symlink icon', () => {
+    it('uses symlink file icon', () => {
+      const item = new RemoteFileItem(entry);
+      expect(item.iconPath).toEqual(new vscode.ThemeIcon('file-symlink-file'));
+    });
+
+    it('has contextValue of remoteFile', () => {
+      const item = new RemoteFileItem(entry);
+      expect(item.contextValue).toBe('remoteFile');
+    });
+
+    it('has a command to open the file', () => {
+      const item = new RemoteFileItem(entry);
+      expect(item.command).toEqual({
+        command: 'fileferry.remoteBrowser.openFile',
+        title: 'Open Remote File',
+        arguments: [entry],
+      });
+    });
+  });
+
+  describe('symlink to directory entry', () => {
+    const entry: RemoteEntry = {
+      name: 'current',
+      type: 'l',
+      size: 1024,
+      modifyTime: 1710000000000,
+      remotePath: '/var/www/current',
+      symlinkTarget: 'd',
+    };
+
+    it('has Collapsed collapsible state', () => {
+      const item = new RemoteFileItem(entry);
+      expect(item.collapsibleState).toBe(vscode.TreeItemCollapsibleState.Collapsed);
+    });
+
+    it('uses symlink directory icon', () => {
+      const item = new RemoteFileItem(entry);
+      expect(item.iconPath).toEqual(new vscode.ThemeIcon('file-symlink-directory'));
+    });
+
+    it('has contextValue of remoteDirectory', () => {
+      const item = new RemoteFileItem(entry);
+      expect(item.contextValue).toBe('remoteDirectory');
+    });
+
+    it('does not have a command', () => {
+      const item = new RemoteFileItem(entry);
+      expect(item.command).toBeUndefined();
+    });
+  });
+
+  describe('symlink with unknown target (broken/circular)', () => {
+    const entry: RemoteEntry = {
+      name: 'broken',
+      type: 'l',
+      size: 1024,
+      modifyTime: 1710000000000,
+      remotePath: '/var/log/broken',
+    };
+
+    it('has None collapsible state', () => {
+      const item = new RemoteFileItem(entry);
+      expect(item.collapsibleState).toBe(vscode.TreeItemCollapsibleState.None);
+    });
+
+    it('uses symlink file icon', () => {
       const item = new RemoteFileItem(entry);
       expect(item.iconPath).toEqual(new vscode.ThemeIcon('file-symlink-file'));
     });

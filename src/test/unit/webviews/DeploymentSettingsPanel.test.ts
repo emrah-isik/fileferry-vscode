@@ -390,6 +390,38 @@ describe('DeploymentSettingsPanel message handling', () => {
     }));
   });
 
+  it('browseDirectory: includes symlinked directories in picker', async () => {
+    const mockConnect = jest.fn().mockResolvedValue(undefined);
+    const mockDisconnect = jest.fn().mockResolvedValue(undefined);
+    const mockListDirectory = jest.fn().mockResolvedValue([
+      { name: 'html', type: 'd' },
+      { name: 'current', type: 'l' },
+      { name: 'config.ini', type: 'l' },
+    ]);
+    const mockStatType = jest.fn()
+      .mockResolvedValueOnce('d')   // current -> directory
+      .mockResolvedValueOnce('-');  // config.ini -> file
+    (SftpService as jest.Mock).mockImplementation(() => ({
+      connect: mockConnect,
+      disconnect: mockDisconnect,
+      listDirectory: mockListDirectory,
+      statType: mockStatType,
+    }));
+    (vscode.window.showQuickPick as jest.Mock).mockResolvedValue({
+      label: '$(check) Select this folder',
+      description: '/var/www',
+    });
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    await messageHandler({ command: 'browseDirectory', credentialId: 'cred-1', startPath: '/var/www' });
+    // QuickPick should include both 'html' (real dir) and 'current' (symlinked dir)
+    // but NOT 'config.ini' (symlink to file)
+    const quickPickItems = (vscode.window.showQuickPick as jest.Mock).mock.calls[0][0];
+    const labels = quickPickItems.map((item: any) => item.label);
+    expect(labels).toContain('$(folder) html');
+    expect(labels).toContain('$(folder) current');
+    expect(labels).not.toContain('$(folder) config.ini');
+  });
+
   it('pushes credentialsUpdated to webview when credentialsChanged event fires', async () => {
     let fireEvent: () => void = () => {};
     const credentialsChanged = (listener: () => void) => {
