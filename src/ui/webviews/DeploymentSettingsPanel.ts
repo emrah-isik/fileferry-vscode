@@ -7,6 +7,7 @@ import { createTransferService } from '../../transferServiceFactory';
 import { generateId } from '../../utils/uuid';
 import { ProjectServer } from '../../models/ProjectConfig';
 import { validateProjectServer, validateMappings } from '../../utils/validation';
+import { TimeOffsetDetector } from '../../services/TimeOffsetDetector';
 
 interface Dependencies {
   credentialManager: CredentialManager;
@@ -124,6 +125,10 @@ export class DeploymentSettingsPanel {
         await this.handleTestConnection(msg.serverId);
         break;
 
+      case 'detectTimeOffset':
+        await this.handleDetectTimeOffset(msg.serverId);
+        break;
+
       case 'cloneServer': {
         const original = await this.dependencies.configManager.getServerById(msg.id);
         if (!original) break;
@@ -209,6 +214,7 @@ export class DeploymentSettingsPanel {
       excludedPaths: existing?.excludedPaths ?? [],
       ...(payload.filePermissions !== undefined ? { filePermissions: payload.filePermissions } : {}),
       ...(payload.directoryPermissions !== undefined ? { directoryPermissions: payload.directoryPermissions } : {}),
+      ...(existing?.timeOffsetMs !== undefined ? { timeOffsetMs: existing.timeOffsetMs } : {}),
     };
 
     // If renaming, remove old key
@@ -269,8 +275,48 @@ export class DeploymentSettingsPanel {
     const service = createTransferService(entry.server.type);
     try {
       await service.connect(credential as any, { password: credential.password, passphrase: credential.passphrase });
+
+      const timeOffsetMs = await new TimeOffsetDetector().detect(service);
       await service.disconnect();
-      this.panel.webview.postMessage({ command: 'testResult', success: true, message: 'Connected successfully' });
+
+      const config = await this.dependencies.configManager.getConfig();
+      if (config) {
+        config.servers[entry.name] = { ...entry.server, timeOffsetMs };
+        await this.dependencies.configManager.saveConfig(config);
+      }
+
+      this.panel.webview.postMessage({ command: 'testResult', success: true, message: 'Connected successfully', timeOffsetMs });
+    } catch (err: unknown) {
+      this.panel.webview.postMessage({
+        command: 'testResult',
+        success: false,
+        message: (err as Error).message,
+      });
+    }
+  }
+
+  private async handleDetectTimeOffset(serverId: string): Promise<void> {
+    const entry = await this.dependencies.configManager.getServerById(serverId);
+    if (!entry) {
+      this.panel.webview.postMessage({ command: 'testResult', success: false, message: 'Server not found' });
+      return;
+    }
+
+    const credential = await this.dependencies.credentialManager.getWithSecret(entry.server.credentialId);
+    const service = createTransferService(entry.server.type);
+    try {
+      await service.connect(credential as any, { password: credential.password, passphrase: credential.passphrase });
+
+      const timeOffsetMs = await new TimeOffsetDetector().detect(service);
+      await service.disconnect();
+
+      const config = await this.dependencies.configManager.getConfig();
+      if (config) {
+        config.servers[entry.name] = { ...entry.server, timeOffsetMs };
+        await this.dependencies.configManager.saveConfig(config);
+      }
+
+      this.panel.webview.postMessage({ command: 'testResult', success: true, message: 'Time offset detected', timeOffsetMs });
     } catch (err: unknown) {
       this.panel.webview.postMessage({
         command: 'testResult',

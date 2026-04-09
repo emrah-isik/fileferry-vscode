@@ -81,6 +81,10 @@
             "description": "Octal permission mode applied to created directories (e.g. 493 for 0755). SFTP only; FTP makes a best-effort SITE CHMOD.",
             "minimum": 0,
             "maximum": 511
+          },
+          "timeOffsetMs": {
+            "type": "integer",
+            "description": "Clock skew offset in milliseconds (remote minus local). Detected automatically via Test Connection."
           }
         },
         "additionalProperties": false

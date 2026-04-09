@@ -126,7 +126,7 @@ export async function uploadSelected(
       // File date guard: warn if remote files are newer than local
       if (fileDateGuardEnabled) {
         progress.report({ message: 'Checking remote files...' });
-        const newerOnRemote = await new FileDateGuard().check(uploadItems, credential);
+        const newerOnRemote = await new FileDateGuard().check(uploadItems, credential, server.timeOffsetMs);
         if (newerOnRemote.length > 0) {
           const fileNames = newerOnRemote.map(f => path.basename(f.localPath)).join(', ');
           const choice = await vscode.window.showWarningMessage(

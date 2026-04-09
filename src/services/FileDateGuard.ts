@@ -9,7 +9,8 @@ export class FileDateGuard {
 
   async check(
     items: ResolvedUploadItem[],
-    credential: SshCredentialWithSecret
+    credential: SshCredentialWithSecret,
+    timeOffsetMs?: number
   ): Promise<ResolvedUploadItem[]> {
     if (items.length === 0) {
       return [];
@@ -30,7 +31,8 @@ export class FileDateGuard {
         }
 
         const localStat = fs.statSync(item.localPath);
-        if (remoteStat.mtime.getTime() > localStat.mtimeMs) {
+        const adjustedRemoteMtime = remoteStat.mtime.getTime() - (timeOffsetMs ?? 0);
+        if (adjustedRemoteMtime > localStat.mtimeMs) {
           newerOnRemote.push(item);
         }
       }

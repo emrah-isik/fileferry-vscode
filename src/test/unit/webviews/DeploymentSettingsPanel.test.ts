@@ -4,8 +4,13 @@ import type { CredentialManager } from '../../../storage/CredentialManager';
 import type { ProjectConfigManager } from '../../../storage/ProjectConfigManager';
 
 jest.mock('../../../transferServiceFactory');
+jest.mock('../../../services/TimeOffsetDetector');
 
 import { createTransferService } from '../../../transferServiceFactory';
+import { TimeOffsetDetector } from '../../../services/TimeOffsetDetector';
+
+const mockDetect = jest.fn().mockResolvedValue(0);
+(TimeOffsetDetector as jest.Mock).mockImplementation(() => ({ detect: mockDetect }));
 
 // --- Webview + panel mock setup ---
 let messageHandler: (msg: any) => void | Promise<void>;
@@ -83,6 +88,7 @@ function dependencies() {
 describe('DeploymentSettingsPanel message handling', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockDetect.mockResolvedValue(0);
     (vscode.window.createWebviewPanel as jest.Mock).mockReturnValue(mockPanel);
     (mockConfigManager.getConfig as jest.Mock).mockResolvedValue(configFixture);
     (mockConfigManager.saveConfig as jest.Mock).mockResolvedValue(undefined);
@@ -589,5 +595,83 @@ describe('DeploymentSettingsPanel message handling', () => {
     const savedConfig = (mockConfigManager.saveConfig as jest.Mock).mock.calls[0][0];
     expect(savedConfig.servers['Production'].filePermissions).toBeUndefined();
     expect(savedConfig.servers['Production'].directoryPermissions).toBeUndefined();
+  });
+
+  it('saveServer preserves existing timeOffsetMs when saving other fields', async () => {
+    const serverWithOffset = { ...serverFixture, timeOffsetMs: 250 };
+    (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({
+      defaultServerId: 'srv-1',
+      servers: { Production: serverWithOffset },
+    });
+    (mockConfigManager.getServerById as jest.Mock).mockResolvedValue({ name: 'Production', server: serverWithOffset });
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    const payload = { id: 'srv-1', name: 'Production', type: 'sftp', credentialId: 'cred-1', rootPath: '/var/www/html' };
+    await messageHandler({ command: 'saveServer', payload });
+    const savedConfig = (mockConfigManager.saveConfig as jest.Mock).mock.calls[0][0];
+    expect(savedConfig.servers['Production'].timeOffsetMs).toBe(250);
+  });
+
+  // ── Time offset detection ────────────────────────────────────────────────────
+
+  it('testConnection includes detected timeOffsetMs in testResult', async () => {
+    mockDetect.mockResolvedValue(250);
+    const mockConnect = jest.fn().mockResolvedValue(undefined);
+    const mockDisconnect = jest.fn().mockResolvedValue(undefined);
+    (createTransferService as jest.Mock).mockImplementation(() => ({
+      connect: mockConnect,
+      disconnect: mockDisconnect,
+    }));
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    await messageHandler({ command: 'testConnection', serverId: 'srv-1' });
+    expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      command: 'testResult',
+      success: true,
+      timeOffsetMs: 250,
+    }));
+  });
+
+  it('testConnection saves detected offset to server config', async () => {
+    mockDetect.mockResolvedValue(250);
+    const mockConnect = jest.fn().mockResolvedValue(undefined);
+    const mockDisconnect = jest.fn().mockResolvedValue(undefined);
+    (createTransferService as jest.Mock).mockImplementation(() => ({
+      connect: mockConnect,
+      disconnect: mockDisconnect,
+    }));
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    await messageHandler({ command: 'testConnection', serverId: 'srv-1' });
+    expect(mockConfigManager.saveConfig).toHaveBeenCalledWith(
+      expect.objectContaining({
+        servers: expect.objectContaining({
+          Production: expect.objectContaining({ timeOffsetMs: 250 }),
+        }),
+      })
+    );
+  });
+
+  it('handles detectTimeOffset message: saves offset and posts testResult with timeOffsetMs', async () => {
+    mockDetect.mockResolvedValue(500);
+    const mockConnect = jest.fn().mockResolvedValue(undefined);
+    const mockDisconnect = jest.fn().mockResolvedValue(undefined);
+    (createTransferService as jest.Mock).mockImplementation(() => ({
+      connect: mockConnect,
+      disconnect: mockDisconnect,
+    }));
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    await messageHandler({ command: 'detectTimeOffset', serverId: 'srv-1' });
+    expect(mockConnect).toHaveBeenCalled();
+    expect(mockDisconnect).toHaveBeenCalled();
+    expect(mockConfigManager.saveConfig).toHaveBeenCalledWith(
+      expect.objectContaining({
+        servers: expect.objectContaining({
+          Production: expect.objectContaining({ timeOffsetMs: 500 }),
+        }),
+      })
+    );
+    expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      command: 'testResult',
+      success: true,
+      timeOffsetMs: 500,
+    }));
   });
 });

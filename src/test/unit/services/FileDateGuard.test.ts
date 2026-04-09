@@ -106,4 +106,47 @@ describe('FileDateGuard', () => {
 
     expect(result).toEqual([]);
   });
+
+  describe('timeOffsetMs', () => {
+    it('positive offset suppresses false positive from fast remote clock', async () => {
+      const items = [item('a.php')];
+      // Remote clock is 5 min ahead: remote shows 12:05, local is 12:01
+      // Without offset: 12:05 > 12:01 → false positive
+      // With +300000ms offset: adjusted = 12:05 - 5min = 12:00 < 12:01 → no warning
+      const remoteTime = new Date('2026-04-03T12:05:00Z');
+      const localTime = new Date('2026-04-03T12:01:00Z');
+      mockSftp.stat.mockResolvedValueOnce({ mtime: remoteTime });
+      (fs.statSync as jest.Mock).mockReturnValueOnce({ mtimeMs: localTime.getTime() });
+
+      const result = await guard.check(items, credential, 300_000);
+
+      expect(result).toEqual([]);
+    });
+
+    it('negative offset correctly flags remote as newer when remote clock is slow', async () => {
+      const items = [item('a.php')];
+      // Remote clock is 5 min behind: remote shows 11:55 but it's actually 12:00 local
+      // Remote file mtime 11:56 → actual time was 12:01 local, which is after local 12:00
+      // timeOffsetMs = -300000 (remote is 5 min behind)
+      // adjusted = 11:56 - (-5min) = 12:01 > 12:00 → warning (correctly detected as newer)
+      const remoteTime = new Date('2026-04-03T11:56:00Z');
+      const localTime = new Date('2026-04-03T12:00:00Z');
+      mockSftp.stat.mockResolvedValueOnce({ mtime: remoteTime });
+      (fs.statSync as jest.Mock).mockReturnValueOnce({ mtimeMs: localTime.getTime() });
+
+      const result = await guard.check(items, credential, -300_000);
+
+      expect(result).toEqual([item('a.php')]);
+    });
+
+    it('timeOffsetMs=0 behaves same as no offset', async () => {
+      const items = [item('a.php')];
+      mockSftp.stat.mockResolvedValueOnce({ mtime: new Date('2026-04-05T12:00:00Z') });
+      (fs.statSync as jest.Mock).mockReturnValueOnce({ mtimeMs: new Date('2026-04-01T12:00:00Z').getTime() });
+
+      const result = await guard.check(items, credential, 0);
+
+      expect(result).toEqual([item('a.php')]);
+    });
+  });
 });

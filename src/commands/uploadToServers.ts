@@ -139,7 +139,7 @@ export async function uploadToServers(
         for (const plan of plans) {
           if (plan.uploadItems.length > 0) {
             const credential = await dependencies.credentialManager.getWithSecret(plan.server.credentialId);
-            const newerOnRemote = await new FileDateGuard().check(plan.uploadItems, credential);
+            const newerOnRemote = await new FileDateGuard().check(plan.uploadItems, credential, plan.server.timeOffsetMs);
             if (newerOnRemote.length > 0) {
               const fileNames = newerOnRemote.map(f => path.basename(f.localPath)).join(', ');
               const choice = await vscode.window.showWarningMessage(

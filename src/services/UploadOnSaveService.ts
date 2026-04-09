@@ -81,7 +81,7 @@ export class UploadOnSaveService {
       const fileDateGuardEnabled = config.fileDateGuard !== false;
       try {
         const newerOnRemote = fileDateGuardEnabled
-          ? await new FileDateGuard().check([resolved], credential)
+          ? await new FileDateGuard().check([resolved], credential, server.timeOffsetMs)
           : [];
         if (newerOnRemote.length > 0) {
           const fileName = path.basename(doc.uri.fsPath);

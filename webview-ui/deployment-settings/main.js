@@ -52,6 +52,13 @@ window.addEventListener('message', ({ data: msg }) => {
 
     case 'testResult':
       state.testStatus = { success: msg.success, message: msg.message };
+      if (msg.success && msg.timeOffsetMs !== undefined) {
+        const server = getSelectedServer();
+        if (server) {
+          server.timeOffsetMs = msg.timeOffsetMs;
+        }
+        renderTimeOffset(msg.timeOffsetMs);
+      }
       renderTestResult();
       break;
 
@@ -299,6 +306,15 @@ function renderConnectionTab(server) {
       <span class="field-hint">Octal mode set on created directories (e.g. 0755). FTP: best-effort only.</span>
     </div>
 
+    <div class="form-group">
+      <label>Remote Time Offset</label>
+      <div class="input-row">
+        <span id="time-offset-display" class="field-value">${escapeHtml(formatTimeOffset(server.timeOffsetMs))}</span>
+        ${!isNew ? `<button id="btn-detect-offset" class="btn-secondary" type="button">Detect Offset</button>` : ''}
+      </div>
+      <span class="field-hint">Clock skew between local and remote (positive = remote is ahead). Detected automatically on Test Connection.</span>
+    </div>
+
     <div class="form-actions">
       <button id="btn-save">Save</button>
       ${!isNew ? `<button id="btn-test" class="btn-secondary">Test Connection</button>` : ''}
@@ -378,6 +394,13 @@ function renderConnectionTab(server) {
     document.getElementById('test-connection-result').className = '';
     document.getElementById('test-connection-result').textContent = 'Connecting\u2026';
     vscode.postMessage({ command: 'testConnection', serverId: server.id });
+  });
+
+  document.getElementById('btn-detect-offset')?.addEventListener('click', () => {
+    state.testStatus = null;
+    document.getElementById('test-connection-result').className = '';
+    document.getElementById('test-connection-result').textContent = 'Detecting offset\u2026';
+    vscode.postMessage({ command: 'detectTimeOffset', serverId: server.id });
   });
 
   document.getElementById('btn-set-default')?.addEventListener('click', () => {
@@ -482,6 +505,19 @@ function renderTestResult() {
   el.textContent = state.testStatus.success
     ? `\u2713 ${state.testStatus.message}`
     : `\u2717 ${state.testStatus.message}`;
+}
+
+function formatTimeOffset(offsetMs) {
+  if (offsetMs === undefined || offsetMs === null) return 'Not detected';
+  const abs = Math.abs(offsetMs);
+  if (abs < 1000) return `${offsetMs >= 0 ? '+' : ''}${offsetMs}ms`;
+  const seconds = (offsetMs / 1000).toFixed(1);
+  return `${offsetMs >= 0 ? '+' : ''}${seconds}s`;
+}
+
+function renderTimeOffset(offsetMs) {
+  const el = document.getElementById('time-offset-display');
+  if (el) el.textContent = formatTimeOffset(offsetMs);
 }
 
 function showValidationErrors(errors) {

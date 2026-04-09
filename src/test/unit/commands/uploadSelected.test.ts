@@ -295,11 +295,12 @@ describe('uploadSelected command', () => {
       expect(mockUpload).toHaveBeenCalled();
     });
 
-    it('passes credential to date guard check (no server arg)', async () => {
+    it('passes credential and server timeOffsetMs to date guard check', async () => {
       await uploadSelected(resource, undefined, dependencies());
       expect(mockDateGuardCheck).toHaveBeenCalledWith(
         expect.any(Array),
-        expect.objectContaining({ password: 'secret' })
+        expect.objectContaining({ password: 'secret' }),
+        undefined
       );
     });
 
