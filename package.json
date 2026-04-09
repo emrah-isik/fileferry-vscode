@@ -2,7 +2,7 @@
   "name": "fileferry",
   "displayName": "FileFerry",
   "description": "Deploy git-changed files to remote servers with precision. Select, confirm, upload.",
-  "version": "0.5.1",
+  "version": "0.7.0",
   "publisher": "esidevlabs",
   "icon": "resources/icon.png",
   "license": "GPL-3.0-or-later",

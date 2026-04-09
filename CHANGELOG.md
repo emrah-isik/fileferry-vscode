@@ -2,6 +2,17 @@
 
 All notable changes to FileFerry will be documented in this file.
 
+## [0.7.0] - 2026-04-10
+
+### Added
+
+- **File and directory permissions** — set octal permissions on newly created remote files and directories. `filePermissions` and `directoryPermissions` fields in the Connection tab of Deployment Settings. SFTP uses native `chmod`; FTP sends `SITE CHMOD` (best-effort, skipped silently if unsupported)
+- **Remote time offset detection** — detects clock skew between local machine and remote server by uploading a probe file to `/tmp/.fileferry-time-probe` and measuring the timestamp difference. Offset stored per-server and automatically applied by File Date Guard to prevent false "remote is newer" warnings. Auto-runs during Test Connection; "Detect Offset" button available for manual re-detection. UI shows the formatted offset (e.g. `+2.5s`)
+- **Dry run mode** — preview what would be uploaded without connecting or transferring any files. `DryRunReporter` writes a structured plan to the Output channel. Status bar shows `$(eye) server — DRY RUN` when active. Toggle via Project Settings panel, status bar menu, or `fileferry.json`
+- **Upload history panel** — persistent JSONL-based log of every upload (manual, multi-server, upload-on-save). `UploadHistoryPanel` webview shows a searchable, filterable table with server and result filters, a file search field, and a clear button. Configurable retention via `historyMaxEntries` (default 10,000; set to 0 to disable). Accessible from Command Palette, status bar menu, and post-upload notification
+
+---
+
 ## [0.6.0] - 2026-04-08
 
 ### Added
@@ -9,6 +20,7 @@ All notable changes to FileFerry will be documented in this file.
 - **FTP / FTPS support** — deploy over plain FTP, FTPS with explicit TLS, or FTPS with implicit TLS. Protocol-agnostic `TransferService` interface lets all existing features (upload, browse, compare, backup, file date guard) work identically across SFTP and FTP
 - **Protocol selection in Deployment Settings** — new dropdown with four options: SFTP, FTP, FTPS (Explicit TLS), FTPS (Implicit TLS). Credential dropdown filters to password-only credentials when an FTP protocol is selected
 - **Atomic FTP upload** — FTP uploads use temp file + rename, matching the existing SFTP atomic upload behavior
+- **Symlink support in Remote File Browser** — symlinked directories are now expandable in the Remote File Browser and directory picker. `stat()` follows symlink targets so they behave like real directories. Circular and broken symlinks fall back to file treatment gracefully
 
 ---
 
