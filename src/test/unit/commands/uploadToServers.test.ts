@@ -7,6 +7,8 @@ jest.mock('../../../services/UploadOrchestratorV2');
 jest.mock('../../../services/FileDateGuard');
 jest.mock('../../../services/BackupService');
 jest.mock('../../../services/DryRunReporter');
+jest.mock('../../../services/UploadHistoryService');
+jest.mock('../../../services/summaryToHistoryEntries');
 
 import { ScmResourceResolver } from '../../../scm/ScmResourceResolver';
 import { PathResolver } from '../../../path/PathResolver';
@@ -15,6 +17,8 @@ import { FileDateGuard } from '../../../services/FileDateGuard';
 import { BackupService } from '../../../services/BackupService';
 import { DryRunReporter } from '../../../services/DryRunReporter';
 import { uploadToServers } from '../../../commands/uploadToServers';
+import { UploadHistoryService } from '../../../services/UploadHistoryService';
+import { summaryToHistoryEntries } from '../../../services/summaryToHistoryEntries';
 import type { CredentialManager } from '../../../storage/CredentialManager';
 import type { ProjectConfigManager } from '../../../storage/ProjectConfigManager';
 import type { ProjectConfig, ProjectServer } from '../../../models/ProjectConfig';
@@ -26,6 +30,10 @@ const mockDateGuardCheck = jest.fn().mockResolvedValue([]);
 const mockBackup = jest.fn().mockResolvedValue(undefined);
 const mockCleanup = jest.fn().mockResolvedValue(undefined);
 const mockDryRunReport = jest.fn();
+const mockHistoryLog = jest.fn().mockResolvedValue(undefined);
+const mockHistoryEnforceRetention = jest.fn().mockResolvedValue(undefined);
+const mockSummaryToHistoryEntries = summaryToHistoryEntries as jest.Mock;
+mockSummaryToHistoryEntries.mockReturnValue([{ id: 'h-1' }]);
 
 (ScmResourceResolver as jest.Mock).mockImplementation(() => ({ resolve: mockResolve }));
 (PathResolver as jest.Mock).mockImplementation(() => ({ resolveAll: mockResolveAll }));
@@ -33,6 +41,7 @@ const mockDryRunReport = jest.fn();
 (FileDateGuard as jest.Mock).mockImplementation(() => ({ check: mockDateGuardCheck }));
 (BackupService as jest.Mock).mockImplementation(() => ({ backup: mockBackup, cleanup: mockCleanup }));
 (DryRunReporter as jest.Mock).mockImplementation(() => ({ report: mockDryRunReport }));
+(UploadHistoryService as jest.Mock).mockImplementation(() => ({ log: mockHistoryLog, enforceRetention: mockHistoryEnforceRetention }));
 
 const prodServer: ProjectServer = {
   id: 'srv-1',
@@ -218,7 +227,8 @@ describe('uploadToServers command', () => {
   it('shows success notification with server count', async () => {
     await uploadToServers(resource, undefined, dependencies());
     expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
-      expect.stringContaining('2 server(s)')
+      expect.stringContaining('2 server(s)'),
+      'Show History'
     );
   });
 
@@ -232,7 +242,8 @@ describe('uploadToServers command', () => {
     await uploadToServers(resource, undefined, dependencies());
     expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
       expect.stringContaining('Staging'),
-      expect.any(String)
+      'Show Log',
+      'Show History'
     );
   });
 
@@ -472,6 +483,41 @@ describe('uploadToServers command', () => {
       await uploadToServers(resource, undefined, dependencies());
       expect(mockUpload).toHaveBeenCalled();
       expect(mockDryRunReport).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('upload history', () => {
+    it('logs history entries for each server after upload', async () => {
+      await uploadToServers(resource, undefined, dependencies());
+      expect(mockSummaryToHistoryEntries).toHaveBeenCalledTimes(2);
+      expect(mockSummaryToHistoryEntries).toHaveBeenCalledWith(
+        expect.objectContaining({ succeeded: expect.any(Array) }),
+        'srv-1',
+        'Production',
+        expect.any(Number),
+        'multi-server'
+      );
+      expect(mockSummaryToHistoryEntries).toHaveBeenCalledWith(
+        expect.objectContaining({ succeeded: expect.any(Array) }),
+        'srv-2',
+        'Staging',
+        expect.any(Number),
+        'multi-server'
+      );
+      expect(mockHistoryLog).toHaveBeenCalled();
+      expect(mockHistoryEnforceRetention).toHaveBeenCalled();
+    });
+
+    it('does not log history during dry run', async () => {
+      (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({ ...configFixture, dryRun: true });
+      await uploadToServers(resource, undefined, dependencies());
+      expect(mockHistoryLog).not.toHaveBeenCalled();
+    });
+
+    it('does not log history when historyMaxEntries is 0', async () => {
+      (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({ ...configFixture, historyMaxEntries: 0 });
+      await uploadToServers(resource, undefined, dependencies());
+      expect(mockHistoryLog).not.toHaveBeenCalled();
     });
   });
 });

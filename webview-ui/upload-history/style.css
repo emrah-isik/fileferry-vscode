@@ -1,0 +1,180 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  color: var(--vscode-foreground);
+  background: var(--vscode-editor-background);
+  margin: 0;
+  padding: 0;
+}
+
+#app {
+  padding: 20px 24px;
+}
+
+h2 {
+  font-size: 1.2em;
+  font-weight: 600;
+  margin: 0 0 16px;
+}
+
+/* ─── Toolbar ─────────────────────────────────────────────── */
+
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.filters {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.filters select,
+.filters input[type="text"] {
+  padding: 4px 8px;
+  font-size: var(--vscode-font-size);
+  font-family: var(--vscode-font-family);
+  color: var(--vscode-input-foreground);
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, transparent);
+  border-radius: 2px;
+}
+
+.filters input[type="text"] {
+  width: 200px;
+}
+
+.filters select:focus,
+.filters input[type="text"]:focus {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+}
+
+.action-btn {
+  padding: 4px 12px;
+  font-size: var(--vscode-font-size);
+  font-family: var(--vscode-font-family);
+  color: var(--vscode-button-foreground);
+  background: var(--vscode-button-background);
+  border: none;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.action-btn:hover {
+  background: var(--vscode-button-hoverBackground);
+}
+
+.action-btn.danger {
+  color: var(--vscode-errorForeground);
+  background: transparent;
+  border: 1px solid var(--vscode-errorForeground);
+}
+
+.action-btn.danger:hover {
+  background: var(--vscode-errorForeground);
+  color: var(--vscode-editor-background);
+}
+
+/* ─── Table ───────────────────────────────────────────────── */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9em;
+}
+
+thead th {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--vscode-panel-border);
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--vscode-descriptionForeground);
+}
+
+tbody td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--vscode-panel-border);
+  vertical-align: top;
+}
+
+.col-time {
+  white-space: nowrap;
+  width: 150px;
+}
+
+.col-file {
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.col-server {
+  white-space: nowrap;
+}
+
+.col-action {
+  white-space: nowrap;
+  width: 60px;
+}
+
+.col-result {
+  width: 80px;
+}
+
+.col-error {
+  max-width: 250px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--vscode-errorForeground);
+}
+
+/* ─── Badges ──────────────────────────────────────────────── */
+
+.badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 0.85em;
+}
+
+.badge-success {
+  background: var(--vscode-testing-iconPassed, #388a34);
+  color: #fff;
+}
+
+.badge-failed {
+  background: var(--vscode-testing-iconFailed, #d32f2f);
+  color: #fff;
+}
+
+.badge-cancelled {
+  background: var(--vscode-descriptionForeground);
+  color: var(--vscode-editor-background);
+}
+
+/* ─── Empty state ─────────────────────────────────────────── */
+
+.empty-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.95em;
+}

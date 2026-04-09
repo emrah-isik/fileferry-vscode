@@ -6,6 +6,8 @@ import { UploadOrchestratorV2 } from './UploadOrchestratorV2';
 import { FileDateGuard } from './FileDateGuard';
 import { CredentialManager } from '../storage/CredentialManager';
 import { ProjectConfigManager } from '../storage/ProjectConfigManager';
+import { UploadHistoryService } from './UploadHistoryService';
+import { summaryToHistoryEntries } from './summaryToHistoryEntries';
 
 interface Dependencies {
   credentialManager: CredentialManager;
@@ -52,7 +54,7 @@ export class UploadOnSaveService {
       return;
     }
 
-    const { server } = match;
+    const { name: serverName, server } = match;
 
     if (server.mappings.length === 0) {
       return;
@@ -99,6 +101,15 @@ export class UploadOnSaveService {
       }
 
       const result = await orchestrator.upload([resolved], credential, null, []);
+
+      // Log upload history
+      const historyMaxEntries = config.historyMaxEntries ?? 10000;
+      if (historyMaxEntries > 0) {
+        const historyService = new UploadHistoryService(workspaceRoot, historyMaxEntries);
+        const historyEntries = summaryToHistoryEntries(result, server.id, serverName, Date.now(), 'save');
+        await historyService.log(historyEntries);
+        await historyService.enforceRetention();
+      }
 
       if (result.failed.length > 0) {
         vscode.window.showErrorMessage(

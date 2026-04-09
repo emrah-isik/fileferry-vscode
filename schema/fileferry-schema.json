@@ -21,6 +21,12 @@
       "type": "boolean",
       "description": "When false, disables the remote mtime check before uploading. Defaults to true when omitted."
     },
+    "historyMaxEntries": {
+      "type": "integer",
+      "description": "Maximum number of entries in the upload history file. Defaults to 10000. Set to 0 to disable history logging.",
+      "default": 10000,
+      "minimum": 0
+    },
     "servers": {
       "type": "object",
       "description": "Server definitions keyed by display name",

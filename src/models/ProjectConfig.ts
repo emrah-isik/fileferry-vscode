@@ -24,6 +24,7 @@ export interface ProjectConfig {
   backupRetentionDays?: number;     // days to keep backup folders (default: 7)
   backupMaxSizeMB?: number;         // max total backup size in MB (default: 100)
   dryRun?: boolean;                 // preview mode — show what would be deployed without transferring (default: false)
+  historyMaxEntries?: number;        // max entries in upload history file (default: 10000, 0 disables logging)
   servers: {
     [serverName: string]: ProjectServer;
   };

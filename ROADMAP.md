@@ -6,6 +6,7 @@
 - File and directory permission control (set octal mode on uploaded files and created directories)
 - Remote time offset — clock skew compensation so file date guard works correctly against servers with unsynchronised clocks
 - Dry run mode — preview exactly what would be uploaded or deleted without transferring any files
+- Upload history panel — persistent, filterable log of all deploy operations per project
 
 ---
 
@@ -60,10 +61,6 @@
 ---
 
 ## Upcoming
-
-### v0.7 — Polish & Safety (in progress)
-
-- Upload history panel (filterable log of all deploy operations)
 
 ### v0.8 — Stable Release
 

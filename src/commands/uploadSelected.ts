@@ -9,6 +9,8 @@ import { UploadConfirmation } from '../uploadConfirmation';
 import { CredentialManager } from '../storage/CredentialManager';
 import { ProjectConfigManager } from '../storage/ProjectConfigManager';
 import { DryRunReporter } from '../services/DryRunReporter';
+import { UploadHistoryService } from '../services/UploadHistoryService';
+import { summaryToHistoryEntries } from '../services/summaryToHistoryEntries';
 
 interface Dependencies {
   credentialManager: CredentialManager;
@@ -165,6 +167,15 @@ export async function uploadSelected(
       progress.report({ message: 'Uploading...' });
       const result = await orchestrator.upload(uploadItems, credential, server, deleteRemotePaths, token);
 
+      // Log upload history
+      const historyMaxEntries = config.historyMaxEntries ?? 10000;
+      if (historyMaxEntries > 0) {
+        const historyService = new UploadHistoryService(workspaceRoot, historyMaxEntries);
+        const historyEntries = summaryToHistoryEntries(result, server.id, serverName, Date.now(), 'manual');
+        await historyService.log(historyEntries);
+        await historyService.enforceRetention();
+      }
+
       const totalFailed = result.failed.length + result.deleteFailed.length;
       const totalSucceeded = result.succeeded.length + result.deleted.length;
 
@@ -182,12 +193,19 @@ export async function uploadSelected(
         if (result.deleted.length > 0) {
           parts.push(`${result.deleted.length} file(s) deleted`);
         }
-        vscode.window.showInformationMessage(`FileFerry: ${parts.join(', ')} successfully.`);
+        vscode.window.showInformationMessage(
+          `FileFerry: ${parts.join(', ')} successfully.`,
+          'Show History'
+        ).then(choice => { if (choice === 'Show History') { vscode.commands.executeCommand('fileferry.showUploadHistory'); } });
       } else {
         vscode.window.showErrorMessage(
           `FileFerry: ${totalFailed} file(s) failed, ${totalSucceeded} succeeded.`,
-          'Show Log'
-        );
+          'Show Log',
+          'Show History'
+        ).then(choice => {
+          if (choice === 'Show Log') { dependencies.output.show(); }
+          if (choice === 'Show History') { vscode.commands.executeCommand('fileferry.showUploadHistory'); }
+        });
       }
     }
   );

@@ -11,6 +11,7 @@ import { normalizeCommandArgs } from './utils/normalizeCommandArgs';
 import { StatusBarItem } from './ui/StatusBarItem';
 import { DeploymentSettingsPanel } from './ui/webviews/DeploymentSettingsPanel';
 import { ProjectSettingsPanel } from './ui/webviews/ProjectSettingsPanel';
+import { UploadHistoryPanel } from './ui/webviews/UploadHistoryPanel';
 import { SshCredentialPanel } from './ui/webviews/SshCredentialPanel';
 import { RemoteBrowserConnection } from './remoteBrowser/RemoteBrowserConnection';
 import { RemoteBrowserProvider } from './remoteBrowser/RemoteBrowserProvider';
@@ -189,6 +190,13 @@ export function activate(context: vscode.ExtensionContext): void {
       'fileferry.openProjectSettings',
       withErrorHandling('openProjectSettings', async () =>
         ProjectSettingsPanel.createOrShow(context, { configManager })
+      )
+    ),
+
+    vscode.commands.registerCommand(
+      'fileferry.showUploadHistory',
+      withErrorHandling('showUploadHistory', async () =>
+        UploadHistoryPanel.createOrShow(context, { configManager })
       )
     )
   );

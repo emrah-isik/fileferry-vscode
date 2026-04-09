@@ -26,6 +26,7 @@ Project Config  (per workspace — .vscode/fileferry.json)
 - `backupBeforeOverwrite` — optional toggle (defaults to `false`); when true, downloads remote files to `.vscode/fileferry-backups/` before uploading
 - `backupRetentionDays` — optional number (defaults to `7`); days to keep backup folders before cleanup deletes them
 - `backupMaxSizeMB` — optional number (defaults to `100`); max total backup size in MB; oldest folders are deleted until under the limit
+- `historyMaxEntries` — optional number (defaults to `10000`); max entries in the upload history JSONL file; set to `0` to disable history logging
 - `servers` — a map of display names to `ProjectServer` objects
 
 Each `ProjectServer` holds its UUID (`id`), protocol (`type`), credential reference (`credentialId` + human-readable `credentialName`), `rootPath`, path `mappings`, and `excludedPaths`. It contains no secrets and is safe to commit to git.
@@ -103,7 +104,7 @@ If no mapping matches and there is no `/` catch-all, a `NoMappingError` is throw
 
 ## 5. Webview Message Protocol
 
-All three webview panels (Deployment Settings, SSH Credentials, Project Settings) use the same handshake pattern:
+All four webview panels (Deployment Settings, SSH Credentials, Project Settings, Upload History) use the same handshake pattern:
 
 ```
 Webview boots → sends { command: 'ready' }
@@ -122,6 +123,8 @@ Using `ready`→`init` rather than injecting data into the HTML means the webvie
 | Extension → Webview | SSH Credentials | `init`, `credentialSaved`, `credentialDeleted`, `testResult`, `validationError`, `warning`, `privateKeySelected` |
 | Webview → Extension | Project Settings | `ready`, `toggleDryRun`, `toggleUploadOnSave`, `toggleFileDateGuard`, `toggleBackupBeforeOverwrite`, `setBackupRetentionDays`, `setBackupMaxSizeMB` |
 | Extension → Webview | Project Settings | `init` (`{ config }`), `configUpdated` (`{ config }`) |
+| Webview → Extension | Upload History | `ready`, `filter` (`{ serverId?, result?, search? }`), `clear` |
+| Extension → Webview | Upload History | `init` (`{ entries, servers }`), `filtered` (`{ entries }`), `cleared` |
 
 **Validation flow**: All validation runs in the extension process (pure `src/utils/validation.ts` functions with no VSCode dependencies). The webview receives `{ command: 'validationError', errors: { [field]: message } }` and renders inline field errors. This keeps the webview thin and ensures validation logic is unit-testable without a webview environment.
 
@@ -131,7 +134,7 @@ Using `ready`→`init` rather than injecting data into the HTML means the webvie
 
 ## 6. Singleton Panel Pattern
 
-All three webview panels (`DeploymentSettingsPanel`, `SshCredentialPanel`, `ProjectSettingsPanel`) use a static singleton pattern:
+All four webview panels (`DeploymentSettingsPanel`, `SshCredentialPanel`, `ProjectSettingsPanel`, `UploadHistoryPanel`) use a static singleton pattern:
 
 ```typescript
 class DeploymentSettingsPanel {

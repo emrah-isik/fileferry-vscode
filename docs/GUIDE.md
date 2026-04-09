@@ -16,6 +16,7 @@ For a quick overview, see the [README](../README.md).
 - [Comparing Files](#comparing-files)
 - [Downloading Files](#downloading-files)
 - [Deleting Remote Files](#deleting-remote-files)
+- [Upload History](#upload-history)
 - [Backup and Safety](#backup-and-safety)
 - [Project Settings](#project-settings)
 - [Path Mappings and Exclusions](#path-mappings-and-exclusions)
@@ -200,6 +201,45 @@ Right-click a file or folder in the Remote File Browser and choose **Delete from
 
 ---
 
+## Upload History
+
+FileFerry automatically logs every upload operation to a per-project history file. You can browse, filter, and clear the history from a dedicated panel.
+
+### Viewing History
+
+Open the Upload History panel from any of these places:
+
+- **Command Palette** — `FileFerry: Upload History`
+- **Status bar menu** — click the FileFerry status bar item, then choose **Upload History**
+- **Post-upload notification** — click the **Show History** button that appears after each upload
+
+The panel shows a table of all uploads with columns for timestamp, file, server, action (upload/delete), result (success/failed/cancelled), and error message.
+
+### Filtering
+
+Use the controls at the top of the panel to narrow down the history:
+
+- **Server dropdown** — show only entries for a specific server
+- **Result dropdown** — filter by success, failed, or cancelled
+- **File search** — free-text search across file paths
+
+Filtering runs in the extension, not in the webview.
+
+### Clearing History
+
+Click **Clear History** to remove all entries. A confirmation prompt appears first. This cannot be undone.
+
+### Configuration
+
+History logging is always on by default. To adjust or disable it, add `historyMaxEntries` to your `.vscode/fileferry.json`:
+
+- Default: `10000` entries. When exceeded, the oldest entries are trimmed automatically.
+- Set to `0` to disable history logging entirely.
+
+History is stored in `.vscode/fileferry-history.jsonl` and is machine-local — it should not be committed to git.
+
+---
+
 ## Backup and Safety
 
 ### Dry Run Mode
@@ -312,6 +352,7 @@ Customize via `Preferences -> Keyboard Shortcuts` and search for `fileferry`.
 | `FileFerry: Compare with Remote` | Diff local file against the server version |
 | `FileFerry: Deployment Settings` | Open server and mapping configuration |
 | `FileFerry: Project Settings` | Open project-level toggles |
+| `FileFerry: Upload History` | View and filter upload history for this project |
 | `FileFerry: Manage SSH Credentials` | Add, edit, or delete credentials |
 | `FileFerry: Switch Server` | Change the default server for this project |
 | `FileFerry: Go to Remote Path` | Navigate the Remote File Browser to a path |

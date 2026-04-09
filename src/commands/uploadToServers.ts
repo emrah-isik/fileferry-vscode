@@ -9,6 +9,8 @@ import { CredentialManager } from '../storage/CredentialManager';
 import { ProjectConfigManager } from '../storage/ProjectConfigManager';
 import { ProjectServer } from '../models/ProjectConfig';
 import { DryRunReporter } from '../services/DryRunReporter';
+import { UploadHistoryService } from '../services/UploadHistoryService';
+import { summaryToHistoryEntries } from '../services/summaryToHistoryEntries';
 
 interface Dependencies {
   credentialManager: CredentialManager;
@@ -215,6 +217,21 @@ export async function uploadToServers(
         })
       );
 
+      // Log upload history
+      const historyMaxEntries = config.historyMaxEntries ?? 10000;
+      if (historyMaxEntries > 0) {
+        const historyService = new UploadHistoryService(workspaceRoot, historyMaxEntries);
+        const timestamp = Date.now();
+        const allHistoryEntries = results.flatMap(r => {
+          if (!r.summary) { return []; }
+          const plan = plans.find(p => p.serverName === r.serverName);
+          if (!plan) { return []; }
+          return summaryToHistoryEntries(r.summary, plan.server.id, r.serverName, timestamp, 'multi-server');
+        });
+        await historyService.log(allHistoryEntries);
+        await historyService.enforceRetention();
+      }
+
       // Aggregate results
       const succeeded: ServerUploadResult[] = [];
       const failed: ServerUploadResult[] = [];
@@ -248,21 +265,30 @@ export async function uploadToServers(
         const totalFiles = results.reduce((sum, r) =>
           sum + (r.summary?.succeeded.length ?? 0) + (r.summary?.deleted.length ?? 0), 0);
         vscode.window.showInformationMessage(
-          `FileFerry: ${totalFiles} file(s) deployed to ${succeeded.length} server(s) successfully.`
-        );
+          `FileFerry: ${totalFiles} file(s) deployed to ${succeeded.length} server(s) successfully.`,
+          'Show History'
+        ).then(choice => { if (choice === 'Show History') { vscode.commands.executeCommand('fileferry.showUploadHistory'); } });
       } else if (succeeded.length === 0) {
         const failNames = failed.map(f => f.serverName).join(', ');
         vscode.window.showErrorMessage(
           `FileFerry: All servers failed: ${failNames}`,
-          'Show Log'
-        );
+          'Show Log',
+          'Show History'
+        ).then(choice => {
+          if (choice === 'Show Log') { dependencies.output.show(); }
+          if (choice === 'Show History') { vscode.commands.executeCommand('fileferry.showUploadHistory'); }
+        });
       } else {
         const succNames = succeeded.map(s => s.serverName).join(', ');
         const failNames = failed.map(f => f.serverName).join(', ');
         vscode.window.showErrorMessage(
           `FileFerry: Succeeded: ${succNames}. Failed: ${failNames}`,
-          'Show Log'
-        );
+          'Show Log',
+          'Show History'
+        ).then(choice => {
+          if (choice === 'Show Log') { dependencies.output.show(); }
+          if (choice === 'Show History') { vscode.commands.executeCommand('fileferry.showUploadHistory'); }
+        });
       }
     }
   );

@@ -116,6 +116,10 @@
       {
         "command": "fileferry.uploadToServers",
         "title": "FileFerry: Upload to Servers"
+      },
+      {
+        "command": "fileferry.showUploadHistory",
+        "title": "FileFerry: Upload History"
       }
     ],
     "viewsContainers": {

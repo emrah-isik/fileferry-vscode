@@ -4,11 +4,15 @@ import * as child_process from 'child_process';
 jest.mock('../../../path/PathResolver');
 jest.mock('../../../services/UploadOrchestratorV2');
 jest.mock('../../../services/FileDateGuard');
+jest.mock('../../../services/UploadHistoryService');
+jest.mock('../../../services/summaryToHistoryEntries');
 jest.mock('child_process');
 
 import { PathResolver } from '../../../path/PathResolver';
 import { UploadOrchestratorV2 } from '../../../services/UploadOrchestratorV2';
 import { FileDateGuard } from '../../../services/FileDateGuard';
+import { UploadHistoryService } from '../../../services/UploadHistoryService';
+import { summaryToHistoryEntries } from '../../../services/summaryToHistoryEntries';
 import { UploadOnSaveService } from '../../../services/UploadOnSaveService';
 import type { CredentialManager } from '../../../storage/CredentialManager';
 import type { ProjectConfigManager } from '../../../storage/ProjectConfigManager';
@@ -16,10 +20,15 @@ import type { ProjectConfigManager } from '../../../storage/ProjectConfigManager
 const mockResolve = jest.fn();
 const mockUpload = jest.fn().mockResolvedValue({ succeeded: [], failed: [], deleted: [], deleteFailed: [] });
 const mockDateGuardCheck = jest.fn().mockResolvedValue([]);
+const mockHistoryLog = jest.fn().mockResolvedValue(undefined);
+const mockHistoryEnforceRetention = jest.fn().mockResolvedValue(undefined);
+const mockSummaryToHistoryEntries = summaryToHistoryEntries as jest.Mock;
+mockSummaryToHistoryEntries.mockReturnValue([{ id: 'h-1' }]);
 
 (PathResolver as jest.Mock).mockImplementation(() => ({ resolve: mockResolve }));
 (UploadOrchestratorV2 as jest.Mock).mockImplementation(() => ({ upload: mockUpload }));
 (FileDateGuard as jest.Mock).mockImplementation(() => ({ check: mockDateGuardCheck }));
+(UploadHistoryService as jest.Mock).mockImplementation(() => ({ log: mockHistoryLog, enforceRetention: mockHistoryEnforceRetention }));
 
 const mockCredentialManager = {
   getWithSecret: jest.fn().mockResolvedValue({
@@ -379,6 +388,42 @@ describe('UploadOnSaveService', () => {
       expect(mockUpload).not.toHaveBeenCalled();
       expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
       expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('upload history', () => {
+    it('logs history entry after successful upload-on-save', async () => {
+      const service = createService();
+      service.register();
+      await saveCallback(makeSavedDoc('/workspace/src/app.php'));
+
+      expect(mockSummaryToHistoryEntries).toHaveBeenCalledWith(
+        expect.objectContaining({ succeeded: expect.any(Array) }),
+        'srv-1',
+        'Production',
+        expect.any(Number),
+        'save'
+      );
+      expect(mockHistoryLog).toHaveBeenCalledWith([{ id: 'h-1' }]);
+      expect(mockHistoryEnforceRetention).toHaveBeenCalled();
+    });
+
+    it('does not log history when upload fails with exception', async () => {
+      mockUpload.mockRejectedValue(new Error('Connection refused'));
+      const service = createService();
+      service.register();
+      await saveCallback(makeSavedDoc('/workspace/src/app.php'));
+
+      expect(mockHistoryLog).not.toHaveBeenCalled();
+    });
+
+    it('does not log history when historyMaxEntries is 0', async () => {
+      (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({ ...configFixture, historyMaxEntries: 0 });
+      const service = createService();
+      service.register();
+      await saveCallback(makeSavedDoc('/workspace/src/app.php'));
+
+      expect(mockHistoryLog).not.toHaveBeenCalled();
     });
   });
 });

@@ -77,6 +77,10 @@ export class StatusBarItem implements vscode.Disposable {
         label: '$(gear) Deployment Settings',
         id: 'openSettings',
       },
+      {
+        label: '$(history) Upload History',
+        id: 'showUploadHistory',
+      },
     ];
 
     const picked = await vscode.window.showQuickPick(items, {
@@ -92,6 +96,7 @@ export class StatusBarItem implements vscode.Disposable {
       toggleUploadOnSave: 'fileferry.toggleUploadOnSave',
       switchServer: 'fileferry.switchServer',
       openSettings: 'fileferry.openSettings',
+      showUploadHistory: 'fileferry.showUploadHistory',
     };
 
     await vscode.commands.executeCommand(commandMap[picked.id]);
