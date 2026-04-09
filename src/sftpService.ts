@@ -260,6 +260,13 @@ export class SftpService implements TransferService {
     await this.client.rmdir(remotePath, true);
   }
 
+  async chmod(remotePath: string, mode: number): Promise<void> {
+    if (!this.client) {
+      throw new Error('Not connected. Call connect() before chmod.');
+    }
+    await (this.client as any).chmod(remotePath, mode);
+  }
+
   async disconnect(): Promise<void> {
     await this.client?.end();
     this.client = null;

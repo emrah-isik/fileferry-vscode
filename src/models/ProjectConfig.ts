@@ -10,6 +10,8 @@ export interface ProjectServer {
   rootPath: string;
   mappings: PathMapping[];
   excludedPaths: string[];
+  filePermissions?: number;       // octal mode applied to uploaded files (e.g. 0o644)
+  directoryPermissions?: number;  // octal mode applied to created directories (e.g. 0o755)
 }
 
 // What's stored in .vscode/fileferry.json — server name is the object key

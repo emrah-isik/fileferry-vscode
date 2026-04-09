@@ -7,6 +7,7 @@ const mockSftp = {
   uploadFile: jest.fn().mockResolvedValue(undefined),
   deleteFile: jest.fn().mockResolvedValue(undefined),
   disconnect: jest.fn().mockResolvedValue(undefined),
+  chmod: jest.fn().mockResolvedValue(undefined),
 };
 
 jest.mock('../../../sftpService', () => ({
@@ -95,5 +96,51 @@ describe('UploadOrchestratorV2 — cancellation', () => {
     await orchestrator.upload([item('a.php')], credential, server, [], token);
 
     expect(mockSftp.disconnect).toHaveBeenCalled();
+  });
+});
+
+describe('UploadOrchestratorV2 — permissions', () => {
+  let orchestrator: UploadOrchestratorV2;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    orchestrator = new UploadOrchestratorV2(mockSftp as any);
+  });
+
+  it('calls chmod after each successful upload when filePermissions is set', async () => {
+    const serverWithPerms = { ...server, filePermissions: 0o644 };
+    const items = [item('a.php'), item('b.php')];
+    await orchestrator.upload(items, credential, serverWithPerms);
+
+    expect(mockSftp.chmod).toHaveBeenCalledWith('/var/www/a.php', 0o644);
+    expect(mockSftp.chmod).toHaveBeenCalledWith('/var/www/b.php', 0o644);
+  });
+
+  it('does not call chmod when filePermissions is not set', async () => {
+    const items = [item('a.php')];
+    await orchestrator.upload(items, credential, server);
+
+    expect(mockSftp.chmod).not.toHaveBeenCalled();
+  });
+
+  it('does not call chmod for a failed upload', async () => {
+    mockSftp.uploadFile.mockRejectedValueOnce(new Error('disk full'));
+    const serverWithPerms = { ...server, filePermissions: 0o644 };
+    const items = [item('a.php')];
+    const result = await orchestrator.upload(items, credential, serverWithPerms);
+
+    expect(result.failed).toHaveLength(1);
+    expect(mockSftp.chmod).not.toHaveBeenCalled();
+  });
+
+  it('chmod failure does not prevent other uploads or cause the item to appear in failed', async () => {
+    mockSftp.chmod.mockRejectedValueOnce(new Error('chmod not supported'));
+    const serverWithPerms = { ...server, filePermissions: 0o644 };
+    const items = [item('a.php'), item('b.php')];
+    const result = await orchestrator.upload(items, credential, serverWithPerms);
+
+    expect(result.succeeded).toHaveLength(2);
+    expect(result.failed).toHaveLength(0);
+    expect(mockSftp.chmod).toHaveBeenCalledTimes(2);
   });
 });

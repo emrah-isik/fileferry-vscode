@@ -11,6 +11,7 @@ For a quick overview, see the [README](../README.md).
 - [Getting Started](#getting-started)
 - [Uploading Files](#uploading-files)
 - [Multi-Server Push](#multi-server-push)
+- [File Permissions](#file-permissions-sftp--ftp)
 - [Browsing Remote Files](#browsing-remote-files)
 - [Comparing Files](#comparing-files)
 - [Downloading Files](#downloading-files)

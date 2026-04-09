@@ -24,6 +24,7 @@ const mockMethods = {
   rename: jest.fn(),
   posixRename: jest.fn(),
   stat: jest.fn(),
+  chmod: jest.fn(),
   client: mockSsh2Client,
 };
 
@@ -624,6 +625,24 @@ describe('SftpService', () => {
       await service.connect(serverConfig, { password: 'secret' });
       await service.disconnect();
       expect(mockMethods.end).toHaveBeenCalled();
+    });
+  });
+
+  describe('chmod', () => {
+    beforeEach(async () => {
+      mockMethods.connect.mockResolvedValue(undefined);
+      await service.connect(serverConfig, { password: 'secret' });
+    });
+
+    it('calls chmod on the underlying client with the given mode', async () => {
+      mockMethods.chmod.mockResolvedValue(undefined);
+      await service.chmod('/var/www/index.php', 0o644);
+      expect(mockMethods.chmod).toHaveBeenCalledWith('/var/www/index.php', 0o644);
+    });
+
+    it('throws if not connected', async () => {
+      const fresh = new SftpService();
+      await expect(fresh.chmod('/var/www/index.php', 0o644)).rejects.toThrow('Not connected');
     });
   });
 });

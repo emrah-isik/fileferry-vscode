@@ -26,5 +26,6 @@ export interface TransferService {
   stat(remotePath: string): Promise<{ mtime: Date } | null>;
   deleteFile(remotePath: string): Promise<void>;
   deleteDirectory(remotePath: string): Promise<void>;
+  chmod(remotePath: string, mode: number): Promise<void>;
   disconnect(): Promise<void>;
 }

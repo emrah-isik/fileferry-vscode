@@ -29,7 +29,7 @@
           },
           "type": {
             "type": "string",
-            "enum": ["sftp", "ftp"],
+            "enum": ["sftp", "ftp", "ftps", "ftps-implicit"],
             "description": "Connection protocol"
           },
           "credentialId": {
@@ -69,6 +69,18 @@
             "items": {
               "type": "string"
             }
+          },
+          "filePermissions": {
+            "type": "integer",
+            "description": "Octal permission mode applied to uploaded files (e.g. 420 for 0644). SFTP only; FTP makes a best-effort SITE CHMOD.",
+            "minimum": 0,
+            "maximum": 511
+          },
+          "directoryPermissions": {
+            "type": "integer",
+            "description": "Octal permission mode applied to created directories (e.g. 493 for 0755). SFTP only; FTP makes a best-effort SITE CHMOD.",
+            "minimum": 0,
+            "maximum": 511
           }
         },
         "additionalProperties": false

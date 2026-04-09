@@ -387,4 +387,36 @@ describe('FtpService', () => {
       expect(service.connected).toBe(false);
     });
   });
+
+  describe('chmod', () => {
+    beforeEach(async () => {
+      mockClient.access.mockResolvedValue(undefined);
+      await service.connect(
+        { host: 'ftp.example.com', port: 21, username: 'user', type: 'ftp' },
+        { password: 'pass' }
+      );
+    });
+
+    it('sends SITE CHMOD command with octal mode and path', async () => {
+      mockClient.send.mockResolvedValue(undefined);
+      await service.chmod('/var/www/index.php', 0o644);
+      expect(mockClient.send).toHaveBeenCalledWith('SITE CHMOD 644 /var/www/index.php');
+    });
+
+    it('sends SITE CHMOD with leading zero for modes below octal 100', async () => {
+      mockClient.send.mockResolvedValue(undefined);
+      await service.chmod('/var/www/index.php', 0o755);
+      expect(mockClient.send).toHaveBeenCalledWith('SITE CHMOD 755 /var/www/index.php');
+    });
+
+    it('silently ignores errors from SITE CHMOD (server may not support it)', async () => {
+      mockClient.send.mockRejectedValue(new Error('502 Command not implemented'));
+      await expect(service.chmod('/var/www/index.php', 0o644)).resolves.toBeUndefined();
+    });
+
+    it('throws if not connected', async () => {
+      const fresh = new FtpService();
+      await expect(fresh.chmod('/var/www/index.php', 0o644)).rejects.toThrow('Not connected');
+    });
+  });
 });

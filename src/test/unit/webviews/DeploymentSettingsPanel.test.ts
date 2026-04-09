@@ -556,4 +556,38 @@ describe('DeploymentSettingsPanel message handling', () => {
       message: expect.stringContaining('password'),
     }));
   });
+
+  it('saveServer preserves filePermissions and directoryPermissions from payload', async () => {
+    (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({
+      defaultServerId: 'srv-1',
+      servers: { Production: { ...serverFixture } },
+    });
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    const payload = {
+      id: 'srv-1',
+      name: 'Production',
+      type: 'sftp',
+      credentialId: 'cred-1',
+      rootPath: '/var/www',
+      filePermissions: 0o644,
+      directoryPermissions: 0o755,
+    };
+    await messageHandler({ command: 'saveServer', payload });
+    const savedConfig = (mockConfigManager.saveConfig as jest.Mock).mock.calls[0][0];
+    expect(savedConfig.servers['Production'].filePermissions).toBe(0o644);
+    expect(savedConfig.servers['Production'].directoryPermissions).toBe(0o755);
+  });
+
+  it('saveServer saves server without permissions when fields are omitted', async () => {
+    (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({
+      defaultServerId: 'srv-1',
+      servers: { Production: { ...serverFixture } },
+    });
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    const payload = { id: 'srv-1', name: 'Production', type: 'sftp', credentialId: 'cred-1', rootPath: '/var/www' };
+    await messageHandler({ command: 'saveServer', payload });
+    const savedConfig = (mockConfigManager.saveConfig as jest.Mock).mock.calls[0][0];
+    expect(savedConfig.servers['Production'].filePermissions).toBeUndefined();
+    expect(savedConfig.servers['Production'].directoryPermissions).toBeUndefined();
+  });
 });

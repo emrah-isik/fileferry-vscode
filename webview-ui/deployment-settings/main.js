@@ -287,6 +287,18 @@ function renderConnectionTab(server) {
       <span class="field-error" id="err-root-path"></span>
     </div>
 
+    <div class="form-group">
+      <label for="f-file-permissions">File Permissions</label>
+      <input id="f-file-permissions" type="text" value="${server.filePermissions !== undefined ? server.filePermissions.toString(8).padStart(4, '0') : ''}" placeholder="e.g. 0644 (leave blank to keep server default)">
+      <span class="field-hint">Octal mode set on uploaded files (e.g. 0644). FTP: best-effort only.</span>
+    </div>
+
+    <div class="form-group">
+      <label for="f-dir-permissions">Directory Permissions</label>
+      <input id="f-dir-permissions" type="text" value="${server.directoryPermissions !== undefined ? server.directoryPermissions.toString(8).padStart(4, '0') : ''}" placeholder="e.g. 0755 (leave blank to keep server default)">
+      <span class="field-hint">Octal mode set on created directories (e.g. 0755). FTP: best-effort only.</span>
+    </div>
+
     <div class="form-actions">
       <button id="btn-save">Save</button>
       ${!isNew ? `<button id="btn-test" class="btn-secondary">Test Connection</button>` : ''}
@@ -347,16 +359,18 @@ function renderConnectionTab(server) {
 
   document.getElementById('btn-save')?.addEventListener('click', () => {
     clearValidationErrors();
-    vscode.postMessage({
-      command: 'saveServer',
-      payload: {
-        id: server.id || undefined,
-        name: document.getElementById('f-name').value,
-        type: document.getElementById('f-type').value,
-        credentialId: document.getElementById('f-credential').value,
-        rootPath: document.getElementById('f-root-path').value,
-      },
-    });
+    const filePermStr = document.getElementById('f-file-permissions').value.trim();
+    const dirPermStr = document.getElementById('f-dir-permissions').value.trim();
+    const payload = {
+      id: server.id || undefined,
+      name: document.getElementById('f-name').value,
+      type: document.getElementById('f-type').value,
+      credentialId: document.getElementById('f-credential').value,
+      rootPath: document.getElementById('f-root-path').value,
+    };
+    if (filePermStr) { payload.filePermissions = parseInt(filePermStr, 8); }
+    if (dirPermStr) { payload.directoryPermissions = parseInt(dirPermStr, 8); }
+    vscode.postMessage({ command: 'saveServer', payload });
   });
 
   document.getElementById('btn-test')?.addEventListener('click', () => {

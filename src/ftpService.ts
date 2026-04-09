@@ -174,6 +174,18 @@ export class FtpService implements TransferService {
     await this.client.removeDir(remotePath);
   }
 
+  async chmod(remotePath: string, mode: number): Promise<void> {
+    if (!this.client) {
+      throw new Error('Not connected. Call connect() before chmod.');
+    }
+    const octal = mode.toString(8);
+    try {
+      await this.client.send(`SITE CHMOD ${octal} ${remotePath}`);
+    } catch {
+      // FTP SITE CHMOD is server-dependent — silently ignore if unsupported
+    }
+  }
+
   async disconnect(): Promise<void> {
     if (this.client) {
       this.client.close();

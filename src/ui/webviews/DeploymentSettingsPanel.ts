@@ -207,6 +207,8 @@ export class DeploymentSettingsPanel {
       rootPath: (payload.rootPath as string).trim(),
       mappings: existing?.mappings ?? [],
       excludedPaths: existing?.excludedPaths ?? [],
+      ...(payload.filePermissions !== undefined ? { filePermissions: payload.filePermissions } : {}),
+      ...(payload.directoryPermissions !== undefined ? { directoryPermissions: payload.directoryPermissions } : {}),
     };
 
     // If renaming, remove old key

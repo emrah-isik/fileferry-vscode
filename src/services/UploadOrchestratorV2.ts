@@ -18,7 +18,7 @@ export class UploadOrchestratorV2 {
   async upload(
     items: ResolvedUploadItem[],
     credential: SshCredentialWithSecret,
-    _server: unknown,
+    _server: { filePermissions?: number; directoryPermissions?: number } | null,
     deleteRemotePaths: string[] = [],
     token?: CancellationToken
   ): Promise<UploadSummaryV2> {
@@ -37,6 +37,13 @@ export class UploadOrchestratorV2 {
         }
         try {
           await this.sftp.uploadFile(items[i].localPath, items[i].remotePath);
+          if (_server?.filePermissions !== undefined) {
+            try {
+              await this.sftp.chmod(items[i].remotePath, _server.filePermissions);
+            } catch {
+              // chmod is best-effort — don't fail the upload
+            }
+          }
           result.succeeded.push(items[i]);
         } catch (err: unknown) {
           result.failed.push({
