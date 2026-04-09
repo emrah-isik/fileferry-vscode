@@ -6,12 +6,14 @@ jest.mock('../../../path/PathResolver');
 jest.mock('../../../services/UploadOrchestratorV2');
 jest.mock('../../../services/FileDateGuard');
 jest.mock('../../../services/BackupService');
+jest.mock('../../../services/DryRunReporter');
 
 import { ScmResourceResolver } from '../../../scm/ScmResourceResolver';
 import { PathResolver } from '../../../path/PathResolver';
 import { UploadOrchestratorV2 } from '../../../services/UploadOrchestratorV2';
 import { FileDateGuard } from '../../../services/FileDateGuard';
 import { BackupService } from '../../../services/BackupService';
+import { DryRunReporter } from '../../../services/DryRunReporter';
 import { uploadSelected } from '../../../commands/uploadSelected';
 import type { CredentialManager } from '../../../storage/CredentialManager';
 import type { ProjectConfigManager } from '../../../storage/ProjectConfigManager';
@@ -22,12 +24,14 @@ const mockUpload = jest.fn().mockResolvedValue({ succeeded: [], failed: [], dele
 const mockDateGuardCheck = jest.fn().mockResolvedValue([]);
 const mockBackup = jest.fn().mockResolvedValue(undefined);
 const mockCleanup = jest.fn().mockResolvedValue(undefined);
+const mockDryRunReport = jest.fn();
 
 (ScmResourceResolver as jest.Mock).mockImplementation(() => ({ resolve: mockResolve }));
 (PathResolver as jest.Mock).mockImplementation(() => ({ resolveAll: mockResolveAll }));
 (UploadOrchestratorV2 as jest.Mock).mockImplementation(() => ({ upload: mockUpload }));
 (FileDateGuard as jest.Mock).mockImplementation(() => ({ check: mockDateGuardCheck }));
 (BackupService as jest.Mock).mockImplementation(() => ({ backup: mockBackup, cleanup: mockCleanup }));
+(DryRunReporter as jest.Mock).mockImplementation(() => ({ report: mockDryRunReport }));
 
 const mockCredentialManager = {
   getWithSecret: jest.fn().mockResolvedValue({
@@ -44,6 +48,11 @@ const mockConfigManager = {
 const mockContext = {
   globalState: { get: jest.fn().mockReturnValue(false), update: jest.fn() },
 } as unknown as vscode.ExtensionContext;
+
+const mockOutput = {
+  appendLine: jest.fn(),
+  show: jest.fn(),
+} as unknown as vscode.OutputChannel;
 
 const serverFixture = {
   id: 'srv-1',
@@ -66,7 +75,7 @@ const configFixture = {
 const resource = { resourceUri: vscode.Uri.file('/workspace/src/app.php') } as any;
 
 function dependencies() {
-  return { credentialManager: mockCredentialManager, configManager: mockConfigManager, context: mockContext };
+  return { credentialManager: mockCredentialManager, configManager: mockConfigManager, context: mockContext, output: mockOutput };
 }
 
 describe('uploadSelected command', () => {
@@ -468,6 +477,51 @@ describe('uploadSelected command', () => {
       await uploadSelected(resource, undefined, dependencies());
       const messages = mockReport.mock.calls.map((c: any[]) => c[0].message);
       expect(messages).toEqual(['Uploading...']);
+    });
+  });
+
+  describe('dry run mode', () => {
+    beforeEach(() => {
+      (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({ ...configFixture, dryRun: true });
+    });
+
+    it('calls DryRunReporter.report() when dryRun is true', async () => {
+      await uploadSelected(resource, undefined, dependencies());
+      expect(mockDryRunReport).toHaveBeenCalledWith([
+        expect.objectContaining({ serverName: 'Production' }),
+      ]);
+    });
+
+    it('does NOT call UploadOrchestratorV2.upload() when dryRun is true', async () => {
+      await uploadSelected(resource, undefined, dependencies());
+      expect(mockUpload).not.toHaveBeenCalled();
+    });
+
+    it('does NOT call FileDateGuard.check() when dryRun is true', async () => {
+      await uploadSelected(resource, undefined, dependencies());
+      expect(mockDateGuardCheck).not.toHaveBeenCalled();
+    });
+
+    it('does NOT call BackupService.backup() when dryRun is true', async () => {
+      (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({ ...configFixture, dryRun: true, backupBeforeOverwrite: true });
+      await uploadSelected(resource, undefined, dependencies());
+      expect(mockBackup).not.toHaveBeenCalled();
+    });
+
+    it('shows informational dry run notification', async () => {
+      (vscode.window.showInformationMessage as jest.Mock).mockResolvedValue(undefined);
+      await uploadSelected(resource, undefined, dependencies());
+      expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+        expect.stringContaining('dry run'),
+        'Show Log'
+      );
+    });
+
+    it('runs normal upload flow when dryRun is false', async () => {
+      (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({ ...configFixture, dryRun: false });
+      await uploadSelected(resource, undefined, dependencies());
+      expect(mockUpload).toHaveBeenCalled();
+      expect(mockDryRunReport).not.toHaveBeenCalled();
     });
   });
 });

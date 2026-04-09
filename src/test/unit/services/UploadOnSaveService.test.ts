@@ -369,4 +369,16 @@ describe('UploadOnSaveService', () => {
       expect(mockUpload).toHaveBeenCalled();
     });
   });
+
+  describe('dry run mode', () => {
+    it('does nothing when dryRun is true and uploadOnSave is true', async () => {
+      (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({ ...configFixture, dryRun: true, uploadOnSave: true });
+      const service = createService();
+      service.register();
+      await saveCallback(makeSavedDoc('/workspace/src/app.php'));
+      expect(mockUpload).not.toHaveBeenCalled();
+      expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
+      expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
+    });
+  });
 });

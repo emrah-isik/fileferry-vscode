@@ -1,16 +1,22 @@
 # FileFerry Roadmap
 
-## Current — v0.6
+## Current — v0.7
 
-- Everything in v0.5, plus:
-- Symlink directory support in the Remote File Browser and directory picker
-- FTP / FTPS support (plain FTP, explicit TLS, implicit TLS)
-- Protocol-agnostic TransferService abstraction — all features work across SFTP and FTP
-- Credential filtering — FTP protocols only show password-auth credentials
+- Everything in v0.6, plus:
+- File and directory permission control (set octal mode on uploaded files and created directories)
+- Remote time offset — clock skew compensation so file date guard works correctly against servers with unsynchronised clocks
+- Dry run mode — preview exactly what would be uploaded or deleted without transferring any files
 
 ---
 
 ## Previous Releases
+
+### v0.6
+
+- Symlink directory support in the Remote File Browser and directory picker
+- FTP / FTPS support (plain FTP, explicit TLS, implicit TLS)
+- Protocol-agnostic TransferService abstraction — all features work across SFTP and FTP
+- Credential filtering — FTP protocols only show password-auth credentials
 
 ### v0.5
 
@@ -55,11 +61,8 @@
 
 ## Upcoming
 
-### v0.7 — Polish & Safety
+### v0.7 — Polish & Safety (in progress)
 
-- File and directory permission control (set octal permissions on upload)
-- Remote time offset (clock skew compensation for file date guard)
-- Dry run mode (preview what would be uploaded/deleted without transferring)
 - Upload history panel (filterable log of all deploy operations)
 
 ### v0.8 — Stable Release

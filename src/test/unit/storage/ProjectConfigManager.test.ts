@@ -344,3 +344,44 @@ describe('ProjectConfigManager — setBackupMaxSizeMB', () => {
     expect(written.backupMaxSizeMB).toBe(50);
   });
 });
+
+describe('ProjectConfigManager — toggleDryRun', () => {
+  let manager: ProjectConfigManager;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    manager = new ProjectConfigManager();
+  });
+
+  it('enables dryRun when currently undefined (default is off)', async () => {
+    mockReadFile.mockResolvedValue(JSON.stringify(configFixture));
+    const result = await manager.toggleDryRun();
+    const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string);
+    expect(written.dryRun).toBe(true);
+    expect(result).toBe(true);
+  });
+
+  it('disables dryRun when currently true', async () => {
+    mockReadFile.mockResolvedValue(JSON.stringify({ ...configFixture, dryRun: true }));
+    const result = await manager.toggleDryRun();
+    const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string);
+    expect(written.dryRun).toBe(false);
+    expect(result).toBe(false);
+  });
+
+  it('enables dryRun when currently false', async () => {
+    mockReadFile.mockResolvedValue(JSON.stringify({ ...configFixture, dryRun: false }));
+    const result = await manager.toggleDryRun();
+    const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string);
+    expect(written.dryRun).toBe(true);
+    expect(result).toBe(true);
+  });
+
+  it('creates a new config if none exists', async () => {
+    mockReadFile.mockRejectedValue({ code: 'ENOENT' });
+    const result = await manager.toggleDryRun();
+    const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string);
+    expect(written.dryRun).toBe(true);
+    expect(result).toBe(true);
+  });
+});

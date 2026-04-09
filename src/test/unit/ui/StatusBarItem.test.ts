@@ -188,5 +188,88 @@ describe('StatusBarItem', () => {
       await bar.showMenu();
       expect(vscode.commands.executeCommand).not.toHaveBeenCalled();
     });
+
+    it('includes Toggle Dry Run option in quick pick', async () => {
+      (vscode.window.showQuickPick as jest.Mock).mockResolvedValue(undefined);
+      const ctx = makeContext();
+      const bar = new StatusBarItem(ctx, mockConfigManager);
+      await bar.refresh();
+      await bar.showMenu();
+      expect(vscode.window.showQuickPick).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({ label: expect.stringContaining('Dry Run') }),
+        ]),
+        expect.any(Object),
+      );
+    });
+
+    it('shows "ON" indicator when dryRun is true', async () => {
+      (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({ ...configFixture, dryRun: true });
+      (vscode.window.showQuickPick as jest.Mock).mockResolvedValue(undefined);
+      const ctx = makeContext();
+      const bar = new StatusBarItem(ctx, mockConfigManager);
+      await bar.refresh();
+      await bar.showMenu();
+      const items = (vscode.window.showQuickPick as jest.Mock).mock.calls[0][0];
+      const dryRunItem = items.find((i: any) => i.id === 'toggleDryRun');
+      expect(dryRunItem.description).toContain('ON');
+    });
+
+    it('shows "OFF" indicator when dryRun is false', async () => {
+      (vscode.window.showQuickPick as jest.Mock).mockResolvedValue(undefined);
+      const ctx = makeContext();
+      const bar = new StatusBarItem(ctx, mockConfigManager);
+      await bar.refresh();
+      await bar.showMenu();
+      const items = (vscode.window.showQuickPick as jest.Mock).mock.calls[0][0];
+      const dryRunItem = items.find((i: any) => i.id === 'toggleDryRun');
+      expect(dryRunItem.description).toContain('OFF');
+    });
+
+    it('executes toggleDryRun command when dry run toggle is selected', async () => {
+      (vscode.window.showQuickPick as jest.Mock).mockResolvedValue({ id: 'toggleDryRun' });
+      (vscode.commands.executeCommand as jest.Mock).mockResolvedValue(undefined);
+      const ctx = makeContext();
+      const bar = new StatusBarItem(ctx, mockConfigManager);
+      await bar.refresh();
+      await bar.showMenu();
+      expect(vscode.commands.executeCommand).toHaveBeenCalledWith('fileferry.toggleDryRun');
+    });
+  });
+
+  describe('dry run indicator', () => {
+    it('shows $(eye) icon and DRY RUN label when dryRun is true', async () => {
+      (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({ ...configFixture, dryRun: true });
+      const ctx = makeContext();
+      const bar = new StatusBarItem(ctx, mockConfigManager);
+      await bar.refresh();
+      expect(mockItem.text).toContain('$(eye)');
+      expect(mockItem.text).toContain('DRY RUN');
+    });
+
+    it('shows server name in DRY RUN text', async () => {
+      (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({ ...configFixture, dryRun: true });
+      const ctx = makeContext();
+      const bar = new StatusBarItem(ctx, mockConfigManager);
+      await bar.refresh();
+      expect(mockItem.text).toContain('Production');
+    });
+
+    it('shows dry run tooltip when dryRun is true', async () => {
+      (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({ ...configFixture, dryRun: true });
+      const ctx = makeContext();
+      const bar = new StatusBarItem(ctx, mockConfigManager);
+      await bar.refresh();
+      expect(mockItem.tooltip).toContain('Dry run mode ON');
+    });
+
+    it('shows normal icon when dryRun is false', async () => {
+      (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({ ...configFixture, dryRun: false });
+      const ctx = makeContext();
+      const bar = new StatusBarItem(ctx, mockConfigManager);
+      await bar.refresh();
+      expect(mockItem.text).not.toContain('DRY RUN');
+      expect(mockItem.text).toContain('$(server)');
+    });
   });
 });

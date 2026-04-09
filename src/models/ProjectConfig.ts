@@ -23,6 +23,7 @@ export interface ProjectConfig {
   backupBeforeOverwrite?: boolean;  // download remote files before uploading (default: false)
   backupRetentionDays?: number;     // days to keep backup folders (default: 7)
   backupMaxSizeMB?: number;         // max total backup size in MB (default: 100)
+  dryRun?: boolean;                 // preview mode — show what would be deployed without transferring (default: false)
   servers: {
     [serverName: string]: ProjectServer;
   };

@@ -60,6 +60,7 @@ const mockConfigManager = {
   toggleBackupBeforeOverwrite: jest.fn().mockResolvedValue(true),
   setBackupRetentionDays: jest.fn().mockResolvedValue(undefined),
   setBackupMaxSizeMB: jest.fn().mockResolvedValue(undefined),
+  toggleDryRun: jest.fn().mockResolvedValue(true),
 } as unknown as ProjectConfigManager;
 
 describe('ProjectSettingsPanel', () => {
@@ -148,6 +149,17 @@ describe('ProjectSettingsPanel', () => {
     ProjectSettingsPanel.createOrShow(mockContext, { configManager: mockConfigManager });
     await messageHandler({ command: 'setBackupMaxSizeMB', value: 200 });
     expect(mockConfigManager.setBackupMaxSizeMB).toHaveBeenCalledWith(200);
+    expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      command: 'configUpdated',
+    }));
+  });
+
+  it('handles toggleDryRun: calls manager and posts configUpdated', async () => {
+    (mockConfigManager.toggleDryRun as jest.Mock).mockResolvedValue(true);
+    (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({ ...configFixture, dryRun: true });
+    ProjectSettingsPanel.createOrShow(mockContext, { configManager: mockConfigManager });
+    await messageHandler({ command: 'toggleDryRun' });
+    expect(mockConfigManager.toggleDryRun).toHaveBeenCalled();
     expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
       command: 'configUpdated',
     }));

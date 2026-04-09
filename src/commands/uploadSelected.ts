@@ -8,11 +8,13 @@ import { BackupService } from '../services/BackupService';
 import { UploadConfirmation } from '../uploadConfirmation';
 import { CredentialManager } from '../storage/CredentialManager';
 import { ProjectConfigManager } from '../storage/ProjectConfigManager';
+import { DryRunReporter } from '../services/DryRunReporter';
 
 interface Dependencies {
   credentialManager: CredentialManager;
   configManager: ProjectConfigManager;
   context: vscode.ExtensionContext;
+  output: vscode.OutputChannel;
 }
 
 export async function uploadSelected(
@@ -97,6 +99,17 @@ export async function uploadSelected(
       vscode.window.showErrorMessage(`FileFerry: ${message}`);
       return;
     }
+  }
+
+  // Dry run intercept — report plan and skip all transfers
+  if (config.dryRun) {
+    const reporter = new DryRunReporter(dependencies.output);
+    reporter.report([{ serverName, uploadItems, deleteRemotePaths, workspaceRoot }]);
+    vscode.window.showInformationMessage(
+      `FileFerry (dry run): ${uploadItems.length} file(s) to upload, ${deleteRemotePaths.length} to delete on "${serverName}".`,
+      'Show Log'
+    ).then(choice => { if (choice === 'Show Log') { dependencies.output.show(); } });
+    return;
   }
 
   // Confirmation dialog

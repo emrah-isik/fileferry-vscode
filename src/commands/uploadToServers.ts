@@ -8,11 +8,13 @@ import { BackupService } from '../services/BackupService';
 import { CredentialManager } from '../storage/CredentialManager';
 import { ProjectConfigManager } from '../storage/ProjectConfigManager';
 import { ProjectServer } from '../models/ProjectConfig';
+import { DryRunReporter } from '../services/DryRunReporter';
 
 interface Dependencies {
   credentialManager: CredentialManager;
   configManager: ProjectConfigManager;
   context: vscode.ExtensionContext;
+  output: vscode.OutputChannel;
 }
 
 interface ServerQuickPickItem extends vscode.QuickPickItem {
@@ -122,6 +124,24 @@ export async function uploadToServers(
   }
 
   if (plans.length === 0) {
+    return;
+  }
+
+  // Dry run intercept — report all server plans and skip all transfers
+  if (config.dryRun) {
+    const reporter = new DryRunReporter(dependencies.output);
+    reporter.report(plans.map(p => ({
+      serverName: p.serverName,
+      uploadItems: p.uploadItems,
+      deleteRemotePaths: p.deleteRemotePaths,
+      workspaceRoot,
+    })));
+    const totalUploads = plans.reduce((sum, p) => sum + p.uploadItems.length, 0);
+    const totalDeletes = plans.reduce((sum, p) => sum + p.deleteRemotePaths.length, 0);
+    vscode.window.showInformationMessage(
+      `FileFerry (dry run): ${totalUploads} file(s) to upload, ${totalDeletes} to delete across ${plans.length} server(s).`,
+      'Show Log'
+    ).then(choice => { if (choice === 'Show Log') { dependencies.output.show(); } });
     return;
   }
 

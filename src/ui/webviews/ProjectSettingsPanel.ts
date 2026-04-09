@@ -83,6 +83,11 @@ export class ProjectSettingsPanel {
         await this.dependencies.configManager.setBackupMaxSizeMB(msg.value);
         await this.pushConfigUpdate();
         break;
+
+      case 'toggleDryRun':
+        await this.dependencies.configManager.toggleDryRun();
+        await this.pushConfigUpdate();
+        break;
     }
   }
 

@@ -89,7 +89,7 @@ export function activate(context: vscode.ExtensionContext): void {
       'fileferry.uploadSelected',
       (arg1, arg2) => {
         const { resource, allResources } = normalizeCommandArgs(arg1, arg2);
-        return uploadSelected(resource, allResources, { credentialManager, configManager, context });
+        return uploadSelected(resource, allResources, { credentialManager, configManager, context, output });
       }
     ),
 
@@ -97,7 +97,7 @@ export function activate(context: vscode.ExtensionContext): void {
       'fileferry.uploadToServers',
       (arg1, arg2) => {
         const { resource, allResources } = normalizeCommandArgs(arg1, arg2);
-        return uploadToServers(resource, allResources, { credentialManager, configManager, context });
+        return uploadToServers(resource, allResources, { credentialManager, configManager, context, output });
       }
     ),
 
@@ -170,6 +170,17 @@ export function activate(context: vscode.ExtensionContext): void {
         statusBar.refresh();
         vscode.window.showInformationMessage(
           `FileFerry: Upload on save ${newValue ? 'enabled' : 'disabled'}.`
+        );
+      })
+    ),
+
+    vscode.commands.registerCommand(
+      'fileferry.toggleDryRun',
+      withErrorHandling('toggleDryRun', async () => {
+        const newValue = await configManager.toggleDryRun();
+        statusBar.refresh();
+        vscode.window.showInformationMessage(
+          `FileFerry: Dry run mode ${newValue ? 'enabled' : 'disabled'}.`
         );
       })
     ),

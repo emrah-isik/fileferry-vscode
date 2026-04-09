@@ -202,6 +202,22 @@ Right-click a file or folder in the Remote File Browser and choose **Delete from
 
 ## Backup and Safety
 
+### Dry Run Mode
+
+Enable dry run mode to preview exactly what would be uploaded or deleted — without actually transferring anything. No connections are opened; no files are moved.
+
+When dry run is on:
+- The **FileFerry output channel** shows a structured plan listing every file that would be uploaded (with local → remote paths) and every remote path that would be deleted, grouped by server.
+- A notification appears with the total count and a **Show Log** button.
+- **Upload on save is silently skipped** — no notification, no log line.
+- The status bar changes to `$(eye) ServerName — DRY RUN` so you can't forget the mode is active.
+
+**Note:** FileDateGuard results are not shown in dry run output — that check requires a remote connection and dry run is purely local.
+
+Enable or disable dry run in any of these places:
+- **Project Settings** — `FileFerry: Project Settings` from the command palette
+- **Status bar menu** — click the FileFerry status bar item and choose **Dry Run Mode**
+
 ### Backup Before Overwrite
 
 When enabled, FileFerry downloads the existing remote file before uploading your new version. Backups are stored in `.vscode/fileferry-backups/` in your workspace.
@@ -232,6 +248,7 @@ Open with `FileFerry: Project Settings` from the command palette.
 
 This is a per-project settings panel for toggling features that apply to the current workspace:
 
+- **Dry run mode** — preview what would be deployed without transferring any files
 - **Upload on save** — auto-deploy files when you save
 - **Backup before overwrite** — download remote files before replacing them
 

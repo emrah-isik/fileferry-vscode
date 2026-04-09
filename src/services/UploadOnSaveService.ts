@@ -43,6 +43,10 @@ export class UploadOnSaveService {
       return;
     }
 
+    if (config.dryRun) {
+      return;  // silent — no log, no notification
+    }
+
     const match = await this.dependencies.configManager.getServerById(config.defaultServerId);
     if (!match) {
       return;

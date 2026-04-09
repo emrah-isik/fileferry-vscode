@@ -123,4 +123,11 @@ export class ProjectConfigManager {
     config.backupMaxSizeMB = mb;
     await this.saveConfig(config);
   }
+
+  async toggleDryRun(): Promise<boolean> {
+    const config = (await this.getConfig()) ?? this.emptyConfig();
+    config.dryRun = !config.dryRun;
+    await this.saveConfig(config);
+    return config.dryRun;
+  }
 }

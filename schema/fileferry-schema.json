@@ -12,6 +12,11 @@
       "type": "boolean",
       "description": "When true, files are automatically uploaded to the default server on save"
     },
+    "dryRun": {
+      "type": "boolean",
+      "description": "When enabled, upload commands show what would be transferred without actually deploying.",
+      "default": false
+    },
     "fileDateGuard": {
       "type": "boolean",
       "description": "When false, disables the remote mtime check before uploading. Defaults to true when omitted."

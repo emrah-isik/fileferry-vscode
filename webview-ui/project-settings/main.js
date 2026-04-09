@@ -36,6 +36,7 @@ function render() {
   const app = document.getElementById('app');
   if (!app || !state.config) return;
 
+  const dryRun = !!state.config.dryRun;
   const uploadOnSave = !!state.config.uploadOnSave;
   // fileDateGuard defaults to true when undefined
   const fileDateGuard = state.config.fileDateGuard !== false;
@@ -46,6 +47,16 @@ function render() {
   app.innerHTML = `
     <h2>Project Settings</h2>
     <p class="hint">These settings apply to all servers in this project.</p>
+
+    <div class="setting-row">
+      <label class="toggle-label">
+        <input type="checkbox" id="chk-dry-run" ${dryRun ? 'checked' : ''}>
+        <span class="toggle-text">
+          <strong>Dry Run Mode</strong>
+          <span class="toggle-description">Preview what would be deployed without transferring any files.</span>
+        </span>
+      </label>
+    </div>
 
     <div class="setting-row">
       <label class="toggle-label">
@@ -89,6 +100,10 @@ function render() {
       ` : ''}
     </div>
   `;
+
+  document.getElementById('chk-dry-run')?.addEventListener('change', () => {
+    vscode.postMessage({ command: 'toggleDryRun' });
+  });
 
   document.getElementById('chk-upload-on-save')?.addEventListener('change', () => {
     vscode.postMessage({ command: 'toggleUploadOnSave' });

@@ -10,6 +10,7 @@ interface MenuAction {
 export class StatusBarItem implements vscode.Disposable {
   private readonly item: vscode.StatusBarItem;
   private uploadOnSave = false;
+  private dryRun = false;
 
   constructor(
     context: vscode.ExtensionContext,
@@ -34,6 +35,7 @@ export class StatusBarItem implements vscode.Disposable {
     const config = await this.configManager.getConfig();
     if (!config) {
       this.uploadOnSave = false;
+      this.dryRun = false;
       this.item.text = '$(server) FileFerry';
       this.item.tooltip = 'FileFerry: Click to open Deployment Settings';
       this.item.show();
@@ -42,14 +44,26 @@ export class StatusBarItem implements vscode.Disposable {
     const match = await this.configManager.getServerById(config.defaultServerId);
     const name = match?.name ?? 'FileFerry';
     this.uploadOnSave = config.uploadOnSave === true;
-    const icon = this.uploadOnSave ? '$(cloud-upload)' : '$(server)';
-    this.item.text = `${icon} ${name}`;
-    this.item.tooltip = `FileFerry: ${name} — Upload on save: ${this.uploadOnSave ? 'ON' : 'OFF'}`;
+    this.dryRun = config.dryRun === true;
+
+    if (this.dryRun) {
+      this.item.text = `$(eye) ${name} — DRY RUN`;
+      this.item.tooltip = `FileFerry: ${name} — Dry run mode ON (no files will be transferred)`;
+    } else {
+      const icon = this.uploadOnSave ? '$(cloud-upload)' : '$(server)';
+      this.item.text = `${icon} ${name}`;
+      this.item.tooltip = `FileFerry: ${name} — Upload on save: ${this.uploadOnSave ? 'ON' : 'OFF'}`;
+    }
     this.item.show();
   }
 
   async showMenu(): Promise<void> {
     const items: MenuAction[] = [
+      {
+        label: '$(eye) Dry Run Mode',
+        id: 'toggleDryRun',
+        description: this.dryRun ? 'ON' : 'OFF',
+      },
       {
         label: '$(cloud-upload) Upload on Save',
         id: 'toggleUploadOnSave',
@@ -74,6 +88,7 @@ export class StatusBarItem implements vscode.Disposable {
     }
 
     const commandMap: Record<string, string> = {
+      toggleDryRun: 'fileferry.toggleDryRun',
       toggleUploadOnSave: 'fileferry.toggleUploadOnSave',
       switchServer: 'fileferry.switchServer',
       openSettings: 'fileferry.openSettings',
