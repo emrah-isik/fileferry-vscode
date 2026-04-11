@@ -14,7 +14,7 @@ export class UploadConfirmation {
     ) => Thenable<string | undefined> = vscode.window.showInformationMessage.bind(vscode.window)
   ) {}
 
-  async confirm(serverId: string, fileCount: number): Promise<boolean> {
+  async confirm(serverId: string, fileCount: number, serverName?: string): Promise<boolean> {
     const key = `fileferry.confirm.suppress.${serverId}`;
     const suppressed = this.globalState.get<boolean>(key, false);
 
@@ -23,8 +23,9 @@ export class UploadConfirmation {
     }
 
     const label = fileCount === 1 ? '1 file' : `${fileCount} files`;
+    const displayName = serverName ?? serverId;
     const result = await this.showMessage(
-      `Upload ${label} to "${serverId}"?`,
+      `Upload ${label} to "${displayName}"?`,
       'Upload',
       "Upload, don't ask again",
       'Cancel'

@@ -34,6 +34,30 @@ describe('UploadConfirmation', () => {
     );
   });
 
+  it('shows server name instead of id when serverName is provided', async () => {
+    mockGlobalState.get.mockReturnValue(false);
+    mockShowMessage.mockResolvedValue('Upload');
+    await confirmation.confirm('b447ea4e-6693-4a46-8e3c-e708c4bdad98', 2, 'Production');
+    expect(mockShowMessage).toHaveBeenCalledWith(
+      'Upload 2 files to "Production"?',
+      expect.any(String),
+      expect.any(String),
+      expect.any(String)
+    );
+  });
+
+  it('falls back to server id in message when serverName is not provided', async () => {
+    mockGlobalState.get.mockReturnValue(false);
+    mockShowMessage.mockResolvedValue('Upload');
+    await confirmation.confirm('prod', 2);
+    expect(mockShowMessage).toHaveBeenCalledWith(
+      'Upload 2 files to "prod"?',
+      expect.any(String),
+      expect.any(String),
+      expect.any(String)
+    );
+  });
+
   it('shows singular "1 file" when count is 1', async () => {
     mockGlobalState.get.mockReturnValue(false);
     mockShowMessage.mockResolvedValue('Upload');

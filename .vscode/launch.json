@@ -6,7 +6,8 @@
       "type": "extensionHost",
       "request": "launch",
       "args": [
-        "--extensionDevelopmentPath=${workspaceFolder}"
+        "--extensionDevelopmentPath=${workspaceFolder}",
+        "${workspaceFolder}/dev/screenshot-env/myapp"
       ],
       "outFiles": [
         "${workspaceFolder}/dist/**/*.js"

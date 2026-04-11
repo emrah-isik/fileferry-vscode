@@ -120,7 +120,7 @@ export async function uploadSelected(
   if (deleteRemotePaths.length > 0) {
     confirmed = await confirmation.confirmWithDeletions(serverName, uploadItems.length, deleteRemotePaths.length);
   } else {
-    confirmed = await confirmation.confirm(server.id, uploadItems.length);
+    confirmed = await confirmation.confirm(server.id, uploadItems.length, serverName);
   }
   if (!confirmed) {
     return;
