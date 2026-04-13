@@ -18,11 +18,11 @@ Right-click changed files in the Source Control panel, press `Alt+U`, confirm, d
 
 Select files in the Source Control panel, right-click, and deploy. Or press `Alt+U` — no mouse needed.
 
-![SCM context menu](resources/readme/fileferry_scm_context_menu.png)
+![SCM context menu](https://raw.githubusercontent.com/emrah-isik/fileferry-vscode/main/resources/readme/fileferry_scm_context_menu.png)
 
 FileFerry shows a confirmation before every deploy. Upload to multiple servers at once with `Shift+Alt+U`.
 
-![Upload confirmation](resources/readme/fileferry_scm_upload_confirmation.png)
+![Upload confirmation](https://raw.githubusercontent.com/emrah-isik/fileferry-vscode/main/resources/readme/fileferry_scm_upload_confirmation.png)
 
 - **Multi-select upload** — select any number of files in Source Control or Explorer
 - **Multi-server push** — deploy to dev, staging, and prod in one action
@@ -40,7 +40,7 @@ FileFerry shows a confirmation before every deploy. Upload to multiple servers a
 
 A dedicated sidebar panel lets you browse, download, compare, and delete files directly on the server.
 
-![Remote Files panel](resources/readme/fileferry_remote_files_panel.png)
+![Remote Files panel](https://raw.githubusercontent.com/emrah-isik/fileferry-vscode/main/resources/readme/fileferry_remote_files_panel.png)
 
 - **Remote File Browser** — expandable directory tree with persistent connection and idle timeout
 - **Compare with Remote** — side-by-side diff of local vs server version (`Alt+P`)
@@ -55,7 +55,7 @@ A dedicated sidebar panel lets you browse, download, compare, and delete files d
 
 Manage servers and credentials through a form — no JSON editing required.
 
-![Deployment Settings](resources/readme/fileferry_deployment_settings_panel.png)
+![Deployment Settings](https://raw.githubusercontent.com/emrah-isik/fileferry-vscode/main/resources/readme/fileferry_deployment_settings_panel.png)
 
 - **Multiple servers** — define production, staging, and dev servers; switch with one click
 - **Path mappings** — map workspace subfolders to different remote paths per server
@@ -96,7 +96,7 @@ This file is created and managed by FileFerry — you do not need to edit it man
 
 Every deploy is logged. Filter by server, result, or file path.
 
-![Upload History](resources/readme/fileferry_upload_history.png)
+![Upload History](https://raw.githubusercontent.com/emrah-isik/fileferry-vscode/main/resources/readme/fileferry_upload_history.png)
 
 ---
 
@@ -104,8 +104,8 @@ Every deploy is logged. Filter by server, result, or file path.
 
 The active server is always visible. Click to switch servers, toggle upload on save, enable dry run, or open upload history.
 
-![Status bar](resources/readme/fileferry_status_bar_item.png)
-![Status bar menu](resources/readme/fileferry_status_bar_command_list.png)
+![Status bar](https://raw.githubusercontent.com/emrah-isik/fileferry-vscode/main/resources/readme/fileferry_status_bar_item.png)
+![Status bar menu](https://raw.githubusercontent.com/emrah-isik/fileferry-vscode/main/resources/readme/fileferry_status_bar_command_list.png)
 
 ---
 
