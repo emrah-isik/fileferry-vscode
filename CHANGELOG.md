@@ -2,6 +2,14 @@
 
 All notable changes to FileFerry will be documented in this file.
 
+## [0.8.2] - 2026-04-13
+
+### Fixed
+
+- Extension icon background removed — boat renders cleanly on any VS Code theme
+
+---
+
 ## [0.8.1] - 2026-04-13
 
 ### Fixed
