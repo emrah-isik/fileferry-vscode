@@ -99,6 +99,50 @@ describe('UploadOrchestratorV2 — cancellation', () => {
   });
 });
 
+describe('UploadOrchestratorV2 — deletions', () => {
+  let orchestrator: UploadOrchestratorV2;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    orchestrator = new UploadOrchestratorV2(mockSftp as any);
+  });
+
+  it('deletes remote paths after uploads complete', async () => {
+    const result = await orchestrator.upload([], credential, server, ['/var/www/old.php', '/var/www/stale.js']);
+
+    expect(mockSftp.deleteFile).toHaveBeenCalledWith('/var/www/old.php');
+    expect(mockSftp.deleteFile).toHaveBeenCalledWith('/var/www/stale.js');
+    expect(result.deleted).toEqual(['/var/www/old.php', '/var/www/stale.js']);
+    expect(result.deleteFailed).toHaveLength(0);
+  });
+
+  it('records failed deletions in deleteFailed without throwing', async () => {
+    mockSftp.deleteFile.mockRejectedValueOnce(new Error('permission denied'));
+    const result = await orchestrator.upload([], credential, server, ['/var/www/locked.php']);
+
+    expect(result.deleted).toHaveLength(0);
+    expect(result.deleteFailed).toEqual([{ remotePath: '/var/www/locked.php', error: 'permission denied' }]);
+  });
+
+  it('records partial results when some deletions succeed and some fail', async () => {
+    mockSftp.deleteFile
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error('not found'));
+
+    const result = await orchestrator.upload([], credential, server, ['/var/www/a.php', '/var/www/b.php']);
+
+    expect(result.deleted).toEqual(['/var/www/a.php']);
+    expect(result.deleteFailed).toEqual([{ remotePath: '/var/www/b.php', error: 'not found' }]);
+  });
+
+  it('still disconnects when a deletion fails', async () => {
+    mockSftp.deleteFile.mockRejectedValueOnce(new Error('oops'));
+    await orchestrator.upload([], credential, server, ['/var/www/x.php']);
+
+    expect(mockSftp.disconnect).toHaveBeenCalled();
+  });
+});
+
 describe('UploadOrchestratorV2 — permissions', () => {
   let orchestrator: UploadOrchestratorV2;
 

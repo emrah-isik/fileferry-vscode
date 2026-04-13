@@ -2,6 +2,16 @@
 
 All notable changes to FileFerry will be documented in this file.
 
+## [0.8.0] - 2026-04-13
+
+No new features. Marketplace-ready polish release.
+
+- Full README rewrite with feature screenshots
+- Updated activity bar and extension icon
+- Why FileFerry section added to README
+
+---
+
 ## [0.7.0] - 2026-04-10
 
 ### Added

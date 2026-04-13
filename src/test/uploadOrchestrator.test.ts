@@ -99,4 +99,31 @@ describe('UploadOrchestrator', () => {
       expect.objectContaining({ password: 'secret' })
     );
   });
+
+  it('uses passphrase auth when authMethod is key', async () => {
+    const keyServer = { ...prodServer, authMethod: 'key' };
+    mockConfigManager.loadConfig.mockResolvedValue({ servers: [keyServer] });
+    mockSecretManager.getPassphrase.mockResolvedValue('mypassphrase');
+    mockConfigManager.resolveRemotePath.mockReturnValue('/var/www/src/app.php');
+
+    await orchestrator.upload([singleFile], 'prod', jest.fn());
+
+    expect(mockSecretManager.getPassphrase).toHaveBeenCalledWith('prod');
+    expect(mockSftpService.connect).toHaveBeenCalledWith(
+      keyServer,
+      expect.objectContaining({ passphrase: 'mypassphrase' })
+    );
+  });
+
+  it('maps failed upload results to local path and error message', async () => {
+    mockConfigManager.resolveRemotePath.mockReturnValue('/var/www/src/app.php');
+    mockSftpService.uploadFiles.mockResolvedValue({
+      succeeded: [],
+      failed: [{ pair: { localPath: '/proj/src/app.php', remotePath: '/var/www/src/app.php' }, error: 'disk full' }]
+    });
+
+    const result = await orchestrator.upload([singleFile], 'prod', jest.fn());
+
+    expect(result.failed).toEqual([{ localPath: '/proj/src/app.php', error: 'disk full' }]);
+  });
 });
