@@ -11,5 +11,9 @@ tsconfig.json
 webpack.config.js
 jest.config.*
 .gitignore
+.claude/**
+dev/**
 docs/plans/**
+docs/architecture.md
+**/*:Zone.Identifier
 CHANGELOG.md
