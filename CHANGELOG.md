@@ -2,6 +2,14 @@
 
 All notable changes to FileFerry will be documented in this file.
 
+## [0.8.1] - 2026-04-13
+
+### Fixed
+
+- Extension icon resized from 2048x2048 to 256x256 (6 MB → 76 KB)
+
+---
+
 ## [0.8.0] - 2026-04-13
 
 No new features. Marketplace-ready polish release.
