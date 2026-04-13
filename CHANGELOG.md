@@ -2,6 +2,14 @@
 
 All notable changes to FileFerry will be documented in this file.
 
+## [0.8.3] - 2026-04-13
+
+### Fixed
+
+- Extension icon replaced with fully transparent background version
+
+---
+
 ## [0.8.2] - 2026-04-13
 
 ### Fixed
