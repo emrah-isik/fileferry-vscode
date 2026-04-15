@@ -225,7 +225,7 @@ describe('DeploymentSettingsPanel message handling', () => {
       disconnect: mockDisconnect,
     }));
     DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
-    await messageHandler({ command: 'testConnection', serverId: 'srv-1' });
+    await messageHandler({ command: 'testConnection', server: { id: 'srv-1', type: 'sftp', credentialId: 'cred-1', rootPath: '/var/www' } });
     expect(mockConnect).toHaveBeenCalled();
     expect(mockDisconnect).toHaveBeenCalled();
     expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
@@ -244,12 +244,10 @@ describe('DeploymentSettingsPanel message handling', () => {
   });
 
   it('testConnection fails early with testResult if server has invalid credential', async () => {
-    const serverWithNoCred = { ...serverFixture, credentialId: '' };
-    (mockConfigManager.getServerById as jest.Mock).mockResolvedValue({ name: 'Production', server: serverWithNoCred });
     const mockConnect = jest.fn();
     (createTransferService as jest.Mock).mockImplementation(() => ({ connect: mockConnect, disconnect: jest.fn() }));
     DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
-    await messageHandler({ command: 'testConnection', serverId: 'srv-1' });
+    await messageHandler({ command: 'testConnection', server: { id: 'srv-1', type: 'sftp', credentialId: '', rootPath: '/var/www' } });
     expect(mockConnect).not.toHaveBeenCalled();
     expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
       command: 'testResult',
@@ -455,8 +453,6 @@ describe('DeploymentSettingsPanel message handling', () => {
   // ── FTP/FTPS protocol support ────────────────────────────────────────────────
 
   it('testConnection creates transfer service matching the server type', async () => {
-    const ftpServer = { ...serverFixture, type: 'ftp' as const };
-    (mockConfigManager.getServerById as jest.Mock).mockResolvedValue({ name: 'FTP Server', server: ftpServer });
     const mockConnect = jest.fn().mockResolvedValue(undefined);
     const mockDisconnect = jest.fn().mockResolvedValue(undefined);
     (createTransferService as jest.Mock).mockImplementation(() => ({
@@ -464,13 +460,11 @@ describe('DeploymentSettingsPanel message handling', () => {
       disconnect: mockDisconnect,
     }));
     DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
-    await messageHandler({ command: 'testConnection', serverId: 'srv-1' });
+    await messageHandler({ command: 'testConnection', server: { id: 'srv-1', type: 'ftp', credentialId: 'cred-1', rootPath: '/var/www' } });
     expect(createTransferService).toHaveBeenCalledWith('ftp');
   });
 
   it('testConnection creates transfer service for ftps server type', async () => {
-    const ftpsServer = { ...serverFixture, type: 'ftps' as const };
-    (mockConfigManager.getServerById as jest.Mock).mockResolvedValue({ name: 'FTPS Server', server: ftpsServer });
     const mockConnect = jest.fn().mockResolvedValue(undefined);
     const mockDisconnect = jest.fn().mockResolvedValue(undefined);
     (createTransferService as jest.Mock).mockImplementation(() => ({
@@ -478,7 +472,7 @@ describe('DeploymentSettingsPanel message handling', () => {
       disconnect: mockDisconnect,
     }));
     DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
-    await messageHandler({ command: 'testConnection', serverId: 'srv-1' });
+    await messageHandler({ command: 'testConnection', server: { id: 'srv-1', type: 'ftps', credentialId: 'cred-1', rootPath: '/var/www' } });
     expect(createTransferService).toHaveBeenCalledWith('ftps');
   });
 
@@ -546,15 +540,13 @@ describe('DeploymentSettingsPanel message handling', () => {
   });
 
   it('testConnection rejects FTP server using non-password credential', async () => {
-    const keyCredentials = [{ id: 'cred-key', name: 'Key Auth', host: 'example.com', port: 22, username: 'deploy', authMethod: 'key', privateKeyPath: '~/.ssh/id_rsa' }];
-    const ftpServer = { ...serverFixture, type: 'ftp' as const, credentialId: 'cred-key' };
-    (mockConfigManager.getServerById as jest.Mock).mockResolvedValue({ name: 'FTP Server', server: ftpServer });
-    (mockCredentialManager.getAll as jest.Mock).mockResolvedValue(keyCredentials);
-    (mockCredentialManager.getWithSecret as jest.Mock).mockResolvedValue({ ...keyCredentials[0], passphrase: 'secret' });
+    const keyCredential = { id: 'cred-key', name: 'Key Auth', host: 'example.com', port: 22, username: 'deploy', authMethod: 'key', privateKeyPath: '~/.ssh/id_rsa' };
+    (mockCredentialManager.getAll as jest.Mock).mockResolvedValue([keyCredential]);
+    (mockCredentialManager.getWithSecret as jest.Mock).mockResolvedValue({ ...keyCredential, passphrase: 'secret' });
     const mockConnect = jest.fn();
     (createTransferService as jest.Mock).mockImplementation(() => ({ connect: mockConnect, disconnect: jest.fn() }));
     DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
-    await messageHandler({ command: 'testConnection', serverId: 'srv-1' });
+    await messageHandler({ command: 'testConnection', server: { id: 'srv-1', type: 'ftp', credentialId: 'cred-key', rootPath: '/var/www' } });
     expect(mockConnect).not.toHaveBeenCalled();
     expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
       command: 'testResult',
@@ -622,7 +614,7 @@ describe('DeploymentSettingsPanel message handling', () => {
       disconnect: mockDisconnect,
     }));
     DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
-    await messageHandler({ command: 'testConnection', serverId: 'srv-1' });
+    await messageHandler({ command: 'testConnection', server: { id: 'srv-1', type: 'sftp', credentialId: 'cred-1', rootPath: '/var/www' } });
     expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
       command: 'testResult',
       success: true,
@@ -639,7 +631,7 @@ describe('DeploymentSettingsPanel message handling', () => {
       disconnect: mockDisconnect,
     }));
     DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
-    await messageHandler({ command: 'testConnection', serverId: 'srv-1' });
+    await messageHandler({ command: 'testConnection', server: { id: 'srv-1', type: 'sftp', credentialId: 'cred-1', rootPath: '/var/www' } });
     expect(mockConfigManager.saveConfig).toHaveBeenCalledWith(
       expect.objectContaining({
         servers: expect.objectContaining({
@@ -658,7 +650,7 @@ describe('DeploymentSettingsPanel message handling', () => {
       disconnect: mockDisconnect,
     }));
     DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
-    await messageHandler({ command: 'detectTimeOffset', serverId: 'srv-1' });
+    await messageHandler({ command: 'detectTimeOffset', server: { id: 'srv-1', type: 'sftp', credentialId: 'cred-1', rootPath: '/var/www' } });
     expect(mockConnect).toHaveBeenCalled();
     expect(mockDisconnect).toHaveBeenCalled();
     expect(mockConfigManager.saveConfig).toHaveBeenCalledWith(
@@ -672,6 +664,75 @@ describe('DeploymentSettingsPanel message handling', () => {
       command: 'testResult',
       success: true,
       timeOffsetMs: 500,
+    }));
+  });
+
+  // ── Test connection for unsaved (new) servers ────────────────────────────────
+
+  it('testConnection works for an unsaved server before it has been saved', async () => {
+    const mockConnect = jest.fn().mockResolvedValue(undefined);
+    const mockDisconnect = jest.fn().mockResolvedValue(undefined);
+    (createTransferService as jest.Mock).mockImplementation(() => ({
+      connect: mockConnect,
+      disconnect: mockDisconnect,
+    }));
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    // No id — server has not been saved yet
+    await messageHandler({ command: 'testConnection', server: { type: 'sftp', credentialId: 'cred-1', rootPath: '/var/www' } });
+    expect(mockConnect).toHaveBeenCalled();
+    expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      command: 'testResult',
+      success: true,
+    }));
+  });
+
+  it('testConnection for unsaved server does not save config', async () => {
+    mockDetect.mockResolvedValue(100);
+    const mockConnect = jest.fn().mockResolvedValue(undefined);
+    const mockDisconnect = jest.fn().mockResolvedValue(undefined);
+    (createTransferService as jest.Mock).mockImplementation(() => ({
+      connect: mockConnect,
+      disconnect: mockDisconnect,
+    }));
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    await messageHandler({ command: 'testConnection', server: { type: 'sftp', credentialId: 'cred-1', rootPath: '/var/www' } });
+    expect(mockConfigManager.saveConfig).not.toHaveBeenCalled();
+    // offset is still returned to the webview
+    expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      command: 'testResult',
+      success: true,
+      timeOffsetMs: 100,
+    }));
+  });
+
+  it('testConnection fails with testResult when no credential is selected', async () => {
+    const mockConnect = jest.fn();
+    (createTransferService as jest.Mock).mockImplementation(() => ({ connect: mockConnect, disconnect: jest.fn() }));
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    await messageHandler({ command: 'testConnection', server: { type: 'sftp', credentialId: '', rootPath: '/var/www' } });
+    expect(mockConnect).not.toHaveBeenCalled();
+    expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      command: 'testResult',
+      success: false,
+    }));
+  });
+
+  it('detectTimeOffset for unsaved server detects offset but does not save config', async () => {
+    mockDetect.mockResolvedValue(300);
+    const mockConnect = jest.fn().mockResolvedValue(undefined);
+    const mockDisconnect = jest.fn().mockResolvedValue(undefined);
+    (createTransferService as jest.Mock).mockImplementation(() => ({
+      connect: mockConnect,
+      disconnect: mockDisconnect,
+    }));
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    await messageHandler({ command: 'detectTimeOffset', server: { type: 'sftp', credentialId: 'cred-1', rootPath: '/var/www' } });
+    expect(mockConnect).toHaveBeenCalled();
+    expect(mockConfigManager.saveConfig).not.toHaveBeenCalled();
+    expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      command: 'testResult',
+      success: true,
+      timeOffsetMs: 300,
     }));
   });
 });

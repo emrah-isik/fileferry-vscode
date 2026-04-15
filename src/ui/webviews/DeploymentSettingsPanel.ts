@@ -122,11 +122,11 @@ export class DeploymentSettingsPanel {
         break;
 
       case 'testConnection':
-        await this.handleTestConnection(msg.serverId);
+        await this.handleTestConnection(msg.server);
         break;
 
       case 'detectTimeOffset':
-        await this.handleDetectTimeOffset(msg.serverId);
+        await this.handleDetectTimeOffset(msg.server);
         break;
 
       case 'cloneServer': {
@@ -243,26 +243,22 @@ export class DeploymentSettingsPanel {
     this.panel.webview.postMessage({ command: 'configUpdated', config });
   }
 
-  private async handleTestConnection(serverId: string): Promise<void> {
-    const entry = await this.dependencies.configManager.getServerById(serverId);
-    if (!entry) {
-      this.panel.webview.postMessage({ command: 'testResult', success: false, message: 'Server not found' });
+  private async handleTestConnection(server: { id?: string; type?: string; credentialId?: string; rootPath?: string }): Promise<void> {
+    if (!server?.credentialId) {
+      this.panel.webview.postMessage({ command: 'testResult', success: false, message: 'Credential must be selected' });
       return;
     }
 
     const existingCredentials = await this.dependencies.credentialManager.getAll();
-    const validationErrors = validateProjectServer(
-      entry.name, entry.server, [], existingCredentials, entry.name
-    );
-    if (validationErrors.length > 0) {
-      this.panel.webview.postMessage({ command: 'testResult', success: false, message: validationErrors[0].message });
+    if (!existingCredentials.some(c => c.id === server.credentialId)) {
+      this.panel.webview.postMessage({ command: 'testResult', success: false, message: 'Selected credential no longer exists' });
       return;
     }
 
-    const credential = await this.dependencies.credentialManager.getWithSecret(entry.server.credentialId);
+    const credential = await this.dependencies.credentialManager.getWithSecret(server.credentialId);
 
     // FTP/FTPS only supports password authentication
-    const isFtp = entry.server.type !== 'sftp';
+    const isFtp = server.type !== 'sftp';
     if (isFtp && credential.authMethod !== 'password') {
       this.panel.webview.postMessage({
         command: 'testResult',
@@ -272,17 +268,21 @@ export class DeploymentSettingsPanel {
       return;
     }
 
-    const service = createTransferService(entry.server.type);
+    const service = createTransferService((server.type ?? 'sftp') as any);
     try {
       await service.connect(credential as any, { password: credential.password, passphrase: credential.passphrase });
 
       const timeOffsetMs = await new TimeOffsetDetector().detect(service);
       await service.disconnect();
 
-      const config = await this.dependencies.configManager.getConfig();
-      if (config) {
-        config.servers[entry.name] = { ...entry.server, timeOffsetMs };
-        await this.dependencies.configManager.saveConfig(config);
+      // Only persist the offset when the server is already saved (has an id)
+      if (server.id) {
+        const entry = await this.dependencies.configManager.getServerById(server.id);
+        const config = await this.dependencies.configManager.getConfig();
+        if (entry && config) {
+          config.servers[entry.name] = { ...entry.server, timeOffsetMs };
+          await this.dependencies.configManager.saveConfig(config);
+        }
       }
 
       this.panel.webview.postMessage({ command: 'testResult', success: true, message: 'Connected successfully', timeOffsetMs });
@@ -295,25 +295,28 @@ export class DeploymentSettingsPanel {
     }
   }
 
-  private async handleDetectTimeOffset(serverId: string): Promise<void> {
-    const entry = await this.dependencies.configManager.getServerById(serverId);
-    if (!entry) {
-      this.panel.webview.postMessage({ command: 'testResult', success: false, message: 'Server not found' });
+  private async handleDetectTimeOffset(server: { id?: string; type?: string; credentialId?: string }): Promise<void> {
+    if (!server?.credentialId) {
+      this.panel.webview.postMessage({ command: 'testResult', success: false, message: 'Credential must be selected' });
       return;
     }
 
-    const credential = await this.dependencies.credentialManager.getWithSecret(entry.server.credentialId);
-    const service = createTransferService(entry.server.type);
+    const credential = await this.dependencies.credentialManager.getWithSecret(server.credentialId);
+    const service = createTransferService((server.type ?? 'sftp') as any);
     try {
       await service.connect(credential as any, { password: credential.password, passphrase: credential.passphrase });
 
       const timeOffsetMs = await new TimeOffsetDetector().detect(service);
       await service.disconnect();
 
-      const config = await this.dependencies.configManager.getConfig();
-      if (config) {
-        config.servers[entry.name] = { ...entry.server, timeOffsetMs };
-        await this.dependencies.configManager.saveConfig(config);
+      // Only persist the offset when the server is already saved (has an id)
+      if (server.id) {
+        const entry = await this.dependencies.configManager.getServerById(server.id);
+        const config = await this.dependencies.configManager.getConfig();
+        if (entry && config) {
+          config.servers[entry.name] = { ...entry.server, timeOffsetMs };
+          await this.dependencies.configManager.saveConfig(config);
+        }
       }
 
       this.panel.webview.postMessage({ command: 'testResult', success: true, message: 'Time offset detected', timeOffsetMs });

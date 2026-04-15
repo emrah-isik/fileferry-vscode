@@ -317,7 +317,7 @@ function renderConnectionTab(server) {
 
     <div class="form-actions">
       <button id="btn-save">Save</button>
-      ${!isNew ? `<button id="btn-test" class="btn-secondary">Test Connection</button>` : ''}
+      <button id="btn-test" class="btn-secondary">Test Connection</button>
       ${!isNew && !isDefault ? `<button id="btn-set-default" class="btn-secondary">Set as Default</button>` : ''}
       ${!isNew && isDefault ? `<button disabled class="btn-secondary">Default Server \u2713</button>` : ''}
       ${!isNew ? `<button id="btn-delete" class="btn-danger">Delete</button>` : ''}
@@ -393,14 +393,29 @@ function renderConnectionTab(server) {
     state.testStatus = null;
     document.getElementById('test-connection-result').className = '';
     document.getElementById('test-connection-result').textContent = 'Connecting\u2026';
-    vscode.postMessage({ command: 'testConnection', serverId: server.id });
+    vscode.postMessage({
+      command: 'testConnection',
+      server: {
+        id: server.id || undefined,
+        type: document.getElementById('f-type').value,
+        credentialId: document.getElementById('f-credential').value,
+        rootPath: document.getElementById('f-root-path').value,
+      },
+    });
   });
 
   document.getElementById('btn-detect-offset')?.addEventListener('click', () => {
     state.testStatus = null;
     document.getElementById('test-connection-result').className = '';
     document.getElementById('test-connection-result').textContent = 'Detecting offset\u2026';
-    vscode.postMessage({ command: 'detectTimeOffset', serverId: server.id });
+    vscode.postMessage({
+      command: 'detectTimeOffset',
+      server: {
+        id: server.id || undefined,
+        type: document.getElementById('f-type').value,
+        credentialId: document.getElementById('f-credential').value,
+      },
+    });
   });
 
   document.getElementById('btn-set-default')?.addEventListener('click', () => {
