@@ -67,6 +67,7 @@
 - Documentation, marketplace screenshots, demo GIFs
 - Performance audit
 - `fileferry.json` schema documentation
+- **Upload All Changed Files** — `Ctrl+Alt+U` deploys everything git considers changed to the default server; SCM title bar button; no selection required
 
 ### v0.9 — Sync & Performance
 
