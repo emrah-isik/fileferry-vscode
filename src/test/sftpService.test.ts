@@ -342,6 +342,61 @@ describe('SftpService', () => {
         '/var/www/src/new/index.php'
       );
     });
+
+    // Directories where the target file is writable but the directory is not
+    // (common on shared hosting): creating the .fileferry.tmp sidecar fails
+    // with "Permission denied". Fall back to a direct overwrite — non-atomic
+    // but matches what plain SFTP clients do, so the upload still succeeds.
+    it('falls back to direct overwrite when temp put fails with Permission denied', async () => {
+      mockMethods.put
+        .mockRejectedValueOnce(new Error('_put: Write stream error: Permission denied /var/www/a.php.fileferry.tmp'))
+        .mockResolvedValueOnce(undefined);
+      await service.uploadFile('/local/a.php', '/var/www/a.php');
+      // First put targets the temp path (attempted atomic upload)
+      expect(mockMethods.put).toHaveBeenNthCalledWith(
+        1,
+        '/local/a.php',
+        '/var/www/a.php.fileferry.tmp'
+      );
+      // Second put targets the final path directly (fallback)
+      expect(mockMethods.put).toHaveBeenNthCalledWith(
+        2,
+        '/local/a.php',
+        '/var/www/a.php'
+      );
+      // No rename since we wrote directly
+      expect(mockMethods.posixRename).not.toHaveBeenCalled();
+      expect(mockMethods.rename).not.toHaveBeenCalled();
+    });
+
+    it('fallback also matches EACCES error code', async () => {
+      mockMethods.put
+        .mockRejectedValueOnce(Object.assign(new Error('Permission denied'), { code: 'EACCES' }))
+        .mockResolvedValueOnce(undefined);
+      await service.uploadFile('/local/a.php', '/var/www/a.php');
+      expect(mockMethods.put).toHaveBeenCalledTimes(2);
+      expect(mockMethods.put).toHaveBeenNthCalledWith(2, '/local/a.php', '/var/www/a.php');
+    });
+
+    it('propagates error when fallback direct put also fails', async () => {
+      mockMethods.put
+        .mockRejectedValueOnce(new Error('Permission denied /var/www/a.php.fileferry.tmp'))
+        .mockRejectedValueOnce(new Error('Permission denied /var/www/a.php'));
+      await expect(
+        service.uploadFile('/local/a.php', '/var/www/a.php')
+      ).rejects.toThrow('Permission denied /var/www/a.php');
+      expect(mockMethods.put).toHaveBeenCalledTimes(2);
+      expect(mockMethods.posixRename).not.toHaveBeenCalled();
+    });
+
+    it('does not fall back on non-permission errors', async () => {
+      mockMethods.put.mockRejectedValue(new Error('Connection lost'));
+      await expect(
+        service.uploadFile('/local/a.php', '/var/www/a.php')
+      ).rejects.toThrow('Connection lost');
+      // Only one put attempt — no fallback
+      expect(mockMethods.put).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('uploadFiles', () => {
@@ -362,7 +417,7 @@ describe('SftpService', () => {
 
     it('continues uploading after individual file failure', async () => {
       mockMethods.put
-        .mockRejectedValueOnce(new Error('Permission denied'))
+        .mockRejectedValueOnce(new Error('Connection lost'))
         .mockResolvedValueOnce(undefined);
       const results = await service.uploadFiles([
         { localPath: '/local/a.php', remotePath: '/remote/a.php' },
@@ -370,7 +425,7 @@ describe('SftpService', () => {
       ], jest.fn());
       expect(results.failed).toHaveLength(1);
       expect(results.succeeded).toHaveLength(1);
-      expect(results.failed[0].error).toBe('Permission denied');
+      expect(results.failed[0].error).toBe('Connection lost');
     });
 
     it('calls progress callback for each file', async () => {

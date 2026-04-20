@@ -2,6 +2,15 @@
 
 All notable changes to FileFerry will be documented in this file.
 
+## [0.8.5] - 2026-04-20
+
+### Fixed
+
+- Uploads to directories where the target file is writable but the directory itself is not (common on shared hosting) no longer fail. When creating the `.fileferry.tmp` sidecar is denied, the upload retries as a direct overwrite instead. Applies to both SFTP and FTP. Trade-off: the fallback write is non-atomic for that file.
+- Long error messages in the Upload History panel are no longer cut off at 250px. Click any truncated error cell to expand it inline; click again to collapse. Previously the full text was only visible by opening the raw `.vscode/fileferry-history.jsonl` file.
+
+---
+
 ## [0.8.3] - 2026-04-13
 
 ### Fixed

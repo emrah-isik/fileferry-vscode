@@ -47,6 +47,13 @@ const DEFAULT_ALGORITHMS = {
   ],
 };
 
+function isPermissionDenied(err: { code?: string | number; message?: string }): boolean {
+  if (err.code === 'EACCES' || err.code === 3) {
+    return true;
+  }
+  return /permission denied/i.test(err.message ?? '');
+}
+
 export class SftpService implements TransferService {
   private client: SftpClient | null = null;
 
@@ -130,12 +137,18 @@ export class SftpService implements TransferService {
     try {
       await this.client.put(localPath, tempPath);
     } catch (err: unknown) {
-      const error = err as { code?: string; message?: string };
+      const error = err as { code?: string | number; message?: string };
       // Remote directory doesn't exist — create it recursively and retry
       if (error.code === 'ERR_BAD_PATH' || error.message?.includes('No such file')) {
         const remoteDir = path.posix.dirname(remotePath);
         await this.client.mkdir(remoteDir, true);
         await this.client.put(localPath, tempPath);
+      } else if (isPermissionDenied(error)) {
+        // Target file is writable but the directory isn't (common on shared
+        // hosting), so creating the sidecar temp file fails. Fall back to a
+        // direct overwrite — non-atomic, but lets the upload succeed.
+        await this.client.put(localPath, remotePath);
+        return;
       } else {
         throw err;
       }

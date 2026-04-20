@@ -94,16 +94,20 @@ function renderTable() {
   // Sort most recent first
   const sorted = [...state.entries].sort((a, b) => b.timestamp - a.timestamp);
 
-  const rows = sorted.map(e => `
+  const rows = sorted.map(e => {
+    const err = e.error || '';
+    const errorCellClass = err ? 'col-error has-content' : 'col-error';
+    return `
     <tr class="result-${e.result}">
       <td class="col-time">${formatTimestamp(e.timestamp)}</td>
       <td class="col-file" title="${escapeHtml(e.localPath || e.remotePath)}">${escapeHtml(shortPath(e.localPath || e.remotePath))}</td>
       <td class="col-server">${escapeHtml(e.serverName)}</td>
       <td class="col-action">${e.action}</td>
       <td class="col-result"><span class="badge badge-${e.result}">${e.result}</span></td>
-      <td class="col-error" title="${escapeHtml(e.error || '')}">${escapeHtml(e.error || '')}</td>
+      <td class="${errorCellClass}" title="${escapeHtml(err)}">${escapeHtml(err)}</td>
     </tr>
-  `).join('');
+  `;
+  }).join('');
 
   container.innerHTML = `
     <table>
@@ -120,6 +124,12 @@ function renderTable() {
       <tbody>${rows}</tbody>
     </table>
   `;
+
+  // Click-to-expand: errors are truncated by default; clicking a populated
+  // error cell toggles an `expanded` class that lets the full text wrap.
+  container.querySelectorAll('.col-error.has-content').forEach(cell => {
+    cell.addEventListener('click', () => cell.classList.toggle('expanded'));
+  });
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

@@ -176,6 +176,46 @@ describe('FtpService', () => {
         .rejects.toThrow('rename failed');
       expect(mockClient.remove).toHaveBeenCalledWith('/remote/f.txt.fileferry.tmp');
     });
+
+    // Servers that allow overwriting a file but not creating new files in the
+    // directory reject the .fileferry.tmp sidecar. Fall back to direct
+    // overwrite — loses atomicity for this file, but the upload still works.
+    it('falls back to direct overwrite when temp upload is denied (553)', async () => {
+      mockClient.uploadFrom
+        .mockRejectedValueOnce(new Error('553 File name not allowed'))
+        .mockResolvedValueOnce(undefined);
+      await service.uploadFile('/local/f.txt', '/remote/f.txt');
+      expect(mockClient.uploadFrom).toHaveBeenNthCalledWith(
+        1, 'mock-read-stream', '/remote/f.txt.fileferry.tmp'
+      );
+      expect(mockClient.uploadFrom).toHaveBeenNthCalledWith(
+        2, 'mock-read-stream', '/remote/f.txt'
+      );
+      expect(mockClient.rename).not.toHaveBeenCalled();
+    });
+
+    it('falls back to direct overwrite on "Permission denied" message', async () => {
+      mockClient.uploadFrom
+        .mockRejectedValueOnce(new Error('Permission denied'))
+        .mockResolvedValueOnce(undefined);
+      await service.uploadFile('/local/f.txt', '/remote/f.txt');
+      expect(mockClient.uploadFrom).toHaveBeenCalledTimes(2);
+      expect(mockClient.uploadFrom).toHaveBeenNthCalledWith(
+        2, 'mock-read-stream', '/remote/f.txt'
+      );
+      expect(mockClient.rename).not.toHaveBeenCalled();
+    });
+
+    it('propagates error when fallback direct upload also fails', async () => {
+      mockClient.uploadFrom
+        .mockRejectedValueOnce(new Error('553 File name not allowed'))
+        .mockRejectedValueOnce(new Error('550 Permission denied on target'));
+      await expect(
+        service.uploadFile('/local/f.txt', '/remote/f.txt')
+      ).rejects.toThrow('550 Permission denied on target');
+      expect(mockClient.uploadFrom).toHaveBeenCalledTimes(2);
+      expect(mockClient.rename).not.toHaveBeenCalled();
+    });
   });
 
   describe('get', () => {

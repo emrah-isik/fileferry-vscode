@@ -146,6 +146,22 @@ tbody td {
   color: var(--vscode-errorForeground);
 }
 
+.col-error.has-content {
+  cursor: pointer;
+}
+
+.col-error.has-content:hover {
+  text-decoration: underline;
+}
+
+.col-error.expanded {
+  max-width: 600px;
+  white-space: pre-wrap;
+  overflow: visible;
+  word-break: break-all;
+  cursor: pointer;
+}
+
 /* ─── Badges ──────────────────────────────────────────────── */
 
 .badge {

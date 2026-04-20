@@ -4,6 +4,15 @@ import * as path from 'path';
 import { Writable } from 'stream';
 import { TransferService, FileEntry } from './transferService';
 
+// 553 = file name not allowed; some servers use it for write-denied temp
+// files. 550 is also reused here when its body says "permission denied".
+function isFtpPermissionDenied(msg: string): boolean {
+  if (/permission denied/i.test(msg)) {
+    return true;
+  }
+  return /^553\b/.test(msg) || /\b553\b.*not allowed/i.test(msg);
+}
+
 export class FtpService implements TransferService {
   private client: FtpClient | null = null;
 
@@ -40,16 +49,21 @@ export class FtpService implements TransferService {
     }
 
     const tempPath = remotePath + '.fileferry.tmp';
-    const stream = fs.createReadStream(localPath);
 
     try {
-      await this.client.uploadFrom(stream, tempPath);
+      await this.client.uploadFrom(fs.createReadStream(localPath), tempPath);
     } catch (err: unknown) {
       const msg = (err as Error).message ?? '';
       if (msg.includes('No such file') || msg.includes('550')) {
         const remoteDir = path.posix.dirname(remotePath);
         await this.client.ensureDir(remoteDir);
-        await this.client.uploadFrom(stream, tempPath);
+        await this.client.uploadFrom(fs.createReadStream(localPath), tempPath);
+      } else if (isFtpPermissionDenied(msg)) {
+        // Directory denies new files (sidecar temp rejected) but the target
+        // file itself may be writable. Fall back to a direct overwrite —
+        // non-atomic, but lets the upload succeed on restrictive servers.
+        await this.client.uploadFrom(fs.createReadStream(localPath), remotePath);
+        return;
       } else {
         throw err;
       }
