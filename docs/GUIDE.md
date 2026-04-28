@@ -352,6 +352,7 @@ Customize via `Preferences -> Keyboard Shortcuts` and search for `fileferry`.
 | `FileFerry: Upload` | Upload selected files (SCM, Explorer, or Editor) |
 | `FileFerry: Upload to Servers...` | Upload selected files to multiple servers |
 | `FileFerry: Upload All Changed Files` | Deploy everything git considers changed to the default server (no selection needed) |
+| `FileFerry: Upload Files from Commit` | Pick recent commit(s) from a list; uploads the working-tree version of every file those commits touched |
 | `FileFerry: Compare with Remote` | Diff local file against the server version |
 | `FileFerry: Deployment Settings` | Open server and mapping configuration |
 | `FileFerry: Project Settings` | Open project-level toggles |

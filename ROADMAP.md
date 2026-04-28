@@ -68,6 +68,7 @@
 - Performance audit
 - `fileferry.json` schema documentation
 - **Upload All Changed Files** — `Ctrl+Alt+U` deploys everything git considers changed to the default server; SCM title bar button; no selection required
+- **Upload Files from Commit** — pick one or more recent commits from a multi-select QuickPick; uploads the working-tree version of every file those commits touched
 
 ### v0.9 — Sync & Performance
 

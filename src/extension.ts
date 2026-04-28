@@ -7,6 +7,7 @@ import { migrateIfNeeded } from './storage/ConfigMigration';
 import { uploadSelected } from './commands/uploadSelected';
 import { uploadToServers } from './commands/uploadToServers';
 import { uploadAllChanged } from './commands/uploadAllChanged';
+import { uploadFromCommits } from './commands/uploadFromCommits';
 import { showRemoteDiff } from './commands/showRemoteDiff';
 import { normalizeCommandArgs } from './utils/normalizeCommandArgs';
 import { StatusBarItem } from './ui/StatusBarItem';
@@ -107,6 +108,13 @@ export function activate(context: vscode.ExtensionContext): void {
       'fileferry.uploadAllChanged',
       withErrorHandling('uploadAllChanged', async () =>
         uploadAllChanged({ credentialManager, configManager, context, output })
+      )
+    ),
+
+    vscode.commands.registerCommand(
+      'fileferry.uploadFromCommits',
+      withErrorHandling('uploadFromCommits', async (arg1: unknown, arg2: unknown) =>
+        uploadFromCommits(arg1, arg2, { credentialManager, configManager, context, output })
       )
     ),
 

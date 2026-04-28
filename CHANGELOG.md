@@ -2,11 +2,12 @@
 
 All notable changes to FileFerry will be documented in this file.
 
-## [Unreleased]
+## [0.8.6] - 2026-04-28
 
 ### Added
 
 - **Upload All Changed Files** — new `FileFerry: Upload All Changed Files` command deploys everything git considers changed to the default server with no SCM selection required. `Ctrl+Alt+U` keybinding works from Source Control, the editor, or the Explorer. Adds a `$(cloud-upload)` button to the Source Control panel title bar. Skips directory-level git entries (typically submodules) with a warning so a stray submodule reference can't recurse into `.git` or `node_modules`. Reuses the existing confirmation, file date guard, backup, dry run, and history pipeline.
+- **Upload Files from Commit** — new `FileFerry: Upload Files from Commit` command opens a multi-select picker of the last 50 commits; selecting one or more commits uploads the **current working-tree version** of every file those commits touched. Multi-commit selections union and dedupe touched paths; merge commits contribute nothing (default `git diff-tree` behavior); root commits are handled. Reuses the existing confirmation, file date guard, backup, dry run, and history pipeline. (Right-click on a commit in the Source Control Graph view is deferred — the contribution point is still behind a VS Code proposed API and cannot ship to the marketplace yet.)
 
 ---
 
@@ -158,7 +159,7 @@ No new features. Marketplace-ready polish release.
 - **SFTP upload** — upload files to remote servers over SSH using password, private key, or SSH agent authentication
 - **Compare with Remote** (`Alt+P`) — opens VSCode's built-in diff editor showing your local file alongside the version currently on the server
 - **Delete deployment** — git-deleted files can be deployed to remove them from the server; confirmation is always shown for destructive operations
-- **PhpStorm-style Settings UI** — manage servers and path mappings through a form (`FileFerry: Deployment Settings`)
+- **Settings UI** — manage servers and path mappings through a form (`FileFerry: Deployment Settings`)
 - **SSH Credentials Manager** — add SSH credentials once (`FileFerry: Manage SSH Credentials`), reuse across projects
 - **OS keychain storage** — passwords and passphrases stored in macOS Keychain / Windows Credential Manager / Linux libsecret. Never written to disk
 - **Multiple servers** — configure production, staging, and dev servers; switch with `FileFerry: Switch Server` or click the status bar
