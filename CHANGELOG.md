@@ -2,6 +2,14 @@
 
 All notable changes to FileFerry will be documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- **Upload All Changed Files** — new `FileFerry: Upload All Changed Files` command deploys everything git considers changed to the default server with no SCM selection required. `Ctrl+Alt+U` keybinding works from Source Control, the editor, or the Explorer. Adds a `$(cloud-upload)` button to the Source Control panel title bar. Skips directory-level git entries (typically submodules) with a warning so a stray submodule reference can't recurse into `.git` or `node_modules`. Reuses the existing confirmation, file date guard, backup, dry run, and history pipeline.
+
+---
+
 ## [0.8.5] - 2026-04-20
 
 ### Fixed

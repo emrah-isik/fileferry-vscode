@@ -6,6 +6,7 @@ import { ProjectConfigManager } from './storage/ProjectConfigManager';
 import { migrateIfNeeded } from './storage/ConfigMigration';
 import { uploadSelected } from './commands/uploadSelected';
 import { uploadToServers } from './commands/uploadToServers';
+import { uploadAllChanged } from './commands/uploadAllChanged';
 import { showRemoteDiff } from './commands/showRemoteDiff';
 import { normalizeCommandArgs } from './utils/normalizeCommandArgs';
 import { StatusBarItem } from './ui/StatusBarItem';
@@ -100,6 +101,13 @@ export function activate(context: vscode.ExtensionContext): void {
         const { resource, allResources } = normalizeCommandArgs(arg1, arg2);
         return uploadToServers(resource, allResources, { credentialManager, configManager, context, output });
       }
+    ),
+
+    vscode.commands.registerCommand(
+      'fileferry.uploadAllChanged',
+      withErrorHandling('uploadAllChanged', async () =>
+        uploadAllChanged({ credentialManager, configManager, context, output })
+      )
     ),
 
     vscode.commands.registerCommand(

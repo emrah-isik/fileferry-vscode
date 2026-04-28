@@ -126,6 +126,7 @@ The active server is always visible. Click to switch servers, toggle upload on s
 | `Alt+U` | Upload selected files |
 | `Alt+P` | Compare with Remote |
 | `Shift+Alt+U` | Upload to multiple servers |
+| `Ctrl+Alt+U` | Upload all changed files |
 
 Configurable via `Preferences → Keyboard Shortcuts` → search `fileferry`.
 

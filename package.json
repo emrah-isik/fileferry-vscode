@@ -120,6 +120,11 @@
       {
         "command": "fileferry.showUploadHistory",
         "title": "FileFerry: Upload History"
+      },
+      {
+        "command": "fileferry.uploadAllChanged",
+        "title": "FileFerry: Upload All Changed Files",
+        "icon": "$(cloud-upload)"
       }
     ],
     "viewsContainers": {
@@ -185,6 +190,13 @@
           "command": "fileferry.showRemoteDiff",
           "when": "resourceScheme == file && !explorerResourceIsFolder",
           "group": "fileferry@3"
+        }
+      ],
+      "scm/title": [
+        {
+          "command": "fileferry.uploadAllChanged",
+          "when": "scmProvider == git",
+          "group": "navigation"
         }
       ],
       "view/title": [
@@ -342,6 +354,21 @@
       {
         "command": "fileferry.uploadToServers",
         "key": "alt+shift+u",
+        "when": "filesExplorerFocus"
+      },
+      {
+        "command": "fileferry.uploadAllChanged",
+        "key": "ctrl+alt+u",
+        "when": "focusedView == workbench.scm"
+      },
+      {
+        "command": "fileferry.uploadAllChanged",
+        "key": "ctrl+alt+u",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "fileferry.uploadAllChanged",
+        "key": "ctrl+alt+u",
         "when": "filesExplorerFocus"
       }
     ],

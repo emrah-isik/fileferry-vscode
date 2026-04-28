@@ -338,6 +338,8 @@ Comma-separated glob patterns set in the Mappings tab. Files matching these patt
 | --- | --- | --- |
 | `Alt+U` | Upload selected files | Source Control, Explorer, or Editor |
 | `Alt+P` | Compare with Remote | Source Control or Editor |
+| `Shift+Alt+U` | Upload to multiple servers | Source Control, Explorer, or Editor |
+| `Ctrl+Alt+U` | Upload all changed files | Source Control, Explorer, or Editor |
 
 Customize via `Preferences -> Keyboard Shortcuts` and search for `fileferry`.
 
@@ -349,6 +351,7 @@ Customize via `Preferences -> Keyboard Shortcuts` and search for `fileferry`.
 | --- | --- |
 | `FileFerry: Upload` | Upload selected files (SCM, Explorer, or Editor) |
 | `FileFerry: Upload to Servers...` | Upload selected files to multiple servers |
+| `FileFerry: Upload All Changed Files` | Deploy everything git considers changed to the default server (no selection needed) |
 | `FileFerry: Compare with Remote` | Diff local file against the server version |
 | `FileFerry: Deployment Settings` | Open server and mapping configuration |
 | `FileFerry: Project Settings` | Open project-level toggles |
