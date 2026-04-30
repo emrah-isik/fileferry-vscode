@@ -667,6 +667,23 @@ describe('DeploymentSettingsPanel message handling', () => {
     }));
   });
 
+  it('detectTimeOffset does not hardcode a "Time offset detected" message — webview composes it from timeOffsetMs', async () => {
+    mockDetect.mockResolvedValue(0);
+    const mockConnect = jest.fn().mockResolvedValue(undefined);
+    const mockDisconnect = jest.fn().mockResolvedValue(undefined);
+    (createTransferService as jest.Mock).mockImplementation(() => ({
+      connect: mockConnect,
+      disconnect: mockDisconnect,
+    }));
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    await messageHandler({ command: 'detectTimeOffset', server: { id: 'srv-1', type: 'sftp', credentialId: 'cred-1', rootPath: '/var/www' } });
+
+    const call = (mockWebview.postMessage as jest.Mock).mock.calls.find(c => c[0]?.command === 'testResult');
+    expect(call[0].success).toBe(true);
+    expect(call[0].timeOffsetMs).toBe(0);
+    expect(call[0].message).toBeUndefined();
+  });
+
   // ── Test connection for unsaved (new) servers ────────────────────────────────
 
   it('testConnection works for an unsaved server before it has been saved', async () => {
@@ -703,6 +720,79 @@ describe('DeploymentSettingsPanel message handling', () => {
       success: true,
       timeOffsetMs: 100,
     }));
+  });
+
+  // ── Root Path probe (non-blocking warning) ───────────────────────────────────
+
+  it('testConnection probes rootPath after connect; no warning when listDirectory succeeds', async () => {
+    const mockConnect = jest.fn().mockResolvedValue(undefined);
+    const mockDisconnect = jest.fn().mockResolvedValue(undefined);
+    const mockListDirectory = jest.fn().mockResolvedValue([{ name: 'index.php', type: '-' }]);
+    (createTransferService as jest.Mock).mockImplementation(() => ({
+      connect: mockConnect,
+      disconnect: mockDisconnect,
+      listDirectory: mockListDirectory,
+    }));
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    await messageHandler({ command: 'testConnection', server: { id: 'srv-1', type: 'sftp', credentialId: 'cred-1', rootPath: '/var/www' } });
+
+    expect(mockListDirectory).toHaveBeenCalledWith('/var/www');
+    const call = (mockWebview.postMessage as jest.Mock).mock.calls.find(c => c[0]?.command === 'testResult');
+    expect(call[0].success).toBe(true);
+    expect(call[0].warning).toBeUndefined();
+  });
+
+  it('testConnection includes warning when listDirectory throws on rootPath', async () => {
+    const mockConnect = jest.fn().mockResolvedValue(undefined);
+    const mockDisconnect = jest.fn().mockResolvedValue(undefined);
+    const mockListDirectory = jest.fn().mockRejectedValue(new Error('No such file'));
+    (createTransferService as jest.Mock).mockImplementation(() => ({
+      connect: mockConnect,
+      disconnect: mockDisconnect,
+      listDirectory: mockListDirectory,
+    }));
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    await messageHandler({ command: 'testConnection', server: { id: 'srv-1', type: 'sftp', credentialId: 'cred-1', rootPath: '/home/deploy/www' } });
+
+    expect(mockDisconnect).toHaveBeenCalled();
+    const call = (mockWebview.postMessage as jest.Mock).mock.calls.find(c => c[0]?.command === 'testResult');
+    expect(call[0].success).toBe(true);
+    expect(call[0].warning).toMatch(/\/home\/deploy\/www/);
+    expect(call[0].warning).toMatch(/No such file/);
+  });
+
+  it('testConnection skips probe when rootPath is empty', async () => {
+    const mockConnect = jest.fn().mockResolvedValue(undefined);
+    const mockDisconnect = jest.fn().mockResolvedValue(undefined);
+    const mockListDirectory = jest.fn();
+    (createTransferService as jest.Mock).mockImplementation(() => ({
+      connect: mockConnect,
+      disconnect: mockDisconnect,
+      listDirectory: mockListDirectory,
+    }));
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    await messageHandler({ command: 'testConnection', server: { type: 'sftp', credentialId: 'cred-1', rootPath: '' } });
+
+    expect(mockListDirectory).not.toHaveBeenCalled();
+    const call = (mockWebview.postMessage as jest.Mock).mock.calls.find(c => c[0]?.command === 'testResult');
+    expect(call[0].success).toBe(true);
+    expect(call[0].warning).toBeUndefined();
+  });
+
+  it('testConnection does not run probe when connect fails', async () => {
+    const mockConnect = jest.fn().mockRejectedValue(new Error('auth failed'));
+    const mockListDirectory = jest.fn();
+    (createTransferService as jest.Mock).mockImplementation(() => ({
+      connect: mockConnect,
+      disconnect: jest.fn(),
+      listDirectory: mockListDirectory,
+    }));
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    await messageHandler({ command: 'testConnection', server: { id: 'srv-1', type: 'sftp', credentialId: 'cred-1', rootPath: '/var/www' } });
+
+    expect(mockListDirectory).not.toHaveBeenCalled();
+    const call = (mockWebview.postMessage as jest.Mock).mock.calls.find(c => c[0]?.command === 'testResult');
+    expect(call[0].success).toBe(false);
   });
 
   it('testConnection fails with testResult when no credential is selected', async () => {

@@ -274,6 +274,14 @@ button.btn-danger:hover:not(:disabled) {
   color: var(--vscode-inputValidation-errorForeground);
 }
 
+#test-connection-result .warning {
+  margin-top: 6px;
+  padding: 6px 10px;
+  background: var(--vscode-inputValidation-warningBackground);
+  border-left: 3px solid var(--vscode-inputValidation-warningBorder, #f0ad4e);
+  color: var(--vscode-inputValidation-warningForeground);
+}
+
 /* ─── Mappings table ──────────────────────────────────────────── */
 
 .mappings-table {

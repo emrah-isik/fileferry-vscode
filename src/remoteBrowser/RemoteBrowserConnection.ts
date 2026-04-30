@@ -13,8 +13,10 @@ export class RemoteBrowserConnection {
   private sftp: TransferService;
   private hostKeyManager: HostKeyManager;
   private currentServerId: string | null = null;
+  private currentCredentialId: string | null = null;
   private currentRootPath: string = '/';
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly configSaveSubscription: vscode.Disposable;
 
   private readonly _onDidDisconnect = new vscode.EventEmitter<void>();
   readonly onDidDisconnect = this._onDidDisconnect.event;
@@ -27,6 +29,45 @@ export class RemoteBrowserConnection {
   ) {
     this.sftp = createTransferService('sftp');
     this.hostKeyManager = new HostKeyManager(globalStoragePath);
+    this.configSaveSubscription = this.configManager.onDidSaveConfig(() => {
+      void this.handleConfigSaved();
+    });
+  }
+
+  private async handleConfigSaved(): Promise<void> {
+    if (!this.sftp.connected) { return; }
+
+    try {
+      const config = await this.configManager.getConfig();
+      if (!config || !config.defaultServerId) {
+        await this.disconnect();
+        return;
+      }
+
+      const match = await this.configManager.getServerById(config.defaultServerId);
+      if (!match) {
+        await this.disconnect();
+        return;
+      }
+
+      const { server } = match;
+      // Identity change (different default server, or credential swap on the
+      // active one) — drop the session so the next operation reconnects with
+      // the correct host/auth.
+      if (server.id !== this.currentServerId || server.credentialId !== this.currentCredentialId) {
+        await this.disconnect();
+        return;
+      }
+
+      // Same identity — only non-connection fields may have changed
+      // (rootPath, mappings, etc). Keep the session, refresh cached rootPath.
+      if (server.rootPath !== this.currentRootPath) {
+        this.output.appendLine(`[remote-browser] Root path updated: ${this.currentRootPath} → ${server.rootPath}`);
+        this.currentRootPath = server.rootPath;
+      }
+    } catch (err) {
+      this.output.appendLine(`[remote-browser] Failed to apply config change: ${(err as Error).message}`);
+    }
   }
 
   async ensureConnected(): Promise<void> {
@@ -101,6 +142,7 @@ export class RemoteBrowserConnection {
     }, connectOptions);
 
     this.currentServerId = server.id;
+    this.currentCredentialId = server.credentialId;
     this.currentRootPath = server.rootPath;
     this.output.appendLine(`[remote-browser] Connected to ${serverName} (${credential.host})`);
   }
@@ -154,6 +196,7 @@ export class RemoteBrowserConnection {
       this._onDidDisconnect.fire();
     }
     this.currentServerId = null;
+    this.currentCredentialId = null;
   }
 
   getRootPath(): string {
@@ -162,6 +205,7 @@ export class RemoteBrowserConnection {
 
   dispose(): void {
     this.clearIdleTimer();
+    this.configSaveSubscription.dispose();
     this._onDidDisconnect.dispose();
   }
 

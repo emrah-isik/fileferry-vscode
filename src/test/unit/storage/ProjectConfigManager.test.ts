@@ -10,7 +10,16 @@ jest.mock('fs/promises', () => ({
 jest.mock('vscode', () => ({
   workspace: {
     workspaceFolders: [{ uri: { fsPath: '/tmp/test-workspace' } }]
-  }
+  },
+  EventEmitter: class EventEmitter {
+    private listeners: Array<(...args: any[]) => void> = [];
+    event = (listener: (...args: any[]) => void) => {
+      this.listeners.push(listener);
+      return { dispose: () => { this.listeners = this.listeners.filter(l => l !== listener); } };
+    };
+    fire = (...args: any[]) => { this.listeners.forEach(l => l(...args)); };
+    dispose = () => { this.listeners = []; };
+  },
 }));
 
 import * as fs from 'fs/promises';
@@ -72,6 +81,38 @@ describe('ProjectConfigManager — read/write', () => {
     vscode.workspace.workspaceFolders = null;
     await expect(manager.saveConfig(configFixture)).rejects.toThrow('No workspace open');
     vscode.workspace.workspaceFolders = [{ uri: { fsPath: '/tmp/test-workspace' } }];
+  });
+});
+
+describe('ProjectConfigManager — onDidSaveConfig', () => {
+  let manager: ProjectConfigManager;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    manager = new ProjectConfigManager();
+  });
+
+  it('fires onDidSaveConfig when saveConfig is called', async () => {
+    const listener = jest.fn();
+    manager.onDidSaveConfig(listener);
+    await manager.saveConfig(configFixture);
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it('fires onDidSaveConfig for indirect mutations like setDefaultServer', async () => {
+    mockReadFile.mockResolvedValue(JSON.stringify(configFixture));
+    const listener = jest.fn();
+    manager.onDidSaveConfig(listener);
+    await manager.setDefaultServer('uuid-prod-1');
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it('disposed listeners are not invoked', async () => {
+    const listener = jest.fn();
+    const subscription = manager.onDidSaveConfig(listener);
+    subscription.dispose();
+    await manager.saveConfig(configFixture);
+    expect(listener).not.toHaveBeenCalled();
   });
 });
 

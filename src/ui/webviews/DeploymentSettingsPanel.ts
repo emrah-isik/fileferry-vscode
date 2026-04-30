@@ -273,6 +273,20 @@ export class DeploymentSettingsPanel {
       await service.connect(credential as any, { password: credential.password, passphrase: credential.passphrase });
 
       const timeOffsetMs = await new TimeOffsetDetector().detect(service);
+
+      // Probe the configured Root Path so the user finds out it's wrong here,
+      // not on the next upload. Non-blocking: connection succeeded, this is a
+      // warning. Skip when the field is empty (Save validation handles that).
+      let warning: string | undefined;
+      const trimmedRoot = server.rootPath?.trim();
+      if (trimmedRoot) {
+        try {
+          await service.listDirectory(trimmedRoot);
+        } catch (probeErr: unknown) {
+          warning = `Root Path "${trimmedRoot}" not accessible on remote: ${(probeErr as Error).message}. Use Browse to pick a valid folder.`;
+        }
+      }
+
       await service.disconnect();
 
       // Only persist the offset when the server is already saved (has an id)
@@ -285,7 +299,7 @@ export class DeploymentSettingsPanel {
         }
       }
 
-      this.panel.webview.postMessage({ command: 'testResult', success: true, message: 'Connected successfully', timeOffsetMs });
+      this.panel.webview.postMessage({ command: 'testResult', success: true, message: 'Connected successfully', timeOffsetMs, warning });
     } catch (err: unknown) {
       this.panel.webview.postMessage({
         command: 'testResult',
@@ -319,7 +333,7 @@ export class DeploymentSettingsPanel {
         }
       }
 
-      this.panel.webview.postMessage({ command: 'testResult', success: true, message: 'Time offset detected', timeOffsetMs });
+      this.panel.webview.postMessage({ command: 'testResult', success: true, timeOffsetMs });
     } catch (err: unknown) {
       this.panel.webview.postMessage({
         command: 'testResult',

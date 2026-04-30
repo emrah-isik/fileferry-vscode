@@ -50,17 +50,21 @@ window.addEventListener('message', ({ data: msg }) => {
       renderConnectionTab(getSelectedServer());
       break;
 
-    case 'testResult':
-      state.testStatus = { success: msg.success, message: msg.message };
+    case 'testResult': {
+      const composedMessage = msg.message ?? (msg.success && msg.timeOffsetMs !== undefined
+        ? `Time offset: ${formatTimeOffset(msg.timeOffsetMs)}`
+        : '');
+      state.testStatus = { success: msg.success, message: composedMessage, warning: msg.warning };
       if (msg.success && msg.timeOffsetMs !== undefined) {
-        const server = getSelectedServer();
-        if (server) {
-          server.timeOffsetMs = msg.timeOffsetMs;
+        const stateServer = state.config?.servers?.[state.selectedServerName];
+        if (stateServer) {
+          stateServer.timeOffsetMs = msg.timeOffsetMs;
         }
         renderTimeOffset(msg.timeOffsetMs);
       }
       renderTestResult();
       break;
+    }
 
     case 'directorySelected':
       const rootInput = document.getElementById('f-root-path');
@@ -517,9 +521,20 @@ function renderTestResult() {
   const el = document.getElementById('test-connection-result');
   if (!el || !state.testStatus) return;
   el.className = state.testStatus.success ? 'success' : 'error';
-  el.textContent = state.testStatus.success
+  el.textContent = '';
+
+  const main = document.createElement('div');
+  main.textContent = state.testStatus.success
     ? `\u2713 ${state.testStatus.message}`
     : `\u2717 ${state.testStatus.message}`;
+  el.appendChild(main);
+
+  if (state.testStatus.success && state.testStatus.warning) {
+    const warn = document.createElement('div');
+    warn.className = 'warning';
+    warn.textContent = `\u26a0 ${state.testStatus.warning}`;
+    el.appendChild(warn);
+  }
 }
 
 function formatTimeOffset(offsetMs) {

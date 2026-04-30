@@ -4,6 +4,9 @@ import * as path from 'path';
 import { ProjectConfig, ProjectServer } from '../models/ProjectConfig';
 
 export class ProjectConfigManager {
+  private readonly _onDidSaveConfig = new vscode.EventEmitter<void>();
+  readonly onDidSaveConfig = this._onDidSaveConfig.event;
+
   private getConfigPath(): string {
     const folders = vscode.workspace.workspaceFolders;
     if (!folders || folders.length === 0) {
@@ -25,6 +28,11 @@ export class ProjectConfigManager {
     const filePath = this.getConfigPath();
     await fs.mkdir(path.dirname(filePath), { recursive: true });
     await fs.writeFile(filePath, JSON.stringify(config, null, 2), 'utf-8');
+    this._onDidSaveConfig.fire();
+  }
+
+  dispose(): void {
+    this._onDidSaveConfig.dispose();
   }
 
   private emptyConfig(): ProjectConfig {

@@ -25,9 +25,19 @@ const mockCredentialManager = {
   getWithSecret: jest.fn(),
 };
 
+type SaveListener = () => void;
+const saveListeners: SaveListener[] = [];
+const fireOnDidSaveConfig = async () => {
+  for (const listener of [...saveListeners]) { await listener(); }
+};
+
 const mockConfigManager = {
   getConfig: jest.fn(),
   getServerById: jest.fn(),
+  onDidSaveConfig: (listener: SaveListener) => {
+    saveListeners.push(listener);
+    return { dispose: () => { const i = saveListeners.indexOf(listener); if (i >= 0) { saveListeners.splice(i, 1); } } };
+  },
 };
 
 const mockOutput = {
@@ -73,6 +83,7 @@ describe('RemoteBrowserConnection', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.useFakeTimers();
+    saveListeners.length = 0;
     mockSftp.connected = false;
     mockConfigManager.getConfig.mockResolvedValue(fakeConfig);
     mockConfigManager.getServerById.mockResolvedValue({ name: 'Production', server: fakeServer });
@@ -405,6 +416,79 @@ describe('RemoteBrowserConnection', () => {
       expect(hostKeyPrompt.showHostKeyPrompt).toHaveBeenCalledWith(
         'example.com', 22, expect.any(String), 'changed'
       );
+    });
+  });
+
+  describe('config-save invalidation', () => {
+    it('updates rootPath in place when only rootPath changed (no disconnect)', async () => {
+      await connection.ensureConnected();
+      mockSftp.connected = true;
+      expect(connection.getRootPath()).toBe('/var/www');
+      mockSftp.disconnect.mockClear();
+
+      const updated = { ...fakeServer, rootPath: '/www' };
+      mockConfigManager.getConfig.mockResolvedValue({ defaultServerId: 'server-1', servers: { Production: updated } });
+      mockConfigManager.getServerById.mockResolvedValue({ name: 'Production', server: updated });
+
+      await fireOnDidSaveConfig();
+
+      expect(mockSftp.disconnect).not.toHaveBeenCalled();
+      expect(connection.getRootPath()).toBe('/www');
+    });
+
+    it('disconnects when default server id changes', async () => {
+      await connection.ensureConnected();
+      mockSftp.connected = true;
+      mockSftp.disconnect.mockClear();
+
+      const otherServer = { ...fakeServer, id: 'server-2' };
+      mockConfigManager.getConfig.mockResolvedValue({ defaultServerId: 'server-2', servers: { Other: otherServer } });
+      mockConfigManager.getServerById.mockResolvedValue({ name: 'Other', server: otherServer });
+
+      await fireOnDidSaveConfig();
+
+      expect(mockSftp.disconnect).toHaveBeenCalled();
+    });
+
+    it('disconnects when credentialId on the active server changes', async () => {
+      await connection.ensureConnected();
+      mockSftp.connected = true;
+      mockSftp.disconnect.mockClear();
+
+      const swapped = { ...fakeServer, credentialId: 'cred-2' };
+      mockConfigManager.getConfig.mockResolvedValue({ defaultServerId: 'server-1', servers: { Production: swapped } });
+      mockConfigManager.getServerById.mockResolvedValue({ name: 'Production', server: swapped });
+
+      await fireOnDidSaveConfig();
+
+      expect(mockSftp.disconnect).toHaveBeenCalled();
+    });
+
+    it('disconnects when the active server is removed from config', async () => {
+      await connection.ensureConnected();
+      mockSftp.connected = true;
+      mockSftp.disconnect.mockClear();
+
+      mockConfigManager.getConfig.mockResolvedValue({ defaultServerId: '', servers: {} });
+      mockConfigManager.getServerById.mockResolvedValue(undefined);
+
+      await fireOnDidSaveConfig();
+
+      expect(mockSftp.disconnect).toHaveBeenCalled();
+    });
+
+    it('is a no-op when not currently connected', async () => {
+      mockSftp.connected = false;
+      mockSftp.disconnect.mockClear();
+
+      const updated = { ...fakeServer, rootPath: '/www' };
+      mockConfigManager.getConfig.mockResolvedValue({ defaultServerId: 'server-1', servers: { Production: updated } });
+      mockConfigManager.getServerById.mockResolvedValue({ name: 'Production', server: updated });
+
+      await fireOnDidSaveConfig();
+
+      expect(mockSftp.disconnect).not.toHaveBeenCalled();
+      expect(mockSftp.connect).not.toHaveBeenCalled();
     });
   });
 });
