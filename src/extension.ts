@@ -4,12 +4,11 @@ import * as path from 'path';
 import { CredentialManager } from './storage/CredentialManager';
 import { ProjectConfigManager } from './storage/ProjectConfigManager';
 import { migrateIfNeeded } from './storage/ConfigMigration';
-import { uploadSelected } from './commands/uploadSelected';
-import { uploadToServers } from './commands/uploadToServers';
+import { makeUploadSelectedHandler } from './commands/uploadSelectedHandler';
+import { makeUploadToServersHandler } from './commands/uploadToServersHandler';
+import { makeShowRemoteDiffHandler } from './commands/showRemoteDiffHandler';
 import { uploadAllChanged } from './commands/uploadAllChanged';
 import { uploadFromCommits } from './commands/uploadFromCommits';
-import { showRemoteDiff } from './commands/showRemoteDiff';
-import { normalizeCommandArgs } from './utils/normalizeCommandArgs';
 import { StatusBarItem } from './ui/StatusBarItem';
 import { DeploymentSettingsPanel } from './ui/webviews/DeploymentSettingsPanel';
 import { ProjectSettingsPanel } from './ui/webviews/ProjectSettingsPanel';
@@ -90,18 +89,12 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.commands.registerCommand(
       'fileferry.uploadSelected',
-      (arg1, arg2) => {
-        const { resource, allResources } = normalizeCommandArgs(arg1, arg2);
-        return uploadSelected(resource, allResources, { credentialManager, configManager, context, output });
-      }
+      makeUploadSelectedHandler({ credentialManager, configManager, context, output })
     ),
 
     vscode.commands.registerCommand(
       'fileferry.uploadToServers',
-      (arg1, arg2) => {
-        const { resource, allResources } = normalizeCommandArgs(arg1, arg2);
-        return uploadToServers(resource, allResources, { credentialManager, configManager, context, output });
-      }
+      makeUploadToServersHandler({ credentialManager, configManager, context, output })
     ),
 
     vscode.commands.registerCommand(
@@ -162,10 +155,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
     vscode.commands.registerCommand(
       'fileferry.showRemoteDiff',
-      (arg1) => {
-        const { resource } = normalizeCommandArgs(arg1, undefined);
-        return showRemoteDiff(resource, { credentialManager, configManager });
-      }
+      makeShowRemoteDiffHandler({ credentialManager, configManager })
     ),
 
     vscode.commands.registerCommand(

@@ -1,15 +1,23 @@
 import * as vscode from 'vscode';
 
-// VSCode passes different argument types to the same command depending on which
-// panel triggered it:
-//   - SCM panel (scm/resourceState/context): SourceControlResourceState
-//   - Explorer panel (explorer/context): vscode.Uri
+// VSCode passes different argument shapes depending on which panel triggered
+// the command:
+//   - Explorer (explorer/context):              (uri: Uri, allUris: Uri[])
+//   - SCM (scm/resourceState/context):          (...resourceStates: SourceControlResourceState[])
+//   - Keybinding with no selection:             ()
 //
-// This helper normalises both into the SourceControlResourceState shape that
-// the command handlers (uploadSelected, showRemoteDiff) expect.
+// Why: VSCode's git extension uses the variadic signature for SCM context
+// commands (see vscode/extensions/git/src/commands.ts). Treating arg2 as an
+// array there silently dropped extra selections — a single right-click with
+// 4 files selected only uploaded the right-clicked one.
 
 function isUri(arg: unknown): arg is vscode.Uri {
   return !!arg && typeof (arg as vscode.Uri).fsPath === 'string' && !(arg as any).resourceUri;
+}
+
+function isResourceState(arg: unknown): arg is vscode.SourceControlResourceState {
+  return !!arg && typeof arg === 'object' && !!(arg as vscode.SourceControlResourceState).resourceUri
+    && typeof ((arg as vscode.SourceControlResourceState).resourceUri as vscode.Uri).fsPath === 'string';
 }
 
 function uriToResource(uri: vscode.Uri): vscode.SourceControlResourceState {
@@ -17,14 +25,14 @@ function uriToResource(uri: vscode.Uri): vscode.SourceControlResourceState {
 }
 
 export function normalizeCommandArgs(
-  arg1: vscode.Uri | vscode.SourceControlResourceState | undefined,
-  arg2: vscode.Uri[] | vscode.SourceControlResourceState[] | undefined
+  ...args: unknown[]
 ): {
   resource: vscode.SourceControlResourceState | undefined;
   allResources: vscode.SourceControlResourceState[] | undefined;
 } {
-  // Keybindings don't pass SCM resource states — fall back to active editor
-  if (!arg1) {
+  const [arg1, arg2] = args;
+
+  if (arg1 === undefined) {
     const activeUri = vscode.window.activeTextEditor?.document.uri;
     if (activeUri && activeUri.scheme === 'file') {
       return {
@@ -35,6 +43,7 @@ export function normalizeCommandArgs(
     return { resource: undefined, allResources: undefined };
   }
 
+  // Explorer pattern: (Uri, Uri[])
   if (isUri(arg1)) {
     const uris = (arg2 as vscode.Uri[] | undefined) ?? [arg1];
     return {
@@ -43,8 +52,10 @@ export function normalizeCommandArgs(
     };
   }
 
+  // SCM pattern: variadic SourceControlResourceState
+  const resources = args.filter(isResourceState);
   return {
-    resource: arg1 as vscode.SourceControlResourceState,
-    allResources: arg2 as vscode.SourceControlResourceState[] | undefined,
+    resource: resources[0],
+    allResources: resources.length > 0 ? resources : undefined,
   };
 }

@@ -37,17 +37,30 @@ describe('normalizeCommandArgs', () => {
   describe('when called from SCM context (SourceControlResourceState args)', () => {
     it('passes resource through unchanged', () => {
       const resource = makeResource('/workspace/src/app.php');
-      const { resource: out } = normalizeCommandArgs(resource, undefined);
+      const { resource: out } = normalizeCommandArgs(resource);
       expect(out).toBe(resource);
     });
 
-    it('passes allResources through unchanged', () => {
+    it('collects variadic SCM resources into allResources', () => {
+      // VSCode's scm/resourceState/context menu passes selected resources
+      // as variadic args: (resource1, resource2, resource3, ...)
       const r1 = makeResource('/workspace/src/a.php');
       const r2 = makeResource('/workspace/src/b.php');
-      const { allResources } = normalizeCommandArgs(r1, [r1, r2]);
-      expect(allResources).toHaveLength(2);
+      const r3 = makeResource('/workspace/src/c.php');
+      const r4 = makeResource('/workspace/src/d.php');
+      const { resource, allResources } = normalizeCommandArgs(r1, r2, r3, r4);
+      expect(resource).toBe(r1);
+      expect(allResources).toHaveLength(4);
       expect(allResources![0]).toBe(r1);
-      expect(allResources![1]).toBe(r2);
+      expect(allResources![3]).toBe(r4);
+    });
+
+    it('handles single SCM resource selection', () => {
+      const r1 = makeResource('/workspace/src/a.php');
+      const { resource, allResources } = normalizeCommandArgs(r1);
+      expect(resource).toBe(r1);
+      expect(allResources).toHaveLength(1);
+      expect(allResources![0]).toBe(r1);
     });
   });
 
