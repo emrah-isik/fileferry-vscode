@@ -2,6 +2,20 @@
 
 All notable changes to FileFerry will be documented in this file.
 
+## [0.8.7] - 2026-04-30
+
+### Fixed
+
+- **Multi-file SCM upload** — right-clicking a multi-file selection in Source Control and choosing **FileFerry: Upload** now uploads all selected files instead of just the right-clicked one. VSCode's git extension passes selections as variadic args; the previous handler only read the first two.
+- **Root Path edits in Deployment Settings now apply immediately** — the Remote Files panel was caching the old SFTP session and continued listing the previous path until the window was reloaded. Saving the server now refreshes the cached path in place (no reconnect) when only `rootPath` changed; identity changes (different default server, swapped credential) drop the session so the next operation reconnects fresh.
+
+### Changed
+
+- **Test Connection now probes the Root Path** — after a successful credential test, FileFerry tries to list the configured Root Path and surfaces a non-blocking yellow warning if the path isn't accessible (e.g. wrong path inside a chroot). Connection success itself is reported the same as before.
+- **Detect Offset banner shows the actual value** — replaces the misleading "Time offset detected" string with `Time offset: +0ms` / `Time offset: +5.2s`, and fixes a stale-state bug where the inline "Not detected" field could revert after a re-render.
+
+---
+
 ## [0.8.6] - 2026-04-28
 
 ### Added

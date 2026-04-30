@@ -25,6 +25,8 @@ FileFerry shows a confirmation before every deploy. Upload to multiple servers a
 ![Upload confirmation](https://raw.githubusercontent.com/emrah-isik/fileferry-vscode/main/resources/readme/fileferry_scm_upload_confirmation.png)
 
 - **Multi-select upload** — select any number of files in Source Control or Explorer
+- **Upload all changed files** — `Ctrl+Alt+U` deploys everything git considers changed, no selection required
+- **Upload from commit** — pick one or more recent commits and deploy every file they touched (working-tree version)
 - **Multi-server push** — deploy to dev, staging, and prod in one action
 - **Folder upload** — right-click a folder in Explorer to upload its contents recursively
 - **Upload on save** — auto-deploy on file save, toggled from the status bar
@@ -63,6 +65,7 @@ Manage servers and credentials through a form — no JSON editing required.
 - **Remote time offset detection** — automatically corrects clock skew when comparing timestamps
 - **Excluded paths** — glob patterns to skip files that should never be deployed
 - **Clone server** — duplicate an existing server config as a starting point
+- **Project settings** — per-project toggles for upload-on-save, file date guard, backup before overwrite, and dry run, separate from server config
 
 ---
 
@@ -71,6 +74,8 @@ Manage servers and credentials through a form — no JSON editing required.
 Passwords and passphrases are stored in the OS native keychain (macOS Keychain, Windows Credential Manager, Linux libsecret) — never written to disk or committed to git.
 
 Supported auth methods: password, private key, SSH agent (including 1Password), and keyboard-interactive (2FA).
+
+First-time SSH connections show the server's host-key fingerprint and prompt for trust (TOFU); if a previously-trusted key changes, FileFerry warns before connecting.
 
 `.vscode/fileferry.json` stores server references and path mappings — no secrets. It is safe to commit.
 
