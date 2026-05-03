@@ -21,6 +21,23 @@
       "type": "boolean",
       "description": "When false, disables the remote mtime check before uploading. Defaults to true when omitted."
     },
+    "backupBeforeOverwrite": {
+      "type": "boolean",
+      "description": "When true, downloads each existing remote file to .vscode/fileferry-backups/ before uploading the new version.",
+      "default": false
+    },
+    "backupRetentionDays": {
+      "type": "integer",
+      "description": "Number of days to keep backup folders before automatic cleanup.",
+      "default": 7,
+      "minimum": 0
+    },
+    "backupMaxSizeMB": {
+      "type": "integer",
+      "description": "Maximum total size of the backups folder in megabytes. Oldest backups are pruned first.",
+      "default": 100,
+      "minimum": 0
+    },
     "historyMaxEntries": {
       "type": "integer",
       "description": "Maximum number of entries in the upload history file. Defaults to 10000. Set to 0 to disable history logging.",

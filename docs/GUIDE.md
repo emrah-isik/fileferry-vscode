@@ -22,6 +22,7 @@ For a quick overview, see the [README](../README.md).
 - [Path Mappings and Exclusions](#path-mappings-and-exclusions)
 - [Keyboard Shortcuts](#keyboard-shortcuts)
 - [Commands Reference](#commands-reference)
+- [Config File Reference](#config-file-reference)
 - [Troubleshooting](#troubleshooting)
 
 ---
@@ -367,6 +368,14 @@ Customize via `Preferences -> Keyboard Shortcuts` and search for `fileferry`.
 | `Compare with Local` | Diff a remote file against the local version |
 | `Delete from Server` | Delete a remote file or folder (with confirmation) |
 | `Copy Remote Path` | Copy the full remote path to clipboard |
+
+---
+
+## Config File Reference
+
+`.vscode/fileferry.json` holds your server definitions, path mappings, and project toggles. You normally don't edit it by hand — Deployment Settings and Project Settings write it for you — but it's safe to commit and useful to read during code review or troubleshooting.
+
+For the full field-by-field reference (including the JSON Schema, defaults, and worked examples), see [CONFIG.md](./CONFIG.md).
 
 ---
 
