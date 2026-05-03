@@ -1,7 +1,7 @@
 {
   "name": "fileferry",
   "displayName": "FileFerry",
-  "description": "Deploy git-changed files to remote servers with precision. Select, confirm, upload.",
+  "description": "Modern SFTP/FTP deploy for VS Code. Works with OpenSSH 8.8+, ed25519, and 1Password agent. Credentials stored in the OS keychain — never in a config file.",
   "version": "0.8.7",
   "publisher": "esidevlabs",
   "icon": "resources/icon.png",
@@ -16,7 +16,12 @@
     "git",
     "upload",
     "ssh",
-    "ftp"
+    "ftp",
+    "vscode-sftp",
+    "sftp-alternative",
+    "ftp-deploy",
+    "phpstorm-deployment",
+    "git-deploy"
   ],
   "categories": [
     "Other"

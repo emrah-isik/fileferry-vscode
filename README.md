@@ -14,6 +14,25 @@ Right-click changed files in the Source Control panel, press `Alt+U`, confirm, d
 
 ---
 
+## Coming from vscode-sftp?
+
+If `vscode-sftp` stopped working on Ubuntu 22.04+, AWS EC2, or after a server upgrade, the cause is almost always missing modern OpenSSH algorithms (`rsa-sha2-256`, `ed25519`, `curve25519-sha256`). FileFerry supports them out of the box.
+
+A few practical differences:
+
+| Area | vscode-sftp | FileFerry |
+|---|---|---|
+| Credentials | plaintext `sftp.json` in the workspace | OS keychain (Keychain / Credential Manager / libsecret) |
+| Modern OpenSSH (8.8+) | manual algorithm config required | works by default |
+| SSH agent (1Password, gpg-agent, Pageant) | partial | auto-detected |
+| Git-aware uploads | not built-in | first-class — deploy from the Source Control panel |
+| Project config in git | unsafe (contains secrets) | safe — `.vscode/fileferry.json` has no credentials |
+| Active maintenance | last meaningful release 2022 | actively maintained |
+
+Existing `sftp.json` files aren't auto-imported — set up your server once in FileFerry's Deployment Settings panel, and your credentials move to the keychain.
+
+---
+
 ## Upload changed files
 
 Select files in the Source Control panel, right-click, and deploy. Or press `Alt+U` — no mouse needed.
