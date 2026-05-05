@@ -21,7 +21,7 @@ If `vscode-sftp` stopped working on Ubuntu 22.04+, AWS EC2, or after a server up
 A few practical differences:
 
 | Area | vscode-sftp | FileFerry |
-|---|---|---|
+| --- | --- | --- |
 | Credentials | plaintext `sftp.json` in the workspace | OS keychain (Keychain / Credential Manager / libsecret) |
 | Modern OpenSSH (8.8+) | manual algorithm config required | works by default |
 | SSH agent (1Password, gpg-agent, Pageant) | partial | auto-detected |

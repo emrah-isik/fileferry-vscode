@@ -56,6 +56,7 @@ Passwords and passphrases never touch the filesystem.
 FileFerry hooks into VSCode's native Source Control panel rather than building its own file tree.
 
 **Command registration** (`package.json`):
+
 ```json
 "menus": {
   "scm/resourceState/context": [
@@ -68,6 +69,7 @@ FileFerry hooks into VSCode's native Source Control panel rather than building i
 **Argument shape**: When invoked from the SCM context menu, VSCode passes `(primaryResource: SourceControlResourceState, allSelected: SourceControlResourceState[])`. When invoked via keyboard shortcut (`Alt+U` / `Alt+Shift+U`), `allSelected` contains everything currently highlighted in the SCM panel.
 
 **`ScmResourceResolver`** normalises both call shapes:
+
 - If `allSelected` is non-empty, use it (multi-select case).
 - Otherwise, fall back to `[primaryResource]` (single right-click case).
 - Filter out resources where `resourceUri.fsPath` no longer exists on disk (deleted files).
@@ -81,13 +83,15 @@ Both `uploadSelected` and `uploadToServers` are hidden from the Command Palette 
 `PathResolver.resolve()` maps a local absolute path to a remote absolute path using the server's root path and the active server binding's path mappings.
 
 **Algorithm**:
+
 1. Convert the local absolute path to a workspace-relative path.
 2. Check exclusion patterns using `minimatch`. If any pattern matches, throw `ExcludedPathError`.
 3. Find the mapping with the longest `localPath` prefix that matches the relative path. More-specific mappings win over catch-all `/` mappings.
 4. Combine: `server.rootPath` + `mapping.remotePath` + path suffix after the mapping prefix.
 
 **Example**:
-```
+
+```text
 rootPath: /var/www
 mappings: [{ localPath: '/', remotePath: '/html' },
            { localPath: '/public', remotePath: '/public_html' }]
@@ -106,7 +110,7 @@ If no mapping matches and there is no `/` catch-all, a `NoMappingError` is throw
 
 All four webview panels (Deployment Settings, SSH Credentials, Project Settings, Upload History) use the same handshake pattern:
 
-```
+```text
 Webview boots → sends { command: 'ready' }
 Extension responds → sends { command: 'init', ...data }
 ```
@@ -191,6 +195,7 @@ interface TransferService {
 **Factory**: `createTransferService(type: ServerType)` returns the correct implementation based on the server's protocol type. All consumers (upload orchestrator, backup service, file date guard, diff service, remote browser) use this factory instead of instantiating a specific service directly.
 
 **Protocol-specific constraints**:
+
 - FTP/FTPS only supports password authentication. The Deployment Settings webview filters the credential dropdown to password-only credentials when an FTP protocol is selected. The backend also validates this before connecting.
 - Host key verification only applies to SFTP connections. FTP/FTPS connections skip the `hostVerifier` option.
 - `FileEntry` is a protocol-agnostic type (`{ name, type, size, modifyTime }`) that replaces the ssh2-specific `SftpClient.FileInfo` across the codebase.

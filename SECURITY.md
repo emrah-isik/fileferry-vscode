@@ -5,7 +5,7 @@
 If you believe you have found a security issue in FileFerry, please report it responsibly instead of disclosing it publicly right away.
 
 **Report via GitHub:**
-https://github.com/emrah-isik/fileferry-vscode/security/advisories/new
+<https://github.com/emrah-isik/fileferry-vscode/security/advisories/new>
 
 Please include as much detail as possible, such as:
 

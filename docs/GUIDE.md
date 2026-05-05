@@ -11,7 +11,6 @@ For a quick overview, see the [README](../README.md).
 - [Getting Started](#getting-started)
 - [Uploading Files](#uploading-files)
 - [Multi-Server Push](#multi-server-push)
-- [File Permissions](#file-permissions-sftp--ftp)
 - [Browsing Remote Files](#browsing-remote-files)
 - [Comparing Files](#comparing-files)
 - [Downloading Files](#downloading-files)
@@ -248,6 +247,7 @@ History is stored in `.vscode/fileferry-history.jsonl` and is machine-local — 
 Enable dry run mode to preview exactly what would be uploaded or deleted — without actually transferring anything. No connections are opened; no files are moved.
 
 When dry run is on:
+
 - The **FileFerry output channel** shows a structured plan listing every file that would be uploaded (with local → remote paths) and every remote path that would be deleted, grouped by server.
 - A notification appears with the total count and a **Show Log** button.
 - **Upload on save is silently skipped** — no notification, no log line.
@@ -256,6 +256,7 @@ When dry run is on:
 **Note:** FileDateGuard results are not shown in dry run output — that check requires a remote connection and dry run is purely local.
 
 Enable or disable dry run in any of these places:
+
 - **Project Settings** — `FileFerry: Project Settings` from the command palette
 - **Status bar menu** — click the FileFerry status bar item and choose **Dry Run Mode**
 
@@ -273,7 +274,7 @@ FileFerry checks if the remote file is newer than your local copy before uploadi
 
 Set glob patterns in the Mappings tab to skip files that should never be uploaded. Common patterns:
 
-```
+```text
 node_modules, *.log, .env, .git, vendor
 ```
 
@@ -327,7 +328,7 @@ When multiple mappings match a file, the most specific (longest) local path wins
 
 If no mappings are configured, all files map directly to the server root path. A local file `src/index.php` with root path `/var/www` uploads to `/var/www/src/index.php`.
 
-### Excluded Paths
+### Excluded Paths Reference
 
 Comma-separated glob patterns set in the Mappings tab. Files matching these patterns are silently skipped during upload. Use this for files that should never be deployed: `node_modules, *.log, .env`.
 
