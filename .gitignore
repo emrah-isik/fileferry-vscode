@@ -9,3 +9,5 @@ docs/plans/
 .vscode/*
 !.vscode/launch.json
 !.vscode/extensions.json
+context/
+CLAUDE.md

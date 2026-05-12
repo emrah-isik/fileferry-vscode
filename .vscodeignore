@@ -12,6 +12,8 @@ webpack.config.js
 jest.config.*
 .gitignore
 .claude/**
+context/**
+CLAUDE.md
 dev/**
 docs/plans/**
 docs/architecture.md
