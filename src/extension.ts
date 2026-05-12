@@ -25,19 +25,12 @@ import { deleteRemoteItem } from './commands/deleteRemoteItem';
 import { UploadOnSaveService } from './services/UploadOnSaveService';
 import { DeploymentServer } from './models/DeploymentServer';
 import { ProjectBinding } from './models/ProjectBinding';
+import { withErrorHandling as wrapErrors } from './utils/withErrorHandling';
 
 let output: vscode.OutputChannel;
 
 function withErrorHandling(label: string, fn: (...args: any[]) => Promise<void>): (...args: any[]) => Promise<void> {
-  return async (...args: any[]) => {
-    try {
-      await fn(...args);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      output.appendLine(`[error] ${label}: ${message}`);
-      vscode.window.showErrorMessage(`FileFerry: ${message}`);
-    }
-  };
+  return wrapErrors(label, output, fn);
 }
 
 async function readJsonFile<T>(filePath: string): Promise<T | null> {
@@ -89,12 +82,16 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.commands.registerCommand(
       'fileferry.uploadSelected',
-      makeUploadSelectedHandler({ credentialManager, configManager, context, output })
+      withErrorHandling('uploadSelected',
+        makeUploadSelectedHandler({ credentialManager, configManager, context, output })
+      )
     ),
 
     vscode.commands.registerCommand(
       'fileferry.uploadToServers',
-      makeUploadToServersHandler({ credentialManager, configManager, context, output })
+      withErrorHandling('uploadToServers',
+        makeUploadToServersHandler({ credentialManager, configManager, context, output })
+      )
     ),
 
     vscode.commands.registerCommand(
@@ -155,7 +152,9 @@ export function activate(context: vscode.ExtensionContext): void {
 
     vscode.commands.registerCommand(
       'fileferry.showRemoteDiff',
-      makeShowRemoteDiffHandler({ credentialManager, configManager })
+      withErrorHandling('showRemoteDiff',
+        makeShowRemoteDiffHandler({ credentialManager, configManager })
+      )
     ),
 
     vscode.commands.registerCommand(
