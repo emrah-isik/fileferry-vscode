@@ -251,9 +251,12 @@ export class SftpService implements TransferService {
       const stats = await (this.client as any).stat(remotePath);
       return { mtime: new Date(stats.mtime * 1000) };
     } catch (err: unknown) {
-      const error = err as { code?: number };
-      if (error.code === 2) {
-        return null; // File does not exist
+      // ssh2-sftp-client normalizes SFTP "no such file" to code === 'ENOENT'
+      // (see node_modules/ssh2-sftp-client/src/constants.js). Returning null
+      // here lets FileDateGuard treat a missing remote file as "new file, no conflict".
+      const error = err as { code?: string | number };
+      if (error.code === 'ENOENT') {
+        return null;
       }
       throw err;
     }

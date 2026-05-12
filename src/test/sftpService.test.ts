@@ -618,8 +618,9 @@ describe('SftpService', () => {
       expect(result).toBe('-');
     });
 
-    it('returns null when file does not exist (code 2)', async () => {
-      mockMethods.stat.mockRejectedValue({ code: 2, message: 'No such file' });
+    it('returns null when file does not exist (ENOENT)', async () => {
+      const err = Object.assign(new Error('No such file'), { code: 'ENOENT' });
+      mockMethods.stat.mockRejectedValue(err);
       const result = await service.statType('/var/www/missing');
       expect(result).toBeNull();
     });
@@ -656,15 +657,41 @@ describe('SftpService', () => {
       expect(result).toEqual({ mtime });
     });
 
-    it('returns null when remote file does not exist', async () => {
-      mockMethods.stat.mockRejectedValue({ code: 2, message: 'No such file' });
+    it('returns null when remote file does not exist (ssh2-sftp-client emits code "ENOENT")', async () => {
+      // ssh2-sftp-client wraps the underlying SFTP_STATUS_NO_SUCH_FILE (numeric 2)
+      // as a JS Error with code === 'ENOENT' via fmtError(...). See
+      // node_modules/ssh2-sftp-client/src/constants.js → errorCode.notexist = 'ENOENT'.
+      // Empirical: uploading a fresh file produced "_xstat: No such file: ..." with code 'ENOENT'.
+      const err = Object.assign(new Error('_xstat: No such file: /var/www/missing.php'), {
+        code: 'ENOENT',
+      });
+      mockMethods.stat.mockRejectedValue(err);
       const result = await service.stat('/var/www/missing.php');
       expect(result).toBeNull();
     });
 
-    it('propagates unexpected errors', async () => {
+    it('returns null for an ENOENT error even when message format varies', async () => {
+      const err = Object.assign(new Error('something else entirely'), { code: 'ENOENT' });
+      mockMethods.stat.mockRejectedValue(err);
+      const result = await service.stat('/var/www/missing.php');
+      expect(result).toBeNull();
+    });
+
+    it('propagates non-ENOENT errors unchanged', async () => {
       mockMethods.stat.mockRejectedValue(new Error('Permission denied'));
       await expect(service.stat('/var/www/secret.php')).rejects.toThrow('Permission denied');
+    });
+
+    it('propagates EACCES errors instead of treating them as missing', async () => {
+      const err = Object.assign(new Error('Permission denied'), { code: 'EACCES' });
+      mockMethods.stat.mockRejectedValue(err);
+      await expect(service.stat('/var/www/secret.php')).rejects.toThrow('Permission denied');
+    });
+
+    it('propagates generic ssh2-sftp-client errors (ERR_GENERIC_CLIENT)', async () => {
+      const err = Object.assign(new Error('Generic client error'), { code: 'ERR_GENERIC_CLIENT' });
+      mockMethods.stat.mockRejectedValue(err);
+      await expect(service.stat('/var/www/file.php')).rejects.toThrow('Generic client error');
     });
 
     it('throws if not connected', async () => {
