@@ -135,6 +135,16 @@
         "command": "fileferry.uploadFromCommits",
         "title": "FileFerry: Upload Files from Commit",
         "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "fileferry.changedFiles.refresh",
+        "title": "FileFerry: Refresh Changed Files",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "fileferry.changedFiles.uploadSelection",
+        "title": "FileFerry: Upload Selected Changed Files",
+        "icon": "$(cloud-upload)"
       }
     ],
     "viewsContainers": {
@@ -151,6 +161,10 @@
         {
           "id": "fileferry.serversView",
           "name": "Servers"
+        },
+        {
+          "id": "fileferry.changedFilesView",
+          "name": "Changed Files"
         },
         {
           "id": "fileferry.remoteBrowser",
@@ -229,6 +243,16 @@
           "command": "fileferry.servers.refresh",
           "when": "view == fileferry.serversView",
           "group": "navigation"
+        },
+        {
+          "command": "fileferry.changedFiles.uploadSelection",
+          "when": "view == fileferry.changedFilesView",
+          "group": "navigation@1"
+        },
+        {
+          "command": "fileferry.changedFiles.refresh",
+          "when": "view == fileferry.changedFilesView",
+          "group": "navigation@2"
         }
       ],
       "view/item/context": [
@@ -317,19 +341,18 @@
         {
           "command": "fileferry.remoteBrowser.delete",
           "when": "false"
+        },
+        {
+          "command": "fileferry.changedFiles.uploadSelection",
+          "when": "false"
         }
       ]
     },
     "keybindings": [
       {
-        "command": "fileferry.uploadSelected",
+        "command": "fileferry.changedFiles.uploadSelection",
         "key": "alt+u",
-        "when": "focusedView == workbench.scm"
-      },
-      {
-        "command": "fileferry.showRemoteDiff",
-        "key": "alt+p",
-        "when": "focusedView == workbench.scm"
+        "when": "focusedView == fileferry.changedFilesView"
       },
       {
         "command": "fileferry.uploadSelected",
@@ -340,11 +363,6 @@
         "command": "fileferry.showRemoteDiff",
         "key": "alt+p",
         "when": "editorTextFocus"
-      },
-      {
-        "command": "fileferry.uploadToServers",
-        "key": "alt+shift+u",
-        "when": "focusedView == workbench.scm"
       },
       {
         "command": "fileferry.uploadToServers",
@@ -369,17 +387,17 @@
       {
         "command": "fileferry.uploadAllChanged",
         "key": "ctrl+alt+u",
-        "when": "focusedView == workbench.scm"
-      },
-      {
-        "command": "fileferry.uploadAllChanged",
-        "key": "ctrl+alt+u",
         "when": "editorTextFocus"
       },
       {
         "command": "fileferry.uploadAllChanged",
         "key": "ctrl+alt+u",
         "when": "filesExplorerFocus"
+      },
+      {
+        "command": "fileferry.uploadAllChanged",
+        "key": "ctrl+alt+u",
+        "when": "focusedView == fileferry.changedFilesView"
       }
     ],
     "configuration": {

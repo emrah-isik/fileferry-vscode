@@ -27,17 +27,23 @@ export interface GitRepository {
     workingTreeChanges: Array<{ uri: { fsPath: string }; status: number }>;
     indexChanges: Array<{ uri: { fsPath: string }; status: number }>;
     untrackedChanges: Array<{ uri: { fsPath: string } }>;
+    onDidChange?: (listener: () => void) => { dispose: () => void };
   };
 }
 
+interface GitAPI {
+  repositories: GitRepository[];
+  onDidOpenRepository?: (listener: (repo: GitRepository) => void) => { dispose: () => void };
+}
+
 export class GitService {
-  private api: { repositories: GitRepository[] } | null = null;
+  private api: GitAPI | null = null;
 
   constructor() {
     this.api = this.loadGitAPI();
   }
 
-  private loadGitAPI(): { repositories: GitRepository[] } | null {
+  private loadGitAPI(): GitAPI | null {
     const ext = vscode.extensions.getExtension('vscode.git');
     if (!ext) {
       return null;
@@ -87,6 +93,34 @@ export class GitService {
     }
 
     return files;
+  }
+
+  // Subscribes a callback to fire whenever any repository's state changes
+  // (staged, working tree, untracked, branch, etc.). Used by views that want
+  // to mirror git state — e.g. the Changed Files view.
+  //
+  // Also fires when a repository is opened after activation: the git extension
+  // scans the filesystem asynchronously, so repos can appear seconds after our
+  // extension has activated. Without this, the view stays empty until the user
+  // hits Refresh manually.
+  onRepositoryChange(callback: () => void): { dispose: () => void } {
+    const subs: Array<{ dispose: () => void }> = [];
+
+    for (const repo of this.api?.repositories ?? []) {
+      const sub = repo.state.onDidChange?.(callback);
+      if (sub) { subs.push(sub); }
+    }
+
+    const openSub = this.api?.onDidOpenRepository?.((repo) => {
+      callback();
+      const sub = repo.state.onDidChange?.(callback);
+      if (sub) { subs.push(sub); }
+    });
+    if (openSub) { subs.push(openSub); }
+
+    return {
+      dispose: () => subs.forEach(s => s.dispose()),
+    };
   }
 
   getBranchName(workspaceRoot: string): string {

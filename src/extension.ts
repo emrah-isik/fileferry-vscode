@@ -26,6 +26,9 @@ import { UploadOnSaveService } from './services/UploadOnSaveService';
 import { DeploymentServer } from './models/DeploymentServer';
 import { ProjectBinding } from './models/ProjectBinding';
 import { withErrorHandling as wrapErrors } from './utils/withErrorHandling';
+import { GitService } from './gitService';
+import { ChangedFilesView } from './changedFiles/ChangedFilesView';
+import { uploadChangedFilesSelection } from './commands/uploadChangedFilesSelection';
 
 let output: vscode.OutputChannel;
 
@@ -202,6 +205,29 @@ export function activate(context: vscode.ExtensionContext): void {
       'fileferry.showUploadHistory',
       withErrorHandling('showUploadHistory', async () =>
         UploadHistoryPanel.createOrShow(context, { configManager })
+      )
+    )
+  );
+
+  // Changed Files view — our own SCM-like tree we can read selection from.
+  // VSCode's SCM view doesn't expose its selection to keybinding-invoked
+  // commands; owning the tree sidesteps that limitation.
+  const gitService = new GitService();
+  const changedFilesView = new ChangedFilesView('fileferry.changedFilesView', gitService);
+  context.subscriptions.push(changedFilesView);
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'fileferry.changedFiles.refresh',
+      withErrorHandling('changedFiles.refresh', async () => changedFilesView.refresh())
+    ),
+    vscode.commands.registerCommand(
+      'fileferry.changedFiles.uploadSelection',
+      withErrorHandling('changedFiles.uploadSelection', async () =>
+        uploadChangedFilesSelection(
+          () => changedFilesView.getSelection(),
+          { credentialManager, configManager, context, output }
+        )
       )
     )
   );

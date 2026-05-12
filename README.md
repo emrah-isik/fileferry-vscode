@@ -2,7 +2,7 @@
 
 Deploy files from VS Code to remote servers over SFTP, FTP, or FTPS — without leaving the editor.
 
-Right-click changed files in the Source Control panel, press `Alt+U`, confirm, done. No config file juggling, no manual path entry — just deploy what git knows you changed.
+Right-click changed files in the Source Control panel and pick **FileFerry: Upload**, or open the **FileFerry → Changed Files** view, select files, and press `Alt+U`. No config file juggling, no manual path entry — just deploy what git knows you changed.
 
 **Built on these principles:**
 
@@ -35,7 +35,10 @@ Existing `sftp.json` files aren't auto-imported — set up your server once in F
 
 ## Upload changed files
 
-Select files in the Source Control panel, right-click, and deploy. Or press `Alt+U` — no mouse needed.
+Two ways to deploy what you've changed:
+
+- **SCM right-click** — select files in the Source Control panel, right-click → **FileFerry: Upload**.
+- **Changed Files view** — open the FileFerry sidebar, focus the **Changed Files** view, select one or more files, press `Alt+U`. The view auto-refreshes as you edit.
 
 ![SCM context menu](https://raw.githubusercontent.com/emrah-isik/fileferry-vscode/main/resources/readme/fileferry_scm_context_menu.png)
 
@@ -43,7 +46,7 @@ FileFerry shows a confirmation before every deploy. Upload to multiple servers a
 
 ![Upload confirmation](https://raw.githubusercontent.com/emrah-isik/fileferry-vscode/main/resources/readme/fileferry_scm_upload_confirmation.png)
 
-- **Multi-select upload** — select any number of files in Source Control or Explorer
+- **Multi-select upload** — Source Control right-click or the FileFerry **Changed Files** view; select any number of files and deploy in one action
 - **Upload all changed files** — `Ctrl+Alt+U` deploys everything git considers changed, no selection required
 - **Upload from commit** — pick one or more recent commits and deploy every file they touched (working-tree version)
 - **Multi-server push** — deploy to dev, staging, and prod in one action
@@ -139,18 +142,19 @@ The active server is always visible. Click to switch servers, toggle upload on s
 2. Open `Ctrl+Shift+P` → `FileFerry: Deployment Settings`
 3. Add a credential — click **Manage...** next to the credential dropdown
 4. Add a server and configure path mappings
-5. Go to the Source Control panel, select changed files, press `Alt+U`
+5. Open the FileFerry sidebar → **Changed Files**, select changed files, press `Alt+U` (or right-click changed files in the Source Control panel → **FileFerry: Upload**)
 
 ---
 
 ## Keyboard Shortcuts
 
-| Key | Action |
-| --- | ------ |
-| `Alt+U` | Upload selected files |
-| `Alt+P` | Compare with Remote |
-| `Shift+Alt+U` | Upload to multiple servers |
-| `Ctrl+Alt+U` | Upload all changed files |
+| Key | Where | Action |
+| --- | ----- | ------ |
+| `Alt+U` | Active editor | Upload the file in the editor |
+| `Alt+U` | FileFerry → Changed Files view | Upload the rows you have selected |
+| `Alt+P` | Active editor | Compare current file with remote |
+| `Shift+Alt+U` | Active editor | Upload to multiple servers |
+| `Ctrl+Alt+U` | Anywhere | Upload all changed files |
 
 Configurable via `Preferences → Keyboard Shortcuts` → search `fileferry`.
 

@@ -105,6 +105,316 @@ describe('GitService', () => {
 });
 
 // ---------------------------------------------------------------------------
+// onRepositoryChange — auto-refresh subscription
+// ---------------------------------------------------------------------------
+
+function makeFakeEvent<T = void>() {
+  const listeners: Array<(arg: T) => void> = [];
+  const event = (cb: (arg: T) => void) => {
+    listeners.push(cb);
+    return { dispose: () => {
+      const i = listeners.indexOf(cb);
+      if (i >= 0) { listeners.splice(i, 1); }
+    } };
+  };
+  const fire = (arg?: T) => listeners.forEach(l => l(arg as T));
+  return { event, fire, listenerCount: () => listeners.length };
+}
+
+describe('GitService.onRepositoryChange', () => {
+  it('returns a Disposable when git API is available', () => {
+    const repoEvent = makeFakeEvent();
+    mockGetAPI.mockReturnValue({
+      repositories: [{
+        rootUri: { fsPath: '/repo' },
+        state: { HEAD: null, workingTreeChanges: [], indexChanges: [], untrackedChanges: [], onDidChange: repoEvent.event },
+      }],
+    });
+    const service = new GitService();
+    const sub = service.onRepositoryChange(() => {});
+    expect(typeof sub.dispose).toBe('function');
+  });
+
+  it('fires the callback when a repository state changes', () => {
+    const repoEvent = makeFakeEvent();
+    mockGetAPI.mockReturnValue({
+      repositories: [{
+        rootUri: { fsPath: '/repo' },
+        state: { HEAD: null, workingTreeChanges: [], indexChanges: [], untrackedChanges: [], onDidChange: repoEvent.event },
+      }],
+    });
+    const service = new GitService();
+    const cb = jest.fn();
+    service.onRepositoryChange(cb);
+
+    repoEvent.fire();
+
+    expect(cb).toHaveBeenCalledTimes(1);
+  });
+
+  it('fires the callback for every state change, not just once', () => {
+    const repoEvent = makeFakeEvent();
+    mockGetAPI.mockReturnValue({
+      repositories: [{
+        rootUri: { fsPath: '/repo' },
+        state: { HEAD: null, workingTreeChanges: [], indexChanges: [], untrackedChanges: [], onDidChange: repoEvent.event },
+      }],
+    });
+    const service = new GitService();
+    const cb = jest.fn();
+    service.onRepositoryChange(cb);
+
+    repoEvent.fire();
+    repoEvent.fire();
+    repoEvent.fire();
+
+    expect(cb).toHaveBeenCalledTimes(3);
+  });
+
+  it('fires the callback for any of multiple repositories', () => {
+    const repoEvent1 = makeFakeEvent();
+    const repoEvent2 = makeFakeEvent();
+    mockGetAPI.mockReturnValue({
+      repositories: [
+        { rootUri: { fsPath: '/repo1' }, state: { HEAD: null, workingTreeChanges: [], indexChanges: [], untrackedChanges: [], onDidChange: repoEvent1.event } },
+        { rootUri: { fsPath: '/repo2' }, state: { HEAD: null, workingTreeChanges: [], indexChanges: [], untrackedChanges: [], onDidChange: repoEvent2.event } },
+      ],
+    });
+    const service = new GitService();
+    const cb = jest.fn();
+    service.onRepositoryChange(cb);
+
+    repoEvent1.fire();
+    repoEvent2.fire();
+
+    expect(cb).toHaveBeenCalledTimes(2);
+  });
+
+  it('stops firing the callback after dispose', () => {
+    const repoEvent = makeFakeEvent();
+    mockGetAPI.mockReturnValue({
+      repositories: [{
+        rootUri: { fsPath: '/repo' },
+        state: { HEAD: null, workingTreeChanges: [], indexChanges: [], untrackedChanges: [], onDidChange: repoEvent.event },
+      }],
+    });
+    const service = new GitService();
+    const cb = jest.fn();
+    const sub = service.onRepositoryChange(cb);
+
+    repoEvent.fire();
+    sub.dispose();
+    repoEvent.fire();
+
+    expect(cb).toHaveBeenCalledTimes(1);
+  });
+
+  it('unsubscribes from every repository on dispose (no listener leaks)', () => {
+    const repoEvent1 = makeFakeEvent();
+    const repoEvent2 = makeFakeEvent();
+    mockGetAPI.mockReturnValue({
+      repositories: [
+        { rootUri: { fsPath: '/repo1' }, state: { HEAD: null, workingTreeChanges: [], indexChanges: [], untrackedChanges: [], onDidChange: repoEvent1.event } },
+        { rootUri: { fsPath: '/repo2' }, state: { HEAD: null, workingTreeChanges: [], indexChanges: [], untrackedChanges: [], onDidChange: repoEvent2.event } },
+      ],
+    });
+    const service = new GitService();
+    const sub = service.onRepositoryChange(() => {});
+
+    expect(repoEvent1.listenerCount()).toBe(1);
+    expect(repoEvent2.listenerCount()).toBe(1);
+
+    sub.dispose();
+
+    expect(repoEvent1.listenerCount()).toBe(0);
+    expect(repoEvent2.listenerCount()).toBe(0);
+  });
+
+  it('supports multiple independent subscribers', () => {
+    const repoEvent = makeFakeEvent();
+    mockGetAPI.mockReturnValue({
+      repositories: [{
+        rootUri: { fsPath: '/repo' },
+        state: { HEAD: null, workingTreeChanges: [], indexChanges: [], untrackedChanges: [], onDidChange: repoEvent.event },
+      }],
+    });
+    const service = new GitService();
+    const cb1 = jest.fn();
+    const cb2 = jest.fn();
+    service.onRepositoryChange(cb1);
+    service.onRepositoryChange(cb2);
+
+    repoEvent.fire();
+
+    expect(cb1).toHaveBeenCalledTimes(1);
+    expect(cb2).toHaveBeenCalledTimes(1);
+  });
+
+  it('disposing one subscriber does not affect the other', () => {
+    const repoEvent = makeFakeEvent();
+    mockGetAPI.mockReturnValue({
+      repositories: [{
+        rootUri: { fsPath: '/repo' },
+        state: { HEAD: null, workingTreeChanges: [], indexChanges: [], untrackedChanges: [], onDidChange: repoEvent.event },
+      }],
+    });
+    const service = new GitService();
+    const cb1 = jest.fn();
+    const cb2 = jest.fn();
+    const sub1 = service.onRepositoryChange(cb1);
+    service.onRepositoryChange(cb2);
+
+    sub1.dispose();
+    repoEvent.fire();
+
+    expect(cb1).not.toHaveBeenCalled();
+    expect(cb2).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns a no-op Disposable when git extension is unavailable', () => {
+    const vscode = require('vscode');
+    vscode.extensions.getExtension.mockReturnValueOnce(undefined);
+    const service = new GitService();
+    const cb = jest.fn();
+    const sub = service.onRepositoryChange(cb);
+
+    expect(typeof sub.dispose).toBe('function');
+    expect(() => sub.dispose()).not.toThrow();
+  });
+
+  it('returns a no-op Disposable when there are zero repositories', () => {
+    mockGetAPI.mockReturnValue({ repositories: [] });
+    const service = new GitService();
+    const cb = jest.fn();
+    const sub = service.onRepositoryChange(cb);
+
+    expect(typeof sub.dispose).toBe('function');
+    expect(() => sub.dispose()).not.toThrow();
+    expect(cb).not.toHaveBeenCalled();
+  });
+
+  describe('late repository loading (git scans filesystem after activation)', () => {
+    it('fires the callback when a repository is opened after subscription', () => {
+      const openEvent = makeFakeEvent<any>();
+      const minimalRepo = {
+        rootUri: { fsPath: '/late-repo' },
+        state: { HEAD: null, workingTreeChanges: [], indexChanges: [], untrackedChanges: [] },
+      };
+      mockGetAPI.mockReturnValue({
+        repositories: [],
+        onDidOpenRepository: openEvent.event,
+      });
+      const service = new GitService();
+      const cb = jest.fn();
+      service.onRepositoryChange(cb);
+
+      openEvent.fire(minimalRepo);
+
+      expect(cb).toHaveBeenCalledTimes(1);
+    });
+
+    it('also subscribes to the newly-opened repository state.onDidChange', () => {
+      const newRepoEvent = makeFakeEvent();
+      const newRepo = {
+        rootUri: { fsPath: '/late-repo' },
+        state: {
+          HEAD: null,
+          workingTreeChanges: [],
+          indexChanges: [],
+          untrackedChanges: [],
+          onDidChange: newRepoEvent.event,
+        },
+      };
+
+      let onDidOpenListener: ((repo: any) => void) | null = null;
+      const onDidOpenRepository = (cb: (repo: any) => void) => {
+        onDidOpenListener = cb;
+        return { dispose: () => { onDidOpenListener = null; } };
+      };
+
+      mockGetAPI.mockReturnValue({
+        repositories: [],
+        onDidOpenRepository,
+      });
+      const service = new GitService();
+      const cb = jest.fn();
+      service.onRepositoryChange(cb);
+
+      // Git extension reports a newly-discovered repo
+      onDidOpenListener!(newRepo);
+      cb.mockClear(); // ignore the "repo opened" signal itself
+
+      // Now changes inside that repo should still fire our callback
+      newRepoEvent.fire();
+
+      expect(cb).toHaveBeenCalledTimes(1);
+    });
+
+    it('disposes onDidOpenRepository subscription on dispose', () => {
+      const openEvent = makeFakeEvent();
+      mockGetAPI.mockReturnValue({
+        repositories: [],
+        onDidOpenRepository: openEvent.event,
+      });
+      const service = new GitService();
+      const cb = jest.fn();
+      const sub = service.onRepositoryChange(cb);
+
+      expect(openEvent.listenerCount()).toBe(1);
+      sub.dispose();
+      expect(openEvent.listenerCount()).toBe(0);
+
+      openEvent.fire();
+      expect(cb).not.toHaveBeenCalled();
+    });
+
+    it('disposes late-added repository subscriptions on dispose too', () => {
+      const newRepoEvent = makeFakeEvent();
+      const newRepo = {
+        rootUri: { fsPath: '/late-repo' },
+        state: {
+          HEAD: null,
+          workingTreeChanges: [],
+          indexChanges: [],
+          untrackedChanges: [],
+          onDidChange: newRepoEvent.event,
+        },
+      };
+
+      let onDidOpenListener: ((repo: any) => void) | null = null;
+      const onDidOpenRepository = (cb: (repo: any) => void) => {
+        onDidOpenListener = cb;
+        return { dispose: () => { onDidOpenListener = null; } };
+      };
+
+      mockGetAPI.mockReturnValue({
+        repositories: [],
+        onDidOpenRepository,
+      });
+      const service = new GitService();
+      const cb = jest.fn();
+      const sub = service.onRepositoryChange(cb);
+
+      onDidOpenListener!(newRepo);
+      expect(newRepoEvent.listenerCount()).toBe(1);
+
+      sub.dispose();
+      expect(newRepoEvent.listenerCount()).toBe(0);
+    });
+
+    it('does not crash if onDidOpenRepository is undefined (very old git extension)', () => {
+      mockGetAPI.mockReturnValue({ repositories: [] }); // no onDidOpenRepository
+      const service = new GitService();
+      const cb = jest.fn();
+      const sub = service.onRepositoryChange(cb);
+
+      expect(typeof sub.dispose).toBe('function');
+      expect(() => sub.dispose()).not.toThrow();
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // getFilesChangedInCommit
 // ---------------------------------------------------------------------------
 
