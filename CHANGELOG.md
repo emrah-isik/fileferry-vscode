@@ -2,6 +2,28 @@
 
 All notable changes to FileFerry will be documented in this file.
 
+## [0.8.8] - 2026-05-13
+
+### Added
+
+- **Changed Files view** — new `FileFerry: Changed Files` tree view lists every git-changed file (working tree, index, untracked) with native VS Code file icons and SCM status decorations. Standard Shift/Ctrl multi-select works because the view is FileFerry-owned, so `Alt+U` uploads exactly the rows selected — fixing a limitation where Alt+U from the built-in Source Control panel only ever uploaded a single file regardless of selection (VS Code does not pass SCM tree selection to keybinding-invoked commands). Auto-refreshes when repositories are opened or their state changes. `Ctrl+Alt+U` (upload all changed files) also fires from this view.
+
+### Fixed
+
+- **Fresh uploads no longer fail with `_xstat: No such file`** — `SftpService.stat` was checking the raw SFTP_STATUS numeric code (`error.code === 2`), but `ssh2-sftp-client` actually emits `error.code === 'ENOENT'` (string). The "file doesn't exist on remote" branch in `FileDateGuard` never fired, so every first-time upload threw before the transfer started.
+- **Upload errors are reported instead of swallowed** — three command handlers (`uploadSelected`, `uploadToServers`, `showRemoteDiff`) ran without an error wrapper, so SFTP failures propagated to VS Code's command runtime and vanished silently: no popup, no FileFerry output channel log. Failures now log to the output channel and surface as a notification.
+
+### Changed
+
+- Removed the older SCM-panel-focused `Alt+U` / `Alt+P` / `Alt+Shift+U` keybindings, which never received the SCM tree selection and therefore only ever acted on a single file. Use the new Changed Files view for keyboard multi-select; the Source Control right-click menu is unchanged.
+
+### Docs
+
+- README positioning updated for marketplace discovery against `vscode-sftp`.
+- `docs/CONFIG.md` filled out as the `fileferry.json` schema reference.
+
+---
+
 ## [0.8.7] - 2026-04-30
 
 ### Fixed
