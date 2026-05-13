@@ -6,7 +6,7 @@ Right-click changed files in the Source Control panel and pick **FileFerry: Uplo
 
 **Built on these principles:**
 
-- **Deploy what changed** — git-aware upload works from the Source Control panel; deploy exactly the files you edited, nothing more
+- **Deploy what changed** — git-aware upload from the FileFerry Changed Files view or the Source Control panel; deploy exactly the files you edited, nothing more
 - **Credentials never on disk** — passwords and keys live in the OS keychain (macOS Keychain, Windows Credential Manager, Linux libsecret); your `.vscode/fileferry.json` is safe to commit
 - **Confirm before every deploy** — no silent uploads; you always see what will be sent before it goes
 - **Full visibility** — dry run mode, upload history, and file date guard mean you always know what happened and why
