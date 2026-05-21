@@ -666,3 +666,154 @@ describe('GitService.getRecentCommits', () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// Nested workspace folder — workspace folder is a subdirectory of the git repo
+// (e.g. .git lives at datahub/, but datahub/4GLOBALBOT was opened in VS Code).
+// ---------------------------------------------------------------------------
+
+describe('GitService — workspace folder nested inside the repo', () => {
+  const repoRoot = '/home/user/datahub';
+  const workspaceFolder = '/home/user/datahub/4GLOBALBOT';
+
+  it('getChangedFiles finds the repo when the workspace folder is below the repo root', () => {
+    mockGetAPI.mockReturnValue({
+      repositories: [{
+        rootUri: { fsPath: repoRoot },
+        state: {
+          HEAD: { name: 'main', commit: 'abc' },
+          workingTreeChanges: [],
+          indexChanges: [],
+          untrackedChanges: [
+            { uri: { fsPath: '/home/user/datahub/4GLOBALBOT/bja/HANDOVER.md' } },
+            { uri: { fsPath: '/home/user/datahub/4GLOBALBOT/bja/test_azure_db.php' } },
+          ],
+        },
+      }],
+    });
+    const service = new GitService();
+
+    const files = service.getChangedFiles(workspaceFolder);
+
+    expect(files.map(f => f.relativePath).sort()).toEqual([
+      'bja/HANDOVER.md',
+      'bja/test_azure_db.php',
+    ]);
+  });
+
+  it('getChangedFiles excludes changes that fall outside the opened workspace folder', () => {
+    mockGetAPI.mockReturnValue({
+      repositories: [{
+        rootUri: { fsPath: repoRoot },
+        state: {
+          HEAD: { name: 'main', commit: 'abc' },
+          workingTreeChanges: [
+            { uri: { fsPath: '/home/user/datahub/app/Console/Kernel.php' }, status: 5 },
+          ],
+          indexChanges: [],
+          untrackedChanges: [
+            { uri: { fsPath: '/home/user/datahub/4GLOBALBOT/bja/HANDOVER.md' } },
+          ],
+        },
+      }],
+    });
+    const service = new GitService();
+
+    const files = service.getChangedFiles(workspaceFolder);
+
+    expect(files.map(f => f.relativePath)).toEqual(['bja/HANDOVER.md']);
+  });
+
+  it('getChangedFiles reports relativePath relative to the workspace folder, not the repo root', () => {
+    mockGetAPI.mockReturnValue({
+      repositories: [{
+        rootUri: { fsPath: repoRoot },
+        state: {
+          HEAD: { name: 'main', commit: 'abc' },
+          workingTreeChanges: [],
+          indexChanges: [],
+          untrackedChanges: [
+            { uri: { fsPath: '/home/user/datahub/4GLOBALBOT/bja/HANDOVER.md' } },
+          ],
+        },
+      }],
+    });
+    const service = new GitService();
+
+    const files = service.getChangedFiles(workspaceFolder);
+
+    expect(files[0].relativePath).toBe('bja/HANDOVER.md');
+    expect(files[0].absolutePath).toBe('/home/user/datahub/4GLOBALBOT/bja/HANDOVER.md');
+    expect(files[0].workspaceRoot).toBe(workspaceFolder);
+  });
+
+  it('getChangedFiles picks the closest repo when nested repos both contain the folder', () => {
+    mockGetAPI.mockReturnValue({
+      repositories: [
+        {
+          rootUri: { fsPath: repoRoot },
+          state: {
+            HEAD: { name: 'main', commit: 'abc' },
+            workingTreeChanges: [],
+            indexChanges: [],
+            untrackedChanges: [
+              { uri: { fsPath: '/home/user/datahub/outer.txt' } },
+            ],
+          },
+        },
+        {
+          rootUri: { fsPath: workspaceFolder },
+          state: {
+            HEAD: { name: 'main', commit: 'def' },
+            workingTreeChanges: [],
+            indexChanges: [],
+            untrackedChanges: [
+              { uri: { fsPath: '/home/user/datahub/4GLOBALBOT/inner.txt' } },
+            ],
+          },
+        },
+      ],
+    });
+    const service = new GitService();
+
+    const files = service.getChangedFiles(workspaceFolder);
+
+    expect(files.map(f => f.relativePath)).toEqual(['inner.txt']);
+  });
+
+  it('getChangedFiles still returns [] when no repo contains the workspace folder', () => {
+    mockGetAPI.mockReturnValue({
+      repositories: [{
+        rootUri: { fsPath: '/home/user/unrelated' },
+        state: {
+          HEAD: { name: 'main', commit: 'abc' },
+          workingTreeChanges: [
+            { uri: { fsPath: '/home/user/unrelated/x.php' }, status: 5 },
+          ],
+          indexChanges: [],
+          untrackedChanges: [],
+        },
+      }],
+    });
+    const service = new GitService();
+
+    expect(service.getChangedFiles(workspaceFolder)).toEqual([]);
+  });
+
+  it('getBranchName finds the repo when the workspace folder is below the repo root', () => {
+    mockGetAPI.mockReturnValue({
+      repositories: [{
+        rootUri: { fsPath: repoRoot },
+        state: {
+          HEAD: { name: 'feature/nested', commit: 'abc' },
+          workingTreeChanges: [],
+          indexChanges: [],
+          untrackedChanges: [],
+        },
+      }],
+    });
+    const service = new GitService();
+
+    expect(service.getBranchName(workspaceFolder)).toBe('feature/nested');
+  });
+});

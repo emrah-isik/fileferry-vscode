@@ -19,6 +19,14 @@ const STATUS_MAP: Record<number, GitStatus> = {
   20: 'copied',    // INDEX_COPIED
 };
 
+// True when `child` is the same path as `parent` or nested below it.
+// Used so a workspace folder opened inside a larger repo still matches that
+// repo, and so changes outside the opened folder can be filtered out.
+function isWithin(parent: string, child: string): boolean {
+  const rel = path.relative(parent, child);
+  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+}
+
 // The shape of a repository from the VSCode git API (simplified)
 export interface GitRepository {
   rootUri: { fsPath: string };
@@ -55,11 +63,30 @@ export class GitService {
     return this.api?.repositories ?? [];
   }
 
-  // Returns all changed files (working tree + index + untracked) for a given workspace root.
+  // Finds the repository that contains `workspaceRoot`. The git extension's
+  // repo root is whatever `git rev-parse --show-toplevel` reports, which may be
+  // an ancestor of the folder the user opened in VS Code (e.g. a monorepo with
+  // the `.git` at the top and a project subfolder opened as the workspace).
+  // When repos are nested, the closest (deepest-rooted) one wins.
+  private findRepository(workspaceRoot: string): GitRepository | undefined {
+    let best: GitRepository | undefined;
+    let bestRootLength = -1;
+    for (const repo of this.api?.repositories ?? []) {
+      const root = repo.rootUri.fsPath;
+      if (isWithin(root, workspaceRoot) && root.length > bestRootLength) {
+        best = repo;
+        bestRootLength = root.length;
+      }
+    }
+    return best;
+  }
+
+  // Returns all changed files (working tree + index + untracked) that fall
+  // within the given workspace folder. When the workspace folder is nested
+  // inside a larger repo, changes elsewhere in the repo are excluded — they
+  // are outside the deployment scope of the opened folder.
   getChangedFiles(workspaceRoot: string): GitFile[] {
-    const repo = this.api?.repositories.find(
-      r => r.rootUri.fsPath === workspaceRoot
-    );
+    const repo = this.findRepository(workspaceRoot);
     if (!repo) {
       return [];
     }
@@ -70,6 +97,7 @@ export class GitService {
     const addFile = (fsPath: string, status: GitStatus) => {
       if (seen.has(fsPath)) { return; }
       seen.add(fsPath);
+      if (!isWithin(workspaceRoot, fsPath)) { return; }
       const relativePath = path.relative(workspaceRoot, fsPath).replace(/\\/g, '/');
       files.push({
         absolutePath: fsPath,
@@ -124,9 +152,7 @@ export class GitService {
   }
 
   getBranchName(workspaceRoot: string): string {
-    const repo = this.api?.repositories.find(
-      r => r.rootUri.fsPath === workspaceRoot
-    );
+    const repo = this.findRepository(workspaceRoot);
     return repo?.state.HEAD?.name ?? 'unknown';
   }
 
