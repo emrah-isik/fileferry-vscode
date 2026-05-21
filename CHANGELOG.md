@@ -2,6 +2,14 @@
 
 All notable changes to FileFerry will be documented in this file.
 
+## [0.8.9] - 2026-05-21
+
+### Fixed
+
+- **Changed Files view showed "No changes" when the opened folder was nested inside the git repository** — `GitService` matched a repository only when its root path exactly equalled the opened workspace folder. Opening a subfolder of a repo (e.g. `datahub/4GLOBALBOT` when `.git` lives at `datahub/`) matched nothing, so the Changed Files view and `Upload All Changed Files` reported no changes even though Source Control showed them. FileFerry now matches the repository whose root contains the workspace folder (closest one wins for nested repos) and lists only the changes inside the opened folder.
+
+---
+
 ## [0.8.8] - 2026-05-13
 
 ### Added
