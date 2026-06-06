@@ -50,6 +50,8 @@ export class ChangedFilesProvider implements vscode.TreeDataProvider<vscode.Tree
       item.description = '';
     }
     item.resourceUri = uri;
+    // Drives the right-click context menu (see view/item/context in package.json).
+    item.contextValue = 'changedFile';
     // Untracked files have no committed baseline, so git.openChange would fail —
     // open them directly instead, matching native SCM behavior.
     item.command = file.status === 'untracked'

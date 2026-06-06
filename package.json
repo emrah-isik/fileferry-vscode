@@ -257,6 +257,16 @@
       ],
       "view/item/context": [
         {
+          "command": "fileferry.changedFiles.uploadSelection",
+          "when": "view == fileferry.changedFilesView && viewItem == changedFile",
+          "group": "1_transfer"
+        },
+        {
+          "command": "fileferry.showRemoteDiff",
+          "when": "view == fileferry.changedFilesView && viewItem == changedFile",
+          "group": "1_transfer"
+        },
+        {
           "command": "fileferry.remoteBrowser.refresh",
           "when": "view == fileferry.remoteBrowser && viewItem == remoteDirectory",
           "group": "inline"

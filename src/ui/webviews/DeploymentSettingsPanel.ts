@@ -210,8 +210,11 @@ export class DeploymentSettingsPanel {
       credentialId: payload.credentialId!,
       credentialName,
       rootPath: (payload.rootPath as string).trim(),
-      mappings: existing?.mappings ?? [],
-      excludedPaths: existing?.excludedPaths ?? [],
+      // The Mappings tab is editable before the first save now, so honour
+      // payload-supplied mappings/excludedPaths (new servers and edits alike),
+      // falling back to the saved values when the payload omits them.
+      mappings: payload.mappings ?? existing?.mappings ?? [],
+      excludedPaths: payload.excludedPaths ?? existing?.excludedPaths ?? [],
       ...(payload.filePermissions !== undefined ? { filePermissions: payload.filePermissions } : {}),
       ...(payload.directoryPermissions !== undefined ? { directoryPermissions: payload.directoryPermissions } : {}),
       ...(existing?.timeOffsetMs !== undefined ? { timeOffsetMs: existing.timeOffsetMs } : {}),

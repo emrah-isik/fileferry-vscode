@@ -155,6 +155,33 @@ describe('DeploymentSettingsPanel message handling', () => {
     expect(savedConfig.servers.Production.excludedPaths).toEqual(serverFixture.excludedPaths);
   });
 
+  it('saveServer persists mappings and excludedPaths supplied in the payload for a new server', async () => {
+    (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({ defaultServerId: '', servers: {} });
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    const payload = {
+      name: 'Staging', type: 'sftp', credentialId: 'cred-1', rootPath: '/var/www/staging',
+      mappings: [{ localPath: '/src', remotePath: 'html' }],
+      excludedPaths: ['node_modules', '*.log'],
+    };
+    await messageHandler({ command: 'saveServer', payload });
+    const savedConfig = (mockConfigManager.saveConfig as jest.Mock).mock.calls[0][0];
+    expect(savedConfig.servers.Staging.mappings).toEqual([{ localPath: '/src', remotePath: 'html' }]);
+    expect(savedConfig.servers.Staging.excludedPaths).toEqual(['node_modules', '*.log']);
+  });
+
+  it('saveServer updates mappings and excludedPaths when the payload provides them on edit', async () => {
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    const payload = {
+      id: 'srv-1', name: 'Production', type: 'sftp', credentialId: 'cred-1', rootPath: '/var/www',
+      mappings: [{ localPath: '/app', remotePath: 'public' }],
+      excludedPaths: ['vendor'],
+    };
+    await messageHandler({ command: 'saveServer', payload });
+    const savedConfig = (mockConfigManager.saveConfig as jest.Mock).mock.calls[0][0];
+    expect(savedConfig.servers.Production.mappings).toEqual([{ localPath: '/app', remotePath: 'public' }]);
+    expect(savedConfig.servers.Production.excludedPaths).toEqual(['vendor']);
+  });
+
   it('saveServer renames config key when server name changes', async () => {
     DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
     const payload = { id: 'srv-1', name: 'Prod Renamed', type: 'sftp', credentialId: 'cred-1', rootPath: '/var/www' };

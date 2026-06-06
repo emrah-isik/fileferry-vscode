@@ -390,6 +390,13 @@ function renderConnectionTab(server) {
     };
     if (filePermStr) { payload.filePermissions = parseInt(filePermStr, 8); }
     if (dirPermStr) { payload.directoryPermissions = parseInt(dirPermStr, 8); }
+    // For a brand-new server there's no id to target a standalone saveMapping,
+    // so persist any mappings entered on the Mappings tab as part of this save.
+    if (!server.id) {
+      const { mappings, excludedPaths } = collectMappingInputs();
+      payload.mappings = mappings;
+      payload.excludedPaths = excludedPaths;
+    }
     vscode.postMessage({ command: 'saveServer', payload });
   });
 
@@ -433,7 +440,12 @@ function renderConnectionTab(server) {
 
 function renderMappingsTab(server) {
   const el = document.getElementById('mappings-tab');
-  if (!el || !server?.id) return;
+  if (!el || !server) return;
+
+  // A brand-new server has no id yet. We still render the editor so mappings
+  // can be entered before the first save — they ride along in the saveServer
+  // payload (see the Connection tab's Save handler).
+  const isNew = !server.id;
 
   // Mappings and excludedPaths live directly on the server object now
   const mappings = server.mappings || [];
@@ -468,7 +480,9 @@ function renderMappingsTab(server) {
     <input id="f-excluded" type="text" value="${escapeHtml(excludedPaths.join(', '))}">
 
     <div class="form-actions">
-      <button id="btn-save-mappings">Save Mappings</button>
+      ${isNew
+        ? '<p class="hint">Mappings are saved together with the server when you click <strong>Save</strong> on the Connection tab.</p>'
+        : '<button id="btn-save-mappings">Save Mappings</button>'}
     </div>
   `;
 
@@ -489,21 +503,29 @@ function renderMappingsTab(server) {
   wireRemoveButtons();
 
   document.getElementById('btn-save-mappings')?.addEventListener('click', () => {
-    const tbody = document.getElementById('mappings-body');
-    const updatedMappings = Array.from(tbody.querySelectorAll('tr')).map(row => ({
-      localPath: row.querySelector('.m-local').value.trim() || '/',
-      remotePath: row.querySelector('.m-remote').value.trim(),
-    }));
-    const excludedRaw = document.getElementById('f-excluded').value;
-    const updatedExcluded = excludedRaw.split(',').map(s => s.trim()).filter(Boolean);
-
+    const { mappings, excludedPaths } = collectMappingInputs();
     vscode.postMessage({
       command: 'saveMapping',
       serverId: server.id,
-      mappings: updatedMappings,
-      excludedPaths: updatedExcluded,
+      mappings,
+      excludedPaths,
     });
   });
+}
+
+// Reads the current Mappings-tab inputs out of the DOM. Both tab contents are
+// always present (just hidden), so this works even if the tab was never opened.
+function collectMappingInputs() {
+  const tbody = document.getElementById('mappings-body');
+  const mappings = tbody
+    ? Array.from(tbody.querySelectorAll('tr')).map(row => ({
+        localPath: row.querySelector('.m-local').value.trim() || '/',
+        remotePath: row.querySelector('.m-remote').value.trim(),
+      }))
+    : [];
+  const excludedRaw = document.getElementById('f-excluded')?.value || '';
+  const excludedPaths = excludedRaw.split(',').map(s => s.trim()).filter(Boolean);
+  return { mappings, excludedPaths };
 }
 
 function wireRemoveButtons() {
