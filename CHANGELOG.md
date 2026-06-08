@@ -2,6 +2,19 @@
 
 All notable changes to FileFerry will be documented in this file.
 
+## [0.8.10] - 2026-06-08
+
+### Added
+
+- **Use your existing `~/.ssh/config`** — SSH credentials now have a **Resolve from `~/.ssh/config`** option. Tick it and enter a `Host` alias (e.g. `prod`) instead of the host, and FileFerry reads `HostName`, `Port`, `User`, and `IdentityFile` from your SSH config at connect time (supports `*`/`?` wildcard `Host` patterns, OpenSSH first-match-wins). Config values win; anything the matching block omits falls back to what you entered, so Username and Private Key Path can be left blank when the config provides them. On **Save** and **Test Connection** a summary shows exactly what resolved — e.g. `✓ Resolved "prod" → deploy@203.0.113.10:2222` — or warns when no `~/.ssh/config` exists or no `Host` block matched, so alias mode is never silent. SFTP only; `ProxyJump`/`ProxyCommand` are not resolved yet.
+- **Right-click menu on the Changed Files view** — changed files now have a context menu with **Upload** and **Compare with Remote**, matching the actions already available from the Source Control panel.
+
+### Fixed
+
+- **Path mappings can be entered before the first save** — the Deployment Settings **Mappings** tab was blank for a server that hadn't been saved yet, with no way to add mappings until after saving the connection. The mappings editor now renders for new servers and the mappings are saved together with the server on the first save.
+
+---
+
 ## [0.8.9] - 2026-05-21
 
 ### Fixed
