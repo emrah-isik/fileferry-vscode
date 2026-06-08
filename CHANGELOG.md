@@ -2,6 +2,18 @@
 
 All notable changes to FileFerry will be documented in this file.
 
+## [0.8.11] - 2026-06-08
+
+### Changed
+
+- **`~/.ssh/config` resolution summary** — the summary shown on Save and Test Connection now reports only what the connection will actually use: the resolved key appears only when authentication is **Private Key** (password, SSH agent, and keyboard-interactive don't use it, so it's no longer listed). The resolved **Target** and **Key** are laid out on their own lines for readability instead of one long wrapping line.
+
+### Docs
+
+- README now documents `~/.ssh/config` alias support, with a screenshot of the resolution feedback.
+
+---
+
 ## [0.8.10] - 2026-06-08
 
 ### Added
