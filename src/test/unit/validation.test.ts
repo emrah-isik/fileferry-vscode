@@ -88,6 +88,47 @@ describe('validateSshCredential', () => {
     expect(errors.some(e => e.field === 'username')).toBe(true);
   });
 
+  it('does not require a username when useSshConfig resolves it from ~/.ssh/config', () => {
+    const errors = validateSshCredential({ ...validCredential, username: '', useSshConfig: true }, []);
+    expect(errors.some(e => e.field === 'username')).toBe(false);
+  });
+
+  it('still rejects a malformed username even in useSshConfig mode', () => {
+    const errors = validateSshCredential({ ...validCredential, username: 'deploy user', useSshConfig: true }, []);
+    expect(errors.some(e => e.field === 'username')).toBe(true);
+  });
+
+  it('does not require a private key path in useSshConfig mode (IdentityFile comes from config)', () => {
+    const errors = validateSshCredential(
+      { ...validCredential, authMethod: 'key', privateKeyPath: '', useSshConfig: true },
+      []
+    );
+    expect(errors.some(e => e.field === 'privateKeyPath')).toBe(false);
+  });
+
+  it('still rejects a malformed private key path in useSshConfig mode', () => {
+    const errors = validateSshCredential(
+      { ...validCredential, authMethod: 'key', privateKeyPath: 'relative/path', useSshConfig: true },
+      []
+    );
+    expect(errors.some(e => e.field === 'privateKeyPath')).toBe(true);
+  });
+
+  it('accepts a non-hostname alias (e.g. underscores) when useSshConfig is on', () => {
+    const errors = validateSshCredential({ ...validCredential, host: 'my_server', useSshConfig: true }, []);
+    expect(errors.some(e => e.field === 'host')).toBe(false);
+  });
+
+  it('still rejects an empty host in useSshConfig mode', () => {
+    const errors = validateSshCredential({ ...validCredential, host: '', useSshConfig: true }, []);
+    expect(errors.some(e => e.field === 'host')).toBe(true);
+  });
+
+  it('still enforces hostname format when useSshConfig is off', () => {
+    const errors = validateSshCredential({ ...validCredential, host: 'my_server', useSshConfig: false }, []);
+    expect(errors.some(e => e.field === 'host')).toBe(true);
+  });
+
   it('rejects username longer than 64 characters', () => {
     const errors = validateSshCredential({ ...validCredential, username: 'a'.repeat(65) }, []);
     expect(errors.some(e => e.field === 'username')).toBe(true);

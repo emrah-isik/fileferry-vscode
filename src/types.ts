@@ -17,6 +17,7 @@ export interface ServerConfig {
   authMethod: AuthMethod;
   privateKeyPath?: string; // only for authMethod: 'key'
   agentSocketPath?: string; // only for authMethod: 'agent' — custom socket override
+  useSshConfig?: boolean; // when true, `host` is an ~/.ssh/config Host alias resolved at connect time (SFTP only)
   algorithms?: {
     kex?: string[];
     cipher?: string[];

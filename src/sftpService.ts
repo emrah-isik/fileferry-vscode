@@ -4,6 +4,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { ServerConfig, UploadPair, UploadResult } from './types';
 import { resolveAgentSocket } from './ssh/agentResolver';
+import { resolveHostAlias, applySshConfig } from './ssh/SshConfigResolver';
 import { TransferService } from './transferService';
 
 // Default algorithms that ensure compatibility with modern OpenSSH 8.8+ servers.
@@ -70,6 +71,12 @@ export class SftpService implements TransferService {
     }
   ): Promise<void> {
     this.client = new SftpClient();
+
+    // When the credential opts in, treat `host` as an ~/.ssh/config Host alias
+    // and resolve HostName/Port/User/IdentityFile from the user's SSH config.
+    if (server.useSshConfig) {
+      server = applySshConfig(server, resolveHostAlias(server.host));
+    }
 
     // Build the connection config based on auth method.
     // TypeScript uses `any` here because ssh2-sftp-client's ConnectConfig

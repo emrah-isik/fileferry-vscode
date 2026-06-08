@@ -9,6 +9,7 @@ export interface SshCredential {
   authMethod: AuthMethod;
   privateKeyPath?: string; // only when authMethod === 'key'
   agentSocketPath?: string; // only when authMethod === 'agent' — custom socket override
+  useSshConfig?: boolean; // when true, `host` is an ~/.ssh/config Host alias resolved at connect time (SFTP only)
 }
 
 // SshCredentialWithSecret is used only internally when establishing a connection.

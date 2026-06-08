@@ -125,6 +125,16 @@ describe('RemoteBrowserConnection', () => {
       );
     });
 
+    it('passes the credential useSshConfig flag through to the connect server config', async () => {
+      mockCredentialManager.getWithSecret.mockResolvedValue({ ...fakeCredential, host: 'prod', useSshConfig: true });
+      await connection.ensureConnected();
+      expect(mockSftp.connect).toHaveBeenCalledWith(
+        expect.objectContaining({ host: 'prod', useSshConfig: true }),
+        expect.anything(),
+        expect.anything()
+      );
+    });
+
     it('is a no-op when already connected to the same server', async () => {
       await connection.ensureConnected();
       mockSftp.connected = true;

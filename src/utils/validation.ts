@@ -35,7 +35,9 @@ export function validateSshCredential(
 
   if (!credential.host?.trim()) {
     errors.push({ field: 'host', message: 'Host is required' });
-  } else if (!HOSTNAME_RE.test(credential.host.trim())) {
+  } else if (!credential.useSshConfig && !HOSTNAME_RE.test(credential.host.trim())) {
+    // In alias mode the host is an ~/.ssh/config Host name, not a hostname, so the
+    // strict format check doesn't apply — aliases may contain underscores etc.
     errors.push({ field: 'host', message: 'Host must be a valid hostname or IP address' });
   }
 
@@ -47,7 +49,11 @@ export function validateSshCredential(
   }
 
   if (!credential.username?.trim()) {
-    errors.push({ field: 'username', message: 'Username is required' });
+    // In ~/.ssh/config alias mode the User can come from the config file, so a
+    // blank username is allowed — but a non-blank one is still validated below.
+    if (!credential.useSshConfig) {
+      errors.push({ field: 'username', message: 'Username is required' });
+    }
   } else if (/\s/.test(credential.username)) {
     errors.push({ field: 'username', message: 'Username must not contain spaces' });
   } else if (credential.username.trim().length > 64) {
@@ -61,7 +67,11 @@ export function validateSshCredential(
     }
   } else if (credential.authMethod === 'key') {
     if (!credential.privateKeyPath?.trim()) {
-      errors.push({ field: 'privateKeyPath', message: 'Private key path is required for key authentication' });
+      // In alias mode the IdentityFile can come from ~/.ssh/config, so a blank
+      // key path is allowed — a non-blank one is still format-checked below.
+      if (!credential.useSshConfig) {
+        errors.push({ field: 'privateKeyPath', message: 'Private key path is required for key authentication' });
+      }
     } else if (!/^(\/|~)/.test(credential.privateKeyPath.trim())) {
       errors.push({ field: 'privateKeyPath', message: 'Private key path must start with / or ~' });
     }

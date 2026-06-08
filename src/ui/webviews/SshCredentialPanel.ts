@@ -7,6 +7,7 @@ import { createTransferService } from '../../transferServiceFactory';
 import { generateId } from '../../utils/uuid';
 import { SshCredential, SshCredentialWithSecret } from '../../models/SshCredential';
 import { validateSshCredential } from '../../utils/validation';
+import { describeResolution } from '../../ssh/SshConfigResolver';
 
 interface Deps {
   credentialManager: CredentialManager;
@@ -122,6 +123,7 @@ export class SshCredentialPanel {
       username: credential.username!.trim(),
       authMethod: credential.authMethod!,
       privateKeyPath: credential.privateKeyPath?.trim() || undefined,
+      useSshConfig: credential.useSshConfig || undefined,
     };
 
     // Empty string → undefined → CredentialManager.save() skips the keychain write
@@ -145,8 +147,29 @@ export class SshCredentialPanel {
     }
 
     this.panel.webview.postMessage({ command: 'credentialSaved', credential: saved });
+    if (saved.useSshConfig) {
+      this.postSshConfigSummary(saved);
+    }
     vscode.window.showInformationMessage(`FileFerry: Credential "${saved.name}" saved.`);
     this.deps.onCredentialChange?.();
+  }
+
+  // Surfaces what ~/.ssh/config resolution did for an alias credential, so alias
+  // mode is never silent (no file / no match / resolved target / overrides).
+  private postSshConfigSummary(credential: {
+    host: string; port?: number; username?: string; privateKeyPath?: string;
+  }): void {
+    const summary = describeResolution({
+      host: credential.host,
+      port: credential.port,
+      username: credential.username,
+      privateKeyPath: credential.privateKeyPath,
+    });
+    this.panel.webview.postMessage({
+      command: 'sshConfigSummary',
+      status: summary.status,
+      lines: summary.lines,
+    });
   }
 
   private async handleDeleteCredential(id: string): Promise<void> {
@@ -196,6 +219,12 @@ export class SshCredentialPanel {
       passphrase: resolvedPassphrase,
     };
 
+    // Show what ~/.ssh/config resolved (before connecting, so it's visible even
+    // if the connection then fails).
+    if (credential.useSshConfig) {
+      this.postSshConfigSummary(credential);
+    }
+
     const service = createTransferService('sftp');
     try {
       await service.connect(tempCredential as any, { password: tempCredential.password, passphrase: tempCredential.passphrase });
@@ -227,6 +256,7 @@ export class SshCredentialPanel {
       authMethod: original.authMethod,
       privateKeyPath: original.privateKeyPath,
       agentSocketPath: original.agentSocketPath,
+      useSshConfig: original.useSshConfig,
     };
     await this.deps.credentialManager.save(clone, original.password, original.passphrase);
     await this.sendInitialState();

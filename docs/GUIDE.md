@@ -45,6 +45,24 @@ Click **Add Credential** and fill in the details:
 
 Passwords and passphrases are stored in your OS keychain (macOS Keychain / Windows Credential Manager / Linux libsecret). They are never written to disk or included in project files.
 
+#### Using your `~/.ssh/config` (SFTP only)
+
+If you already have a working entry in `~/.ssh/config`, you can point a credential at it instead of re-typing the host, port, user, and key:
+
+```text
+Host prod
+    HostName 203.0.113.10
+    Port 2222
+    User deploy
+    IdentityFile ~/.ssh/prod_ed25519
+```
+
+Tick **Resolve from `~/.ssh/config`** on the credential, then enter the alias (`prod`) in the **Host** field. At connect time FileFerry reads your SSH config and fills in `HostName`, `Port`, `User`, and `IdentityFile`. You can leave Username and Private Key Path blank when the config provides them.
+
+- **Config wins, your entries are the fallback.** A value in the matching `Host` block takes effect; anything the block omits falls back to what you typed. (If the block sets no `HostName`, the alias is used as the host.)
+- **You always see what happened.** On **Save** and **Test Connection**, a summary shows the resolved target — e.g. `✓ Resolved "prod" → deploy@203.0.113.10:2222 · key ~/.ssh/prod_ed25519` — or warns when no `~/.ssh/config` exists or no `Host` block matched (in which case your entered values are used as-is). If a catch-all `Host *` block overrides a value you typed, that's called out too.
+- **Supported directives:** `HostName`, `Port`, `User`, `IdentityFile`, with `*`/`?` wildcard `Host` patterns. `ProxyJump`/`ProxyCommand` are not resolved yet. SFTP only — FTP/FTPS ignore this setting.
+
 ### 2. Add a Deployment Server
 
 Open `FileFerry: Deployment Settings` from the command palette.

@@ -164,6 +164,38 @@ describe('SftpService', () => {
         .rejects.toThrow('Could not parse private key file. Supported formats: OpenSSH, PEM, PPK');
     });
 
+    it('resolves host/port/username from ~/.ssh/config when useSshConfig is set', async () => {
+      mockMethods.connect.mockResolvedValue(undefined);
+      (fs.readFileSync as jest.Mock).mockReturnValue(
+        'Host prod\n  HostName 203.0.113.10\n  Port 2222\n  User deploy\n'
+      );
+      const aliasConfig: ServerConfig = {
+        ...serverConfig,
+        host: 'prod',
+        useSshConfig: true,
+      };
+      await service.connect(aliasConfig, { password: 'secret' });
+      expect(mockMethods.connect).toHaveBeenCalledWith(expect.objectContaining({
+        host: '203.0.113.10',
+        port: 2222,
+        username: 'deploy',
+        password: 'secret',
+      }));
+    });
+
+    it('leaves connect config untouched when useSshConfig is not set', async () => {
+      mockMethods.connect.mockResolvedValue(undefined);
+      (fs.readFileSync as jest.Mock).mockReturnValue(
+        'Host example.com\n  HostName 10.0.0.9\n  Port 2200\n'
+      );
+      await service.connect(serverConfig, { password: 'secret' });
+      expect(mockMethods.connect).toHaveBeenCalledWith(expect.objectContaining({
+        host: 'example.com',
+        port: 22,
+        username: 'deploy',
+      }));
+    });
+
     it('passes hostVerifier callback to ssh2 connect config', async () => {
       mockMethods.connect.mockResolvedValue(undefined);
       const hostVerifier = jest.fn().mockReturnValue(true);

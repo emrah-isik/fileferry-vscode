@@ -63,6 +63,10 @@ window.addEventListener('message', ({ data: msg }) => {
       if (input) input.value = msg.path;
       break;
     }
+
+    case 'sshConfigSummary':
+      renderSshConfigSummary(msg.status, msg.lines || []);
+      break;
   }
 });
 
@@ -86,6 +90,15 @@ function getSelected() {
     return { id: '', name: '', host: '', port: 22, username: '', authMethod: 'password', privateKeyPath: '' };
   }
   return state.credentials.find(c => c.id === state.selectedId) ?? null;
+}
+
+// Host/Username field copy depends on whether the credential resolves from
+// ~/.ssh/config. Shared by the initial render and the live checkbox toggle so
+// the two never drift apart.
+function sshAliasLabels(on) {
+  return on
+    ? { host: 'Host (SSH config alias)', hostPlaceholder: 'prod', userPlaceholder: 'from ~/.ssh/config' }
+    : { host: 'Host', hostPlaceholder: 'example.com', userPlaceholder: 'deploy' };
 }
 
 // ─── Render ───────────────────────────────────────────────────────────────────
@@ -156,6 +169,8 @@ function renderDetail() {
 
   const isNew = !cred.id;
   const authMethod = cred.authMethod || 'password';
+  const sshAlias = !!cred.useSshConfig;
+  const labels = sshAliasLabels(sshAlias);
 
   el.innerHTML = `
     <div class="detail-form">
@@ -167,8 +182,8 @@ function renderDetail() {
 
       <div class="form-row">
         <div class="form-group flex-grow">
-          <label for="f-host">Host</label>
-          <input id="f-host" type="text" value="${escapeHtml(cred.host)}" placeholder="example.com">
+          <label for="f-host" id="lbl-host">${labels.host}</label>
+          <input id="f-host" type="text" value="${escapeHtml(cred.host)}" placeholder="${labels.hostPlaceholder}">
           <span class="field-error" id="err-host"></span>
         </div>
         <div class="form-group port-group">
@@ -177,9 +192,18 @@ function renderDetail() {
         </div>
       </div>
 
+      <div class="form-group checkbox-group">
+        <label class="checkbox-label">
+          <input id="f-use-ssh-config" type="checkbox" ${sshAlias ? 'checked' : ''}>
+          Resolve from <code>~/.ssh/config</code>
+        </label>
+        <span class="field-hint">Treat Host as an <code>~/.ssh/config</code> alias — HostName, Port, User, and IdentityFile are read from your SSH config at connect time. SFTP only.</span>
+        <div id="ssh-config-summary" class="ssh-config-summary"></div>
+      </div>
+
       <div class="form-group">
         <label for="f-username">Username</label>
-        <input id="f-username" type="text" value="${escapeHtml(cred.username)}" placeholder="deploy">
+        <input id="f-username" type="text" value="${escapeHtml(cred.username)}" placeholder="${labels.userPlaceholder}">
         <span class="field-error" id="err-username"></span>
       </div>
 
@@ -219,6 +243,21 @@ function renderDetail() {
   // Re-render auth fields when auth method changes
   document.getElementById('f-auth-method')?.addEventListener('change', (e) => {
     renderAuthFields(e.target.value);
+  });
+
+  // Toggle SSH-config alias mode in place — update labels/placeholders without a
+  // full re-render so typed-but-unsaved field values are preserved.
+  document.getElementById('f-use-ssh-config')?.addEventListener('change', (e) => {
+    const next = sshAliasLabels(e.target.checked);
+    const hostLabel = document.getElementById('lbl-host');
+    if (hostLabel) hostLabel.textContent = next.host;
+    const hostInput = document.getElementById('f-host');
+    if (hostInput) hostInput.placeholder = next.hostPlaceholder;
+    const userInput = document.getElementById('f-username');
+    if (userInput) userInput.placeholder = next.userPlaceholder;
+    // The previous resolution summary no longer reflects the current mode.
+    const summary = document.getElementById('ssh-config-summary');
+    if (summary) summary.innerHTML = '';
   });
 
   document.getElementById('btn-save')?.addEventListener('click', () => {
@@ -313,6 +352,7 @@ function buildPayload(existingId) {
     privateKeyPath: authMethod === 'key'
       ? (document.getElementById('f-key-path')?.value || '')
       : undefined,
+    useSshConfig: document.getElementById('f-use-ssh-config')?.checked || false,
   };
   const password = authMethod === 'password'
     ? (document.getElementById('f-password')?.value || '')
@@ -322,6 +362,22 @@ function buildPayload(existingId) {
     : undefined;
 
   return { credential, password, passphrase };
+}
+
+function renderSshConfigSummary(status, lines) {
+  const el = document.getElementById('ssh-config-summary');
+  if (!el) return;
+  el.className = 'ssh-config-summary ' + (status === 'matched' ? 'resolved' : 'fallback');
+  el.innerHTML = '';
+  // textContent (not innerHTML) — values come from ~/.ssh/config and the host
+  // field, so they must never be interpreted as markup.
+  lines.forEach((line, i) => {
+    const row = document.createElement('div');
+    row.className = i === 0 ? 'summary-headline' : 'summary-note';
+    const prefix = i === 0 ? (status === 'matched' ? '✓ ' : '⚠ ') : '';
+    row.textContent = prefix + line;
+    el.appendChild(row);
+  });
 }
 
 function renderTestResult() {

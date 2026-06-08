@@ -5,10 +5,13 @@ import type { ProjectConfigManager } from '../../../storage/ProjectConfigManager
 
 jest.mock('../../../transferServiceFactory');
 jest.mock('fs/promises', () => ({ stat: jest.fn() }));
+jest.mock('../../../ssh/SshConfigResolver');
 
 import { createTransferService } from '../../../transferServiceFactory';
+import { describeResolution } from '../../../ssh/SshConfigResolver';
 import * as fs from 'fs/promises';
 const mockStat = fs.stat as jest.Mock;
+const mockDescribeResolution = describeResolution as jest.Mock;
 
 // ─── Webview mock ─────────────────────────────────────────────────────────────
 
@@ -81,6 +84,7 @@ describe('SshCredentialPanel message handling', () => {
     (mockCredentialManager.getWithSecret as jest.Mock).mockResolvedValue({ ...credentialFixture, password: 'stored-password' });
     (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({ defaultServerId: '', servers: {} });
     mockStat.mockResolvedValue({ mode: 0o100600 }); // 600 by default
+    mockDescribeResolution.mockReturnValue({ status: 'matched', lines: ['Resolved "prod" → deploy@10.0.0.1:22'] });
     (DeploymentSettingsPanel_reset as any)();
     (SshCredentialPanel as any).currentPanel = undefined;
   });
@@ -117,6 +121,74 @@ describe('SshCredentialPanel message handling', () => {
     );
     expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
       command: 'credentialSaved',
+    }));
+  });
+
+  it('saveCredential persists the useSshConfig flag', async () => {
+    SshCredentialPanel.createOrShow(mockContext, deps());
+    await messageHandler({
+      command: 'saveCredential',
+      payload: {
+        credential: { ...credentialFixture, host: 'prod', username: '', useSshConfig: true },
+        password: 'mypassword',
+      },
+    });
+    const savedCredential = (mockCredentialManager.save as jest.Mock).mock.calls[0][0];
+    expect(savedCredential.useSshConfig).toBe(true);
+    expect(savedCredential.host).toBe('prod');
+  });
+
+  it('saveCredential omits useSshConfig when the flag is off', async () => {
+    SshCredentialPanel.createOrShow(mockContext, deps());
+    await messageHandler({
+      command: 'saveCredential',
+      payload: { credential: { ...credentialFixture, useSshConfig: false }, password: 'mypassword' },
+    });
+    const savedCredential = (mockCredentialManager.save as jest.Mock).mock.calls[0][0];
+    expect(savedCredential.useSshConfig).toBeUndefined();
+  });
+
+  it('saveCredential posts an sshConfigSummary when useSshConfig is on', async () => {
+    mockDescribeResolution.mockReturnValue({ status: 'no-match', lines: ['No matching Host entry for "prod"'] });
+    SshCredentialPanel.createOrShow(mockContext, deps());
+    await messageHandler({
+      command: 'saveCredential',
+      payload: { credential: { ...credentialFixture, host: 'prod', useSshConfig: true }, password: 'mypassword' },
+    });
+    expect(mockDescribeResolution).toHaveBeenCalledWith(expect.objectContaining({ host: 'prod' }));
+    expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      command: 'sshConfigSummary',
+      status: 'no-match',
+      lines: ['No matching Host entry for "prod"'],
+    }));
+  });
+
+  it('saveCredential does not post an sshConfigSummary when useSshConfig is off', async () => {
+    SshCredentialPanel.createOrShow(mockContext, deps());
+    await messageHandler({
+      command: 'saveCredential',
+      payload: { credential: credentialFixture, password: 'mypassword' },
+    });
+    expect(mockDescribeResolution).not.toHaveBeenCalled();
+    expect(mockWebview.postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ command: 'sshConfigSummary' })
+    );
+  });
+
+  it('testConnection posts an sshConfigSummary before connecting when useSshConfig is on', async () => {
+    mockDescribeResolution.mockReturnValue({ status: 'matched', lines: ['Resolved "prod" → deploy@10.0.0.1:2222'] });
+    (createTransferService as jest.Mock).mockImplementation(() => ({
+      connect: jest.fn().mockResolvedValue(undefined),
+      disconnect: jest.fn().mockResolvedValue(undefined),
+    }));
+    SshCredentialPanel.createOrShow(mockContext, deps());
+    await messageHandler({
+      command: 'testConnection',
+      credential: { ...keyCredentialFixture, host: 'prod', useSshConfig: true },
+    });
+    expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      command: 'sshConfigSummary',
+      status: 'matched',
     }));
   });
 

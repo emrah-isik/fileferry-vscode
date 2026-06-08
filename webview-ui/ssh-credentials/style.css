@@ -299,3 +299,45 @@ code {
   margin: 0 0 12px;
   line-height: 1.5;
 }
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.checkbox-label input[type="checkbox"] {
+  accent-color: var(--vscode-focusBorder);
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+
+.ssh-config-summary:empty {
+  display: none;
+}
+
+.ssh-config-summary {
+  margin-top: 8px;
+  padding: 6px 10px;
+  border-radius: 3px;
+  font-size: 0.85em;
+  line-height: 1.5;
+  word-break: break-all;
+}
+
+.ssh-config-summary.resolved {
+  background: var(--vscode-inputValidation-infoBackground, rgba(0, 122, 204, 0.1));
+  border-left: 3px solid var(--vscode-inputValidation-infoBorder, #007acc);
+}
+
+.ssh-config-summary.fallback {
+  background: var(--vscode-inputValidation-warningBackground, rgba(255, 204, 0, 0.1));
+  border-left: 3px solid var(--vscode-inputValidation-warningBorder, #fc0);
+}
+
+.ssh-config-summary .summary-note {
+  margin-top: 2px;
+  color: var(--vscode-descriptionForeground);
+}
