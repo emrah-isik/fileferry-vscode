@@ -154,7 +154,7 @@ export interface ResolutionSummary {
  * entered values that the config overrode. Pure (injectable reader) and testable.
  */
 export function describeResolution(
-  entered: { host: string; port?: number; username?: string; privateKeyPath?: string },
+  entered: { host: string; port?: number; username?: string; privateKeyPath?: string; authMethod?: string },
   deps: ResolverDeps = {}
 ): ResolutionSummary {
   const detail = readAndResolve(entered.host, deps);
@@ -173,21 +173,30 @@ export function describeResolution(
   const host = values.hostName ?? entered.host;
   const port = values.port ?? entered.port ?? 22;
   const user = values.user ?? (entered.username || '(no user)');
-  const key = values.identityFile ?? (entered.privateKeyPath || undefined);
+  // The resolved IdentityFile is only used when the auth method is a key —
+  // password/agent/keyboard-interactive ignore it, so don't claim it here.
+  const usesKey = entered.authMethod === 'key';
+  const key = usesKey ? (values.identityFile ?? (entered.privateKeyPath || undefined)) : undefined;
 
-  const headline = `Resolved "${entered.host}" from ~/.ssh/config → ${user}@${host}:${port}` +
-    (key ? ` · key ${key}` : '');
+  // Headline names the alias; the resolved target (and key, for key auth) follow
+  // as their own lines so the layout reads cleanly at any panel width.
+  const lines = [
+    `Resolved "${entered.host}" from ~/.ssh/config`,
+    `Target: ${user}@${host}:${port}`,
+  ];
+  if (key) {
+    lines.push(`Key: ${key}`);
+  }
 
   // Override notes: only when the user explicitly entered a value AND the config
   // supplies a different one (host is the alias itself, so it never "overrides").
-  const lines = [headline];
   if (values.user && entered.username && entered.username !== values.user) {
     lines.push(`Note: ~/.ssh/config overrides Username (${entered.username} → ${values.user}).`);
   }
   if (values.port && entered.port && entered.port !== values.port) {
     lines.push(`Note: ~/.ssh/config overrides Port (${entered.port} → ${values.port}).`);
   }
-  if (values.identityFile && entered.privateKeyPath && entered.privateKeyPath !== values.identityFile) {
+  if (usesKey && values.identityFile && entered.privateKeyPath && entered.privateKeyPath !== values.identityFile) {
     lines.push(`Note: ~/.ssh/config overrides Private Key (${entered.privateKeyPath} → ${values.identityFile}).`);
   }
   return { status: 'matched', lines };

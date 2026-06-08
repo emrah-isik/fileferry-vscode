@@ -324,7 +324,9 @@ code {
   border-radius: 3px;
   font-size: 0.85em;
   line-height: 1.5;
-  word-break: break-all;
+  /* Wrap at spaces first (e.g. before the key path) and only break a long
+     unbreakable token if it still overflows — avoids ugly mid-word breaks. */
+  overflow-wrap: anywhere;
 }
 
 .ssh-config-summary.resolved {
@@ -339,5 +341,6 @@ code {
 
 .ssh-config-summary .summary-note {
   margin-top: 2px;
+  padding-left: 16px;
   color: var(--vscode-descriptionForeground);
 }

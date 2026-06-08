@@ -157,13 +157,14 @@ export class SshCredentialPanel {
   // Surfaces what ~/.ssh/config resolution did for an alias credential, so alias
   // mode is never silent (no file / no match / resolved target / overrides).
   private postSshConfigSummary(credential: {
-    host: string; port?: number; username?: string; privateKeyPath?: string;
+    host: string; port?: number; username?: string; privateKeyPath?: string; authMethod?: string;
   }): void {
     const summary = describeResolution({
       host: credential.host,
       port: credential.port,
       username: credential.username,
       privateKeyPath: credential.privateKeyPath,
+      authMethod: credential.authMethod,
     });
     this.panel.webview.postMessage({
       command: 'sshConfigSummary',

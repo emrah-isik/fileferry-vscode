@@ -136,18 +136,27 @@ describe('describeResolution', () => {
     expect(r.lines[0]).toMatch(/No matching Host entry for "prod"/);
   });
 
-  it('summarises a full match with the resolved target', () => {
+  it('summarises a full match as headline + target + key lines (key auth)', () => {
     const cfg = 'Host prod\n  HostName 203.0.113.10\n  Port 2222\n  User deploy\n  IdentityFile ~/.ssh/prod_ed25519\n';
-    const r = describe_(cfg, { host: 'prod', port: 22, username: '', privateKeyPath: '' });
+    const r = describe_(cfg, { host: 'prod', port: 22, username: '', privateKeyPath: '', authMethod: 'key' });
     expect(r.status).toBe('matched');
-    expect(r.lines[0]).toContain('deploy@203.0.113.10:2222');
-    expect(r.lines[0]).toContain('/home/dev/.ssh/prod_ed25519');
+    expect(r.lines[0]).toBe('Resolved "prod" from ~/.ssh/config'); // headline carries no target/key
+    expect(r.lines).toContain('Target: deploy@203.0.113.10:2222');
+    expect(r.lines).toContain('Key: /home/dev/.ssh/prod_ed25519');
+  });
+
+  it('omits the key line when the auth method is not a key (e.g. password)', () => {
+    const cfg = 'Host prod\n  HostName 203.0.113.10\n  Port 2222\n  User deploy\n  IdentityFile ~/.ssh/prod_ed25519\n';
+    const r = describe_(cfg, { host: 'prod', port: 22, username: '', authMethod: 'password' });
+    expect(r.status).toBe('matched');
+    expect(r.lines).toContain('Target: deploy@203.0.113.10:2222');
+    expect(r.lines.join('\n')).not.toMatch(/key/i); // password auth never uses the resolved IdentityFile
   });
 
   it('matches an empty Host block (no supported directives) as matched, using entered values', () => {
     const r = describe_('Host prod\n  ForwardAgent yes\n', { host: 'prod', port: 22, username: 'forge' });
     expect(r.status).toBe('matched');
-    expect(r.lines[0]).toContain('forge@prod:22');
+    expect(r.lines).toContain('Target: forge@prod:22');
   });
 
   it('adds an override note when the config replaces an explicitly entered value', () => {

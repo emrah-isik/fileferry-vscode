@@ -10,7 +10,7 @@ Right-click changed files in the Source Control panel and pick **FileFerry: Uplo
 - **Credentials never on disk** — passwords and keys live in the OS keychain (macOS Keychain, Windows Credential Manager, Linux libsecret); your `.vscode/fileferry.json` is safe to commit
 - **Confirm before every deploy** — no silent uploads; you always see what will be sent before it goes
 - **Full visibility** — dry run mode, upload history, and file date guard mean you always know what happened and why
-- **Modern SSH** — works with OpenSSH 8.8+, 1Password agent, PEM keys, and keyboard-interactive 2FA out of the box
+- **Modern SSH** — works with your existing `~/.ssh/config` aliases, OpenSSH 8.8+, 1Password agent, PEM keys, and keyboard-interactive 2FA out of the box
 
 ---
 
@@ -96,6 +96,10 @@ Manage servers and credentials through a form — no JSON editing required.
 Passwords and passphrases are stored in the OS native keychain (macOS Keychain, Windows Credential Manager, Linux libsecret) — never written to disk or committed to git.
 
 Supported auth methods: password, private key, SSH agent (including 1Password), and keyboard-interactive (2FA).
+
+**`~/.ssh/config` aware** — tick "Resolve from `~/.ssh/config`" on a credential and reference a `Host` alias instead of a hostname; FileFerry reads HostName, Port, User, and IdentityFile from your SSH config at connect time (SFTP).
+
+![SSH config resolution](https://raw.githubusercontent.com/emrah-isik/fileferry-vscode/main/resources/readme/fileferry_ssh_config_resolve.png)
 
 First-time SSH connections show the server's host-key fingerprint and prompt for trust (TOFU); if a previously-trusted key changes, FileFerry warns before connecting.
 
