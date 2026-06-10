@@ -581,6 +581,54 @@ describe('GitService.getFilesChangedInCommit', () => {
 });
 
 // ---------------------------------------------------------------------------
+// getFilesChangedInCommit — workspace folder nested inside a larger repo.
+// `git diff-tree` emits paths relative to the repository root, never to cwd,
+// so resolving them against the opened subfolder produces non-existent paths
+// (which the upload pipeline then routes to "delete" instead of "upload").
+// ---------------------------------------------------------------------------
+
+describe('GitService.getFilesChangedInCommit — workspace nested in repo', () => {
+  let service: GitService;
+  const repoRoot = '/home/user/monorepo';
+  const workspaceRoot = '/home/user/monorepo/web';
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockGetAPI.mockReturnValue({
+      repositories: [{
+        rootUri: { fsPath: repoRoot },
+        state: { HEAD: null, workingTreeChanges: [], indexChanges: [], untrackedChanges: [] },
+      }],
+    });
+    service = new GitService();
+  });
+
+  it('resolves diff-tree paths against the repository root, not the workspace folder', async () => {
+    setExecResponder((args) => {
+      if (args[0] === 'rev-parse') { return { error: null, stdout: 'parent\n' }; }
+      return { error: null, stdout: 'M\tweb/src/app.ts\n' };
+    });
+
+    const files = await service.getFilesChangedInCommit(workspaceRoot, 'abc');
+    expect(files).toHaveLength(1);
+    // Must point at the real on-disk file, not a doubled "web/web" path.
+    expect(files[0].absolutePath).toBe('/home/user/monorepo/web/src/app.ts');
+    expect(files[0].relativePath).toBe('src/app.ts');
+    expect(files[0].workspaceRoot).toBe(workspaceRoot);
+  });
+
+  it('excludes commit files that fall outside the opened workspace folder', async () => {
+    setExecResponder((args) => {
+      if (args[0] === 'rev-parse') { return { error: null, stdout: 'parent\n' }; }
+      return { error: null, stdout: 'M\tweb/src/app.ts\nM\tapi/server.ts\n' };
+    });
+
+    const files = await service.getFilesChangedInCommit(workspaceRoot, 'abc');
+    expect(files.map(f => f.relativePath)).toEqual(['src/app.ts']);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // getRecentCommits
 // ---------------------------------------------------------------------------
 

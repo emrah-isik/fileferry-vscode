@@ -202,7 +202,15 @@ export class GitService {
     if (result.error) {
       return [];
     }
-    return this.parseNameStatus(result.stdout, workspaceRoot);
+
+    // `git diff-tree` emits paths relative to the repository root, not to the
+    // cwd we ran it from. When the opened folder is a subdirectory of the repo,
+    // resolving those paths against the workspace folder doubles the prefix and
+    // yields non-existent files (which the upload pipeline then routes to
+    // "delete"). Resolve against the repo root and scope to the opened folder,
+    // matching getChangedFiles.
+    const repoRoot = this.findRepository(workspaceRoot)?.rootUri.fsPath ?? workspaceRoot;
+    return this.parseNameStatus(result.stdout, repoRoot, workspaceRoot);
   }
 
   private commitHasParent(workspaceRoot: string, sha: string): Promise<boolean> {
@@ -221,7 +229,7 @@ export class GitService {
     });
   }
 
-  private parseNameStatus(output: string, workspaceRoot: string): GitFile[] {
+  private parseNameStatus(output: string, repoRoot: string, workspaceRoot: string): GitFile[] {
     const files: GitFile[] = [];
     const seen = new Set<string>();
 
@@ -245,13 +253,17 @@ export class GitService {
         default: status = 'modified';
       }
 
-      const absolutePath = path.resolve(workspaceRoot, targetPath);
+      const absolutePath = path.resolve(repoRoot, targetPath);
       if (seen.has(absolutePath)) { continue; }
       seen.add(absolutePath);
 
+      // Files committed elsewhere in the repo are outside the opened folder's
+      // deployment scope — they can't be path-mapped, so drop them.
+      if (!isWithin(workspaceRoot, absolutePath)) { continue; }
+
       files.push({
         absolutePath,
-        relativePath: targetPath.replace(/\\/g, '/'),
+        relativePath: path.relative(workspaceRoot, absolutePath).replace(/\\/g, '/'),
         workspaceRoot,
         status,
         checked: false,

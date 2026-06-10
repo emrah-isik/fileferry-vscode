@@ -5,9 +5,9 @@ out/
 *.vsix
 .vscode-test/
 coverage/
-docs/plans/
+docs/plans
 .vscode/*
 !.vscode/launch.json
 !.vscode/extensions.json
-context/
+context
 CLAUDE.md

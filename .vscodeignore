@@ -21,9 +21,12 @@ webpack.config.js
 jest.config.*
 .gitignore
 .claude/**
+context
 context/**
 CLAUDE.md
 dev/**
+dev/blog
+docs/plans
 docs/plans/**
 docs/architecture.md
 **/*:Zone.Identifier
