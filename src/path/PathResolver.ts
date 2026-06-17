@@ -16,7 +16,7 @@ interface ServerConfig {
 
 export class PathResolver {
   resolve(localPath: string, workspaceRoot: string, serverConfig: ServerConfig): ResolvedUploadItem {
-    const relativeLocal = path.relative(workspaceRoot, localPath);
+    const relativeLocal = path.relative(workspaceRoot, localPath).replace(/\\/g, '/');
 
     // Check excluded paths using glob matching (gitignore-style patterns)
     if (serverConfig.ignoreExclusions) {
