@@ -255,8 +255,12 @@ export class SftpService implements TransferService {
       throw new Error('Not connected. Call connect() before stat.');
     }
     try {
-      const stats = await (this.client as any).stat(remotePath);
-      return { mtime: new Date(stats.mtime * 1000) };
+      // Typed (no `as any`) so the compiler enforces the field name: FileStats exposes
+      // `modifyTime` (already in milliseconds — the library multiplies raw ssh2 seconds
+      // by 1000), and has no `mtime`. Reading `stats.mtime` used to compile via the cast
+      // and silently yield NaN, disabling every mtime comparison.
+      const stats = await this.client.stat(remotePath);
+      return { mtime: new Date(stats.modifyTime) };
     } catch (err: unknown) {
       // ssh2-sftp-client normalizes SFTP "no such file" to code === 'ENOENT'
       // (see node_modules/ssh2-sftp-client/src/constants.js). Returning null

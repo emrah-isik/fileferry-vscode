@@ -3,7 +3,7 @@ import * as path from 'path';
 import { ScmResourceResolver } from '../scm/ScmResourceResolver';
 import { PathResolver, ResolvedUploadItem } from '../path/PathResolver';
 import { UploadOrchestratorV2 } from '../services/UploadOrchestratorV2';
-import { FileDateGuard } from '../services/FileDateGuard';
+import { FileDateGuard, SkippedItem } from '../services/FileDateGuard';
 import { BackupService } from '../services/BackupService';
 import { UploadConfirmation } from '../uploadConfirmation';
 import { CredentialManager } from '../storage/CredentialManager';
@@ -22,7 +22,8 @@ interface Dependencies {
 export async function uploadSelected(
   primaryResource: vscode.SourceControlResourceState | undefined,
   allResources: vscode.SourceControlResourceState[] | undefined,
-  dependencies: Dependencies
+  dependencies: Dependencies,
+  options?: { onlyNewer?: boolean }
 ): Promise<void> {
   // Fall back to active editor when invoked via keybinding with no SCM selection
   if (!primaryResource && !allResources) {
@@ -103,6 +104,37 @@ export async function uploadSelected(
     }
   }
 
+  // Upload-only-newer (feature 21b): filter out files the remote already holds at the
+  // same age or newer, before any preview/confirm/upload happens. Runs even under dry run
+  // so the preview reflects what would actually move.
+  let skippedNewer: SkippedItem[] = [];
+  if (options?.onlyNewer) {
+    const onlyNewerCredential = await dependencies.credentialManager.getWithSecret(server.credentialId);
+    const partition = await new FileDateGuard().partitionByNewerLocal(
+      uploadItems,
+      onlyNewerCredential,
+      server.timeOffsetMs
+    );
+    uploadItems = partition.toUpload;
+    skippedNewer = partition.skipped;
+
+    if (skippedNewer.length > 0) {
+      dependencies.output.appendLine(
+        `FileFerry (only-newer): skipped ${skippedNewer.length} file(s) — remote same age or newer:`
+      );
+      for (const skip of skippedNewer) {
+        dependencies.output.appendLine(`  - ${skip.item.remotePath} (${skip.reason})`);
+      }
+    }
+
+    if (uploadItems.length === 0 && deleteRemotePaths.length === 0) {
+      vscode.window.showInformationMessage(
+        `FileFerry: Everything is up to date — ${skippedNewer.length} file(s) skipped (remote same age or newer).`
+      );
+      return;
+    }
+  }
+
   // Dry run intercept — report plan and skip all transfers
   if (config.dryRun) {
     const reporter = new DryRunReporter(dependencies.output);
@@ -138,8 +170,9 @@ export async function uploadSelected(
       cancellable: true,
     },
     async (progress, token) => {
-      // File date guard: warn if remote files are newer than local
-      if (fileDateGuardEnabled) {
+      // File date guard: warn if remote files are newer than local. Skipped in
+      // only-newer mode — the partition above already removed every such file.
+      if (fileDateGuardEnabled && !options?.onlyNewer) {
         progress.report({ message: 'Checking remote files...' });
         const newerOnRemote = await new FileDateGuard().check(uploadItems, credential, server.timeOffsetMs);
         if (newerOnRemote.length > 0) {
@@ -193,8 +226,11 @@ export async function uploadSelected(
         if (result.deleted.length > 0) {
           parts.push(`${result.deleted.length} file(s) deleted`);
         }
+        const skippedSuffix = options?.onlyNewer && skippedNewer.length > 0
+          ? ` ${skippedNewer.length} skipped (already up to date).`
+          : '';
         vscode.window.showInformationMessage(
-          `FileFerry: ${parts.join(', ')} successfully.`,
+          `FileFerry: ${parts.join(', ')} successfully.${skippedSuffix}`,
           'Show History'
         ).then(choice => { if (choice === 'Show History') { vscode.commands.executeCommand('fileferry.showUploadHistory'); } });
       } else {

@@ -107,6 +107,134 @@ describe('FileDateGuard', () => {
     expect(result).toEqual([]);
   });
 
+  describe('partitionByNewerLocal', () => {
+    it('uploads files that do not exist on remote (new files)', async () => {
+      const items = [item('new.php')];
+      mockSftp.stat.mockResolvedValueOnce(null);
+
+      const result = await guard.partitionByNewerLocal(items, credential);
+
+      expect(result.toUpload).toEqual([item('new.php')]);
+      expect(result.skipped).toEqual([]);
+      expect(fs.statSync).not.toHaveBeenCalled();
+    });
+
+    it('uploads files where local is strictly newer than remote', async () => {
+      const items = [item('a.php')];
+      mockSftp.stat.mockResolvedValueOnce({ mtime: new Date('2026-04-01T12:00:00Z') });
+      (fs.statSync as jest.Mock).mockReturnValueOnce({ mtimeMs: new Date('2026-04-05T12:00:00Z').getTime() });
+
+      const result = await guard.partitionByNewerLocal(items, credential);
+
+      expect(result.toUpload).toEqual([item('a.php')]);
+      expect(result.skipped).toEqual([]);
+    });
+
+    it('skips files of equal age with reason same-age', async () => {
+      const items = [item('a.php')];
+      const sameTime = new Date('2026-04-03T12:00:00Z');
+      mockSftp.stat.mockResolvedValueOnce({ mtime: sameTime });
+      (fs.statSync as jest.Mock).mockReturnValueOnce({ mtimeMs: sameTime.getTime() });
+
+      const result = await guard.partitionByNewerLocal(items, credential);
+
+      expect(result.toUpload).toEqual([]);
+      expect(result.skipped).toEqual([
+        { item: item('a.php'), remoteMtimeMs: sameTime.getTime(), reason: 'same-age' },
+      ]);
+    });
+
+    it('skips files where remote is newer with reason remote-newer', async () => {
+      const items = [item('a.php')];
+      const remoteTime = new Date('2026-04-05T12:00:00Z');
+      mockSftp.stat.mockResolvedValueOnce({ mtime: remoteTime });
+      (fs.statSync as jest.Mock).mockReturnValueOnce({ mtimeMs: new Date('2026-04-01T12:00:00Z').getTime() });
+
+      const result = await guard.partitionByNewerLocal(items, credential);
+
+      expect(result.toUpload).toEqual([]);
+      expect(result.skipped).toEqual([
+        { item: item('a.php'), remoteMtimeMs: remoteTime.getTime(), reason: 'remote-newer' },
+      ]);
+    });
+
+    it('partitions a mixed set in one pass', async () => {
+      const items = [item('new.php'), item('local-newer.php'), item('same.php'), item('remote-newer.php')];
+      const sameTime = new Date('2026-04-03T12:00:00Z');
+      mockSftp.stat
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ mtime: new Date('2026-04-01T12:00:00Z') })
+        .mockResolvedValueOnce({ mtime: sameTime })
+        .mockResolvedValueOnce({ mtime: new Date('2026-04-09T12:00:00Z') });
+      (fs.statSync as jest.Mock)
+        .mockReturnValueOnce({ mtimeMs: new Date('2026-04-05T12:00:00Z').getTime() }) // local-newer
+        .mockReturnValueOnce({ mtimeMs: sameTime.getTime() }) // same
+        .mockReturnValueOnce({ mtimeMs: new Date('2026-04-05T12:00:00Z').getTime() }); // remote-newer
+
+      const result = await guard.partitionByNewerLocal(items, credential);
+
+      expect(result.toUpload).toEqual([item('new.php'), item('local-newer.php')]);
+      expect(result.skipped).toEqual([
+        { item: item('same.php'), remoteMtimeMs: sameTime.getTime(), reason: 'same-age' },
+        { item: item('remote-newer.php'), remoteMtimeMs: new Date('2026-04-09T12:00:00Z').getTime(), reason: 'remote-newer' },
+      ]);
+    });
+
+    it('applies timeOffsetMs to the remote mtime before comparing', async () => {
+      // Remote clock 5 min ahead: remote shows 12:05, local 12:01.
+      // Adjusted remote = 12:00 < 12:01 → local is newer → upload.
+      const items = [item('a.php')];
+      mockSftp.stat.mockResolvedValueOnce({ mtime: new Date('2026-04-03T12:05:00Z') });
+      (fs.statSync as jest.Mock).mockReturnValueOnce({ mtimeMs: new Date('2026-04-03T12:01:00Z').getTime() });
+
+      const result = await guard.partitionByNewerLocal(items, credential, 300_000);
+
+      expect(result.toUpload).toEqual([item('a.php')]);
+      expect(result.skipped).toEqual([]);
+    });
+
+    it('reports the offset-adjusted remote mtime in skipped entries', async () => {
+      const items = [item('a.php')];
+      mockSftp.stat.mockResolvedValueOnce({ mtime: new Date('2026-04-03T12:05:00Z') });
+      (fs.statSync as jest.Mock).mockReturnValueOnce({ mtimeMs: new Date('2026-04-03T12:00:00Z').getTime() });
+
+      // Adjusted remote = 12:05 - 5min = 12:00 == local → same-age, reported as 12:00.
+      const result = await guard.partitionByNewerLocal(items, credential, 300_000);
+
+      expect(result.toUpload).toEqual([]);
+      expect(result.skipped).toEqual([
+        { item: item('a.php'), remoteMtimeMs: new Date('2026-04-03T12:00:00Z').getTime(), reason: 'same-age' },
+      ]);
+    });
+
+    it('returns empty partition for empty items without connecting', async () => {
+      const result = await guard.partitionByNewerLocal([], credential);
+
+      expect(result).toEqual({ toUpload: [], skipped: [] });
+      expect(mockSftp.connect).not.toHaveBeenCalled();
+      expect(mockSftp.stat).not.toHaveBeenCalled();
+    });
+
+    it('connects and disconnects around the partition', async () => {
+      mockSftp.stat.mockResolvedValueOnce(null);
+
+      await guard.partitionByNewerLocal([item('a.php')], credential);
+
+      expect(mockSftp.connect).toHaveBeenCalledWith(
+        credential,
+        { password: credential.password, passphrase: credential.passphrase }
+      );
+      expect(mockSftp.disconnect).toHaveBeenCalled();
+    });
+
+    it('disconnects even when stat throws', async () => {
+      mockSftp.stat.mockRejectedValueOnce(new Error('Network error'));
+
+      await expect(guard.partitionByNewerLocal([item('a.php')], credential)).rejects.toThrow('Network error');
+      expect(mockSftp.disconnect).toHaveBeenCalled();
+    });
+  });
+
   describe('timeOffsetMs', () => {
     it('positive offset suppresses false positive from fast remote clock', async () => {
       const items = [item('a.php')];

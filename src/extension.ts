@@ -8,6 +8,7 @@ import { makeUploadSelectedHandler } from './commands/uploadSelectedHandler';
 import { makeUploadToServersHandler } from './commands/uploadToServersHandler';
 import { makeShowRemoteDiffHandler } from './commands/showRemoteDiffHandler';
 import { uploadAllChanged } from './commands/uploadAllChanged';
+import { uploadOnlyNewer } from './commands/uploadOnlyNewer';
 import { uploadFromCommits } from './commands/uploadFromCommits';
 import { StatusBarItem } from './ui/StatusBarItem';
 import { DeploymentSettingsPanel } from './ui/webviews/DeploymentSettingsPanel';
@@ -101,6 +102,13 @@ export function activate(context: vscode.ExtensionContext): void {
       'fileferry.uploadAllChanged',
       withErrorHandling('uploadAllChanged', async () =>
         uploadAllChanged({ credentialManager, configManager, context, output })
+      )
+    ),
+
+    vscode.commands.registerCommand(
+      'fileferry.uploadOnlyNewer',
+      withErrorHandling('uploadOnlyNewer', async () =>
+        uploadOnlyNewer({ credentialManager, configManager, context, output })
       )
     ),
 

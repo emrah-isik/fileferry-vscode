@@ -12,7 +12,10 @@ interface Dependencies {
   output: vscode.OutputChannel;
 }
 
-export async function uploadAllChanged(dependencies: Dependencies): Promise<void> {
+export async function uploadAllChanged(
+  dependencies: Dependencies,
+  options?: { onlyNewer?: boolean }
+): Promise<void> {
   const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   if (!workspaceRoot) {
     vscode.window.showWarningMessage('FileFerry: No workspace folder open.');
@@ -52,5 +55,9 @@ export async function uploadAllChanged(dependencies: Dependencies): Promise<void
     resourceUri: vscode.Uri.file(file.absolutePath),
   })) as vscode.SourceControlResourceState[];
 
-  await uploadSelected(resources[0], resources, dependencies);
+  if (options) {
+    await uploadSelected(resources[0], resources, dependencies, options);
+  } else {
+    await uploadSelected(resources[0], resources, dependencies);
+  }
 }

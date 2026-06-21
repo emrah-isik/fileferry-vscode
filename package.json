@@ -132,6 +132,11 @@
         "icon": "$(cloud-upload)"
       },
       {
+        "command": "fileferry.uploadOnlyNewer",
+        "title": "FileFerry: Upload Changed Files (Only If Newer)",
+        "icon": "$(sync)"
+      },
+      {
         "command": "fileferry.uploadFromCommits",
         "title": "FileFerry: Upload Files from Commit",
         "icon": "$(cloud-upload)"
@@ -219,6 +224,11 @@
       "scm/title": [
         {
           "command": "fileferry.uploadAllChanged",
+          "when": "scmProvider == git",
+          "group": "navigation"
+        },
+        {
+          "command": "fileferry.uploadOnlyNewer",
           "when": "scmProvider == git",
           "group": "navigation"
         }
@@ -431,6 +441,7 @@
     "compile": "webpack --mode production",
     "watch": "webpack --mode development --watch",
     "test": "jest",
+    "test:integration": "jest --config jest.integration.config.js",
     "test:watch": "jest --watch",
     "lint": "eslint src --ext ts",
     "package": "vsce package"

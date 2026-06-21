@@ -4,7 +4,9 @@ module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',
   testMatch: ['**/src/test/**/*.test.ts'],
-  testPathIgnorePatterns: ['/node_modules/', '/.claude/worktrees/'],
+  // Integration tests hit a real SFTP server and are opt-in via `npm run test:integration`
+  // (jest.integration.config.js). Keep them out of the default, offline unit run.
+  testPathIgnorePatterns: ['/node_modules/', '/.claude/worktrees/', '\\.integration\\.test\\.ts$'],
   modulePathIgnorePatterns: ['/.claude/worktrees/'],
   moduleNameMapper: {
     // Mock the vscode module since it's only available inside VSCode

@@ -101,6 +101,18 @@ describe('uploadAllChanged command', () => {
     );
   });
 
+  it('forwards options.onlyNewer to uploadSelected as a fourth argument', async () => {
+    mockGetChangedFiles.mockReturnValue([fileEntry('/workspace/src/app.php')]);
+    const deps = dependencies();
+    await uploadAllChanged(deps, { onlyNewer: true });
+    expect(mockUploadSelected).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.any(Array),
+      deps,
+      { onlyNewer: true }
+    );
+  });
+
   it('forwards deleted files (no longer on disk) to uploadSelected unchanged', async () => {
     mockGetChangedFiles.mockReturnValue([
       fileEntry('/workspace/src/deleted.php', 'deleted'),

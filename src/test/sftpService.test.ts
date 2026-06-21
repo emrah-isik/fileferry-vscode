@@ -682,8 +682,11 @@ describe('SftpService', () => {
     });
 
     it('returns mtime for an existing remote file', async () => {
+      // ssh2-sftp-client's stat() returns modifyTime in MILLISECONDS (it already
+      // multiplies the raw ssh2 seconds by 1000 — see node_modules/ssh2-sftp-client/
+      // src/index.js: `modifyTime: stats.mtime * 1000`). There is no `mtime` field.
       const mtime = new Date('2026-04-01T12:00:00Z');
-      mockMethods.stat.mockResolvedValue({ mtime: mtime.getTime() / 1000 });
+      mockMethods.stat.mockResolvedValue({ modifyTime: mtime.getTime(), accessTime: mtime.getTime() });
       const result = await service.stat('/var/www/index.php');
       expect(mockMethods.stat).toHaveBeenCalledWith('/var/www/index.php');
       expect(result).toEqual({ mtime });

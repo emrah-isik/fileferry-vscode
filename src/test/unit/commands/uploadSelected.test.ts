@@ -26,6 +26,7 @@ const mockResolve = jest.fn();
 const mockResolveAll = jest.fn();
 const mockUpload = jest.fn().mockResolvedValue({ succeeded: [], failed: [], deleted: [], deleteFailed: [] });
 const mockDateGuardCheck = jest.fn().mockResolvedValue([]);
+const mockPartition = jest.fn().mockResolvedValue({ toUpload: [], skipped: [] });
 const mockBackup = jest.fn().mockResolvedValue(undefined);
 const mockCleanup = jest.fn().mockResolvedValue(undefined);
 const mockDryRunReport = jest.fn();
@@ -37,7 +38,7 @@ mockSummaryToHistoryEntries.mockReturnValue([{ id: 'h-1' }]);
 (ScmResourceResolver as jest.Mock).mockImplementation(() => ({ resolve: mockResolve }));
 (PathResolver as jest.Mock).mockImplementation(() => ({ resolveAll: mockResolveAll }));
 (UploadOrchestratorV2 as jest.Mock).mockImplementation(() => ({ upload: mockUpload }));
-(FileDateGuard as jest.Mock).mockImplementation(() => ({ check: mockDateGuardCheck }));
+(FileDateGuard as jest.Mock).mockImplementation(() => ({ check: mockDateGuardCheck, partitionByNewerLocal: mockPartition }));
 (BackupService as jest.Mock).mockImplementation(() => ({ backup: mockBackup, cleanup: mockCleanup }));
 (DryRunReporter as jest.Mock).mockImplementation(() => ({ report: mockDryRunReport }));
 (UploadHistoryService as jest.Mock).mockImplementation(() => ({ log: mockHistoryLog, enforceRetention: mockHistoryEnforceRetention }));
@@ -91,6 +92,10 @@ describe('uploadSelected command', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockDateGuardCheck.mockResolvedValue([]);
+    mockPartition.mockResolvedValue({
+      toUpload: [{ localPath: '/workspace/src/app.php', remotePath: '/var/www/src/app.php' }],
+      skipped: [],
+    });
     mockResolve.mockReturnValue({ toUpload: ['/workspace/src/app.php'], toDelete: [] });
     mockResolveAll.mockReturnValue([{ localPath: '/workspace/src/app.php', remotePath: '/var/www/src/app.php' }]);
     mockUpload.mockResolvedValue({ succeeded: [{ localPath: '/workspace/src/app.php', remotePath: '/var/www/src/app.php' }], failed: [], deleted: [], deleteFailed: [] });
@@ -535,6 +540,93 @@ describe('uploadSelected command', () => {
       await uploadSelected(resource, undefined, dependencies());
       expect(mockUpload).toHaveBeenCalled();
       expect(mockDryRunReport).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('upload only newer', () => {
+    function onlyNewer() {
+      return { onlyNewer: true };
+    }
+
+    it('runs partitionByNewerLocal with credential and server timeOffsetMs', async () => {
+      await uploadSelected(resource, undefined, dependencies(), onlyNewer());
+      expect(mockPartition).toHaveBeenCalledWith(
+        [{ localPath: '/workspace/src/app.php', remotePath: '/var/www/src/app.php' }],
+        expect.objectContaining({ password: 'secret' }),
+        undefined
+      );
+    });
+
+    it('uploads only the toUpload subset returned by the partition', async () => {
+      mockPartition.mockResolvedValue({
+        toUpload: [{ localPath: '/workspace/src/app.php', remotePath: '/var/www/src/app.php' }],
+        skipped: [
+          { item: { localPath: '/workspace/src/old.php', remotePath: '/var/www/src/old.php' }, remoteMtimeMs: 1, reason: 'remote-newer' },
+        ],
+      });
+      await uploadSelected(resource, undefined, dependencies(), onlyNewer());
+      expect(mockUpload).toHaveBeenCalledWith(
+        [{ localPath: '/workspace/src/app.php', remotePath: '/var/www/src/app.php' }],
+        expect.objectContaining({ password: 'secret' }),
+        expect.any(Object),
+        [],
+        expect.anything()
+      );
+    });
+
+    it('does not run the file date guard when onlyNewer is set', async () => {
+      await uploadSelected(resource, undefined, dependencies(), onlyNewer());
+      expect(mockDateGuardCheck).not.toHaveBeenCalled();
+    });
+
+    it('shows up-to-date message and does not upload when nothing remains', async () => {
+      mockPartition.mockResolvedValue({
+        toUpload: [],
+        skipped: [
+          { item: { localPath: '/workspace/src/app.php', remotePath: '/var/www/src/app.php' }, remoteMtimeMs: 1, reason: 'same-age' },
+        ],
+      });
+      await uploadSelected(resource, undefined, dependencies(), onlyNewer());
+      expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+        expect.stringContaining('up to date')
+      );
+      expect(mockUpload).not.toHaveBeenCalled();
+    });
+
+    it('writes skipped files to the output channel', async () => {
+      mockPartition.mockResolvedValue({
+        toUpload: [{ localPath: '/workspace/src/app.php', remotePath: '/var/www/src/app.php' }],
+        skipped: [
+          { item: { localPath: '/workspace/src/old.php', remotePath: '/var/www/src/old.php' }, remoteMtimeMs: 1, reason: 'remote-newer' },
+        ],
+      });
+      await uploadSelected(resource, undefined, dependencies(), onlyNewer());
+      const lines = (mockOutput.appendLine as jest.Mock).mock.calls.map(c => c[0]).join('\n');
+      expect(lines).toContain('/var/www/src/old.php');
+      expect(lines).toContain('remote-newer');
+    });
+
+    it('does not run the partition when onlyNewer is not set', async () => {
+      await uploadSelected(resource, undefined, dependencies());
+      expect(mockPartition).not.toHaveBeenCalled();
+    });
+
+    it('partitions before the dry-run report and reports only the surviving items', async () => {
+      (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({ ...configFixture, dryRun: true });
+      mockPartition.mockResolvedValue({
+        toUpload: [{ localPath: '/workspace/src/app.php', remotePath: '/var/www/src/app.php' }],
+        skipped: [
+          { item: { localPath: '/workspace/src/old.php', remotePath: '/var/www/src/old.php' }, remoteMtimeMs: 1, reason: 'same-age' },
+        ],
+      });
+      await uploadSelected(resource, undefined, dependencies(), onlyNewer());
+      expect(mockPartition).toHaveBeenCalled();
+      expect(mockDryRunReport).toHaveBeenCalledWith([
+        expect.objectContaining({
+          uploadItems: [{ localPath: '/workspace/src/app.php', remotePath: '/var/www/src/app.php' }],
+        }),
+      ]);
+      expect(mockUpload).not.toHaveBeenCalled();
     });
   });
 
