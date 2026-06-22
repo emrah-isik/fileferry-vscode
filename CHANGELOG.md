@@ -2,6 +2,14 @@
 
 All notable changes to FileFerry will be documented in this file.
 
+## [0.9.1] - 2026-06-22
+
+### Added
+
+- **Upload Only If Newer from the Changed Files view** — the FileFerry **Changed Files** panel now has an "only if newer" button (history icon) next to *Upload Selected*. It adapts to your selection: with rows selected it uploads just those, skipping any whose remote copy is the same age or newer; with nothing selected it does the same across all changed files. The Source Control title-bar *Upload Only If Newer* button gains the same history icon so the two upload actions read at a glance.
+
+---
+
 ## [0.9.0] - 2026-06-22
 
 ### Added
