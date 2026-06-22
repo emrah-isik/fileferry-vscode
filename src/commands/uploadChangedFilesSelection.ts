@@ -12,7 +12,8 @@ interface Dependencies {
 
 export async function uploadChangedFilesSelection(
   getSelection: () => readonly vscode.TreeItem[],
-  dependencies: Dependencies
+  dependencies: Dependencies,
+  options?: { onlyNewer?: boolean }
 ): Promise<void> {
   const resources = getSelection()
     .filter(item => !!item.resourceUri)
@@ -23,5 +24,9 @@ export async function uploadChangedFilesSelection(
     return;
   }
 
-  await uploadSelected(resources[0], resources, dependencies);
+  if (options) {
+    await uploadSelected(resources[0], resources, dependencies, options);
+  } else {
+    await uploadSelected(resources[0], resources, dependencies);
+  }
 }

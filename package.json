@@ -134,7 +134,7 @@
       {
         "command": "fileferry.uploadOnlyNewer",
         "title": "FileFerry: Upload Changed Files (Only If Newer)",
-        "icon": "$(sync)"
+        "icon": "$(history)"
       },
       {
         "command": "fileferry.uploadFromCommits",
@@ -150,6 +150,11 @@
         "command": "fileferry.changedFiles.uploadSelection",
         "title": "FileFerry: Upload Selected Changed Files",
         "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "fileferry.changedFiles.uploadOnlyNewer",
+        "title": "FileFerry: Upload Changed Files (Only If Newer) — selected, or all",
+        "icon": "$(history)"
       }
     ],
     "viewsContainers": {
@@ -260,9 +265,14 @@
           "group": "navigation@1"
         },
         {
-          "command": "fileferry.changedFiles.refresh",
+          "command": "fileferry.changedFiles.uploadOnlyNewer",
           "when": "view == fileferry.changedFilesView",
           "group": "navigation@2"
+        },
+        {
+          "command": "fileferry.changedFiles.refresh",
+          "when": "view == fileferry.changedFilesView",
+          "group": "navigation@3"
         }
       ],
       "view/item/context": [
@@ -364,6 +374,10 @@
         },
         {
           "command": "fileferry.changedFiles.uploadSelection",
+          "when": "false"
+        },
+        {
+          "command": "fileferry.changedFiles.uploadOnlyNewer",
           "when": "false"
         }
       ]

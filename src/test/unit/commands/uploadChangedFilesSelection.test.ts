@@ -137,4 +137,29 @@ describe('uploadChangedFilesSelection', () => {
       expect(typeof primary.resourceUri.fsPath).toBe('string');
     });
   });
+
+  describe('only-newer option', () => {
+    it('forwards { onlyNewer: true } to uploadSelected as the fourth argument', async () => {
+      const item = makeTreeItem('/workspace/a.php');
+
+      await uploadChangedFilesSelection(() => [item], deps, { onlyNewer: true });
+
+      expect(mockUploadSelected.mock.calls[0][3]).toEqual({ onlyNewer: true });
+    });
+
+    it('omits the options argument when none is passed (preserves the 3-arg contract)', async () => {
+      const item = makeTreeItem('/workspace/a.php');
+
+      await uploadChangedFilesSelection(() => [item], deps);
+
+      expect(mockUploadSelected.mock.calls[0]).toHaveLength(3);
+    });
+
+    it('does not call uploadSelected for an empty selection even with onlyNewer', async () => {
+      await uploadChangedFilesSelection(() => [], deps, { onlyNewer: true });
+
+      expect(mockUploadSelected).not.toHaveBeenCalled();
+      expect(showWarningMessage).toHaveBeenCalled();
+    });
+  });
 });

@@ -30,6 +30,7 @@ import { withErrorHandling as wrapErrors } from './utils/withErrorHandling';
 import { GitService } from './gitService';
 import { ChangedFilesView } from './changedFiles/ChangedFilesView';
 import { uploadChangedFilesSelection } from './commands/uploadChangedFilesSelection';
+import { uploadChangedFilesOnlyNewer } from './commands/uploadChangedFilesOnlyNewer';
 
 let output: vscode.OutputChannel;
 
@@ -233,6 +234,15 @@ export function activate(context: vscode.ExtensionContext): void {
       'fileferry.changedFiles.uploadSelection',
       withErrorHandling('changedFiles.uploadSelection', async () =>
         uploadChangedFilesSelection(
+          () => changedFilesView.getSelection(),
+          { credentialManager, configManager, context, output }
+        )
+      )
+    ),
+    vscode.commands.registerCommand(
+      'fileferry.changedFiles.uploadOnlyNewer',
+      withErrorHandling('changedFiles.uploadOnlyNewer', async () =>
+        uploadChangedFilesOnlyNewer(
           () => changedFilesView.getSelection(),
           { credentialManager, configManager, context, output }
         )
