@@ -2,6 +2,18 @@
 
 All notable changes to FileFerry will be documented in this file.
 
+## [0.9.0] - 2026-06-22
+
+### Added
+
+- **Upload only newer (smart sync)** — new command **FileFerry: Upload Changed Files (Only If Newer)**, also a `$(sync)` button on the Source Control title bar. It deploys your git-changed files but **skips any whose remote copy is the same age or newer**, so re-running a deploy only pushes what actually moved forward. Builds on the existing remote time-offset handling; skipped files are listed in the FileFerry output channel, and the files that do upload still go through the normal confirmation. The plain **Upload All Changed Files** button is unchanged — this is a separate, opt-in command.
+
+### Fixed
+
+- **Remote timestamps were read as `NaN`, silently disabling every modified-time check** — `SftpService.stat` read `stats.mtime`, but `ssh2-sftp-client` returns the field as `modifyTime` (in milliseconds). The missing field made every remote timestamp `NaN`, so the **file-date guard never warned** before overwriting a newer remote file, and **remote time-offset detection** produced meaningless values. FileFerry now reads the correct field, restoring both. The fix also removes a type cast that had hidden the wrong field name from the compiler, so it can't silently regress.
+
+---
+
 ## [0.8.11] - 2026-06-08
 
 ### Changed

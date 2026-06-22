@@ -18,7 +18,7 @@ coverage/**
 *.map
 tsconfig.json
 webpack.config.js
-jest.config.*
+jest*.config.*
 .gitignore
 .claude/**
 context
