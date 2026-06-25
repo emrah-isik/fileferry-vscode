@@ -44,6 +44,23 @@
       "default": 10000,
       "minimum": 0
     },
+    "watch": {
+      "type": "object",
+      "description": "Auto-upload files matching the glob patterns whenever they change on disk — including build outputs and other externally-generated files that never trigger an editor save. Unlike upload-on-save, watched globs upload even when git-ignored (the patterns are the explicit allowlist). Honors excludedPaths and the file-date guard.",
+      "required": ["enabled", "patterns"],
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Turn the file-system watcher on or off."
+        },
+        "patterns": {
+          "type": "array",
+          "description": "Workspace-relative glob patterns to watch, e.g. [\"dist/**\", \"build/**/*.js\"].",
+          "items": { "type": "string" }
+        }
+      }
+    },
     "servers": {
       "type": "object",
       "description": "Server definitions keyed by display name",

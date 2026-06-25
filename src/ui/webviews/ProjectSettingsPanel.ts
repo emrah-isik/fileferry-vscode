@@ -88,6 +88,16 @@ export class ProjectSettingsPanel {
         await this.dependencies.configManager.toggleDryRun();
         await this.pushConfigUpdate();
         break;
+
+      case 'toggleWatch':
+        await this.dependencies.configManager.toggleWatch();
+        await this.pushConfigUpdate();
+        break;
+
+      case 'setWatchPatterns':
+        await this.dependencies.configManager.setWatchPatterns(msg.value);
+        await this.pushConfigUpdate();
+        break;
     }
   }
 

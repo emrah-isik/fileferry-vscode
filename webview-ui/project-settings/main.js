@@ -43,6 +43,9 @@ function render() {
   const backupBeforeOverwrite = !!state.config.backupBeforeOverwrite;
   const backupRetentionDays = state.config.backupRetentionDays ?? 7;
   const backupMaxSizeMB = state.config.backupMaxSizeMB ?? 100;
+  const watch = state.config.watch || { enabled: false, patterns: [] };
+  const watchEnabled = !!watch.enabled;
+  const watchPatterns = (watch.patterns || []).join('\n');
 
   app.innerHTML = `
     <h2>Project Settings</h2>
@@ -99,6 +102,22 @@ function render() {
       </div>
       ` : ''}
     </div>
+
+    <div class="setting-row">
+      <label class="toggle-label">
+        <input type="checkbox" id="chk-watch" ${watchEnabled ? 'checked' : ''}>
+        <span class="toggle-text">
+          <strong>Watch &amp; Auto-Upload Generated Files</strong>
+          <span class="toggle-description">Upload files matching the globs below whenever they change on disk — including build outputs. Unlike Upload on Save, watched globs upload even if git-ignored.</span>
+        </span>
+      </label>
+      ${watchEnabled ? `
+      <div class="sub-settings sub-settings--full">
+        <label for="input-watch-patterns">Glob patterns (one per line)</label>
+        <textarea id="input-watch-patterns" rows="4" placeholder="dist/**&#10;build/**/*.js">${escapeHtml(watchPatterns)}</textarea>
+      </div>
+      ` : ''}
+    </div>
   `;
 
   document.getElementById('chk-dry-run')?.addEventListener('change', () => {
@@ -130,4 +149,23 @@ function render() {
       vscode.postMessage({ command: 'setBackupMaxSizeMB', value });
     }
   });
+
+  document.getElementById('chk-watch')?.addEventListener('change', () => {
+    vscode.postMessage({ command: 'toggleWatch' });
+  });
+
+  document.getElementById('input-watch-patterns')?.addEventListener('change', (e) => {
+    const patterns = e.target.value
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean);
+    vscode.postMessage({ command: 'setWatchPatterns', value: patterns });
+  });
+}
+
+function escapeHtml(text) {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }

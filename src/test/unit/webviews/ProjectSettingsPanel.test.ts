@@ -61,6 +61,8 @@ const mockConfigManager = {
   setBackupRetentionDays: jest.fn().mockResolvedValue(undefined),
   setBackupMaxSizeMB: jest.fn().mockResolvedValue(undefined),
   toggleDryRun: jest.fn().mockResolvedValue(true),
+  toggleWatch: jest.fn().mockResolvedValue(true),
+  setWatchPatterns: jest.fn().mockResolvedValue(undefined),
 } as unknown as ProjectConfigManager;
 
 describe('ProjectSettingsPanel', () => {
@@ -160,6 +162,24 @@ describe('ProjectSettingsPanel', () => {
     ProjectSettingsPanel.createOrShow(mockContext, { configManager: mockConfigManager });
     await messageHandler({ command: 'toggleDryRun' });
     expect(mockConfigManager.toggleDryRun).toHaveBeenCalled();
+    expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      command: 'configUpdated',
+    }));
+  });
+
+  it('handles toggleWatch: calls manager and posts configUpdated', async () => {
+    ProjectSettingsPanel.createOrShow(mockContext, { configManager: mockConfigManager });
+    await messageHandler({ command: 'toggleWatch' });
+    expect(mockConfigManager.toggleWatch).toHaveBeenCalled();
+    expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      command: 'configUpdated',
+    }));
+  });
+
+  it('handles setWatchPatterns: forwards the patterns array and posts configUpdated', async () => {
+    ProjectSettingsPanel.createOrShow(mockContext, { configManager: mockConfigManager });
+    await messageHandler({ command: 'setWatchPatterns', value: ['dist/**', 'build/**'] });
+    expect(mockConfigManager.setWatchPatterns).toHaveBeenCalledWith(['dist/**', 'build/**']);
     expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
       command: 'configUpdated',
     }));

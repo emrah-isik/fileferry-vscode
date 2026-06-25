@@ -138,4 +138,18 @@ export class ProjectConfigManager {
     await this.saveConfig(config);
     return config.dryRun;
   }
+
+  async toggleWatch(): Promise<boolean> {
+    const config = (await this.getConfig()) ?? this.emptyConfig();
+    const enabled = !config.watch?.enabled;
+    config.watch = { enabled, patterns: config.watch?.patterns ?? [] };
+    await this.saveConfig(config);
+    return enabled;
+  }
+
+  async setWatchPatterns(patterns: string[]): Promise<void> {
+    const config = (await this.getConfig()) ?? this.emptyConfig();
+    config.watch = { enabled: config.watch?.enabled ?? false, patterns };
+    await this.saveConfig(config);
+  }
 }

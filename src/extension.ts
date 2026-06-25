@@ -24,6 +24,7 @@ import { downloadToWorkspace } from './commands/downloadToWorkspace';
 import { diffRemoteWithLocal } from './commands/diffRemoteWithLocal';
 import { deleteRemoteItem } from './commands/deleteRemoteItem';
 import { UploadOnSaveService } from './services/UploadOnSaveService';
+import { FileWatcherService } from './services/FileWatcherService';
 import { DeploymentServer } from './models/DeploymentServer';
 import { ProjectBinding } from './models/ProjectBinding';
 import { withErrorHandling as wrapErrors } from './utils/withErrorHandling';
@@ -80,6 +81,9 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const uploadOnSave = new UploadOnSaveService({ credentialManager, configManager });
   context.subscriptions.push(uploadOnSave.register());
+
+  const fileWatcher = new FileWatcherService({ credentialManager, configManager, output });
+  context.subscriptions.push(fileWatcher.register());
 
   const credentialsChangedEmitter = new vscode.EventEmitter<void>();
   context.subscriptions.push(credentialsChangedEmitter);

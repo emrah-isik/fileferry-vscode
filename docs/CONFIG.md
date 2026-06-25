@@ -33,6 +33,40 @@ No extra configuration needed — the schema is registered via `contributes.json
 | `backupRetentionDays` | `integer` ≥ 0 | no | `7` | Days to keep backup folders before automatic cleanup. |
 | `backupMaxSizeMB` | `integer` ≥ 0 | no | `100` | Maximum total size of the backups folder in megabytes. Oldest backups are pruned first. |
 | `historyMaxEntries` | `integer` ≥ 0 | no | `10000` | Cap on entries in `.vscode/fileferry-history.jsonl`. Set to `0` to disable history logging entirely. |
+| `watch` | `object` | no | — | Auto-upload files matching glob patterns whenever they change on disk — including build outputs and other externally-generated files that never trigger an editor save. See [Watch](#watch). |
+
+---
+
+## Watch
+
+Auto-uploads files matching `watch.patterns` whenever they change on disk, to the default
+server. Unlike **upload-on-save** (which only fires for files you save in the editor and
+skips git-ignored files), the watcher reacts to *any* filesystem change — so it covers files
+written by build tools, compilers, and scripts — and **uploads watched files even when they
+are git-ignored**, because the patterns you declare are an explicit allowlist (build outputs
+like `dist/` are usually git-ignored, and uploading them is the whole point).
+
+It still honors each server's `excludedPaths`, the `fileDateGuard` (skips and logs files the
+remote already has newer), and `dryRun` (logs the plan, transfers nothing). Rapid bursts of
+writes are debounced and uploaded as one batch. FileFerry never re-uploads its own writes
+(`.fileferry-backups/`, the config files).
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `enabled` | `boolean` | yes | Turns the watcher on or off. |
+| `patterns` | `string[]` | yes | Workspace-relative glob patterns to watch. May be empty (watcher does nothing). |
+
+```jsonc
+{
+  "watch": {
+    "enabled": true,
+    "patterns": ["dist/**", "build/**/*.js", "public/build/**"]
+  }
+}
+```
+
+> Deletes are not synced — removing a local file does not delete it remotely. Watching
+> covers file creation and changes only.
 
 ---
 

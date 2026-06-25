@@ -426,3 +426,69 @@ describe('ProjectConfigManager — toggleDryRun', () => {
     expect(result).toBe(true);
   });
 });
+
+describe('ProjectConfigManager — toggleWatch', () => {
+  let manager: ProjectConfigManager;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    manager = new ProjectConfigManager();
+  });
+
+  it('enables watch (preserving empty patterns) when currently undefined', async () => {
+    const noFlag = { ...configFixture };
+    delete (noFlag as Record<string, unknown>).watch;
+    mockReadFile.mockResolvedValue(JSON.stringify(noFlag));
+    const result = await manager.toggleWatch();
+    const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string);
+    expect(written.watch).toEqual({ enabled: true, patterns: [] });
+    expect(result).toBe(true);
+  });
+
+  it('disables watch but keeps the existing patterns', async () => {
+    mockReadFile.mockResolvedValue(JSON.stringify({
+      ...configFixture,
+      watch: { enabled: true, patterns: ['dist/**'] },
+    }));
+    const result = await manager.toggleWatch();
+    const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string);
+    expect(written.watch).toEqual({ enabled: false, patterns: ['dist/**'] });
+    expect(result).toBe(false);
+  });
+
+  it('creates a new config if none exists', async () => {
+    mockReadFile.mockRejectedValue({ code: 'ENOENT' });
+    const result = await manager.toggleWatch();
+    const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string);
+    expect(written.watch).toEqual({ enabled: true, patterns: [] });
+    expect(result).toBe(true);
+  });
+});
+
+describe('ProjectConfigManager — setWatchPatterns', () => {
+  let manager: ProjectConfigManager;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    manager = new ProjectConfigManager();
+  });
+
+  it('sets patterns while preserving the enabled flag', async () => {
+    mockReadFile.mockResolvedValue(JSON.stringify({
+      ...configFixture,
+      watch: { enabled: true, patterns: ['old/**'] },
+    }));
+    await manager.setWatchPatterns(['dist/**', 'build/**/*.js']);
+    const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string);
+    expect(written.watch).toEqual({ enabled: true, patterns: ['dist/**', 'build/**/*.js'] });
+  });
+
+  it('defaults enabled to false when watch was undefined', async () => {
+    const noFlag = { ...configFixture };
+    delete (noFlag as Record<string, unknown>).watch;
+    mockReadFile.mockResolvedValue(JSON.stringify(noFlag));
+    await manager.setWatchPatterns(['dist/**']);
+    const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string);
+    expect(written.watch).toEqual({ enabled: false, patterns: ['dist/**'] });
+  });
+});

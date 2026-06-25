@@ -1,13 +1,8 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { execFile } from 'child_process';
-import { PathResolver } from '../path/PathResolver';
-import { UploadOrchestratorV2 } from './UploadOrchestratorV2';
-import { FileDateGuard } from './FileDateGuard';
 import { CredentialManager } from '../storage/CredentialManager';
 import { ProjectConfigManager } from '../storage/ProjectConfigManager';
-import { UploadHistoryService } from './UploadHistoryService';
-import { summaryToHistoryEntries } from './summaryToHistoryEntries';
+import { autoUploadFile } from './autoUpload';
 
 interface Dependencies {
   credentialManager: CredentialManager;
@@ -49,93 +44,35 @@ export class UploadOnSaveService {
       return;  // silent — no log, no notification
     }
 
-    const match = await this.dependencies.configManager.getServerById(config.defaultServerId);
-    if (!match) {
-      return;
-    }
+    const outcome = await autoUploadFile(
+      doc.uri.fsPath,
+      workspaceRoot,
+      config,
+      this.dependencies,
+      'save',
+      { applyGitIgnore: true }
+    );
 
-    const { name: serverName, server } = match;
-
-    if (server.mappings.length === 0) {
-      return;
-    }
-
-    // Skip files ignored by git
-    if (await this.isGitIgnored(doc.uri.fsPath, workspaceRoot)) {
-      return;
-    }
-
-    const pathResolver = new PathResolver();
-    const serverConfig = {
-      rootPath: server.rootPath,
-      mappings: server.mappings,
-      excludedPaths: server.excludedPaths,
-    };
-
-    let resolved;
-    try {
-      resolved = pathResolver.resolve(doc.uri.fsPath, workspaceRoot, serverConfig);
-    } catch {
-      return;
-    }
-
-    const orchestrator = new UploadOrchestratorV2();
-    try {
-      const credential = await this.dependencies.credentialManager.getWithSecret(server.credentialId);
-
-      // File date guard: skip upload if remote is newer (non-blocking on errors)
-      const fileDateGuardEnabled = config.fileDateGuard !== false;
-      try {
-        const newerOnRemote = fileDateGuardEnabled
-          ? await new FileDateGuard().check([resolved], credential, server.timeOffsetMs)
-          : [];
-        if (newerOnRemote.length > 0) {
-          const fileName = path.basename(doc.uri.fsPath);
-          vscode.window.showWarningMessage(
-            `FileFerry: ${fileName} is newer on the remote — upload skipped. Use Alt+U to overwrite.`
-          );
-          return;
-        }
-      } catch {
-        // Date guard failure should not block the upload
-      }
-
-      const result = await orchestrator.upload([resolved], credential, null, []);
-
-      // Log upload history
-      const historyMaxEntries = config.historyMaxEntries ?? 10000;
-      if (historyMaxEntries > 0) {
-        const historyService = new UploadHistoryService(workspaceRoot, historyMaxEntries);
-        const historyEntries = summaryToHistoryEntries(result, server.id, serverName, Date.now(), 'save');
-        await historyService.log(historyEntries);
-        await historyService.enforceRetention();
-      }
-
-      if (result.failed.length > 0) {
-        vscode.window.showErrorMessage(
-          `FileFerry: Upload on save failed — ${result.failed[0].error}`
+    if (outcome.status === 'skipped') {
+      if (outcome.reason === 'remote-newer') {
+        vscode.window.showWarningMessage(
+          `FileFerry: ${outcome.fileName} is newer on the remote — upload skipped. Use Alt+U to overwrite.`
         );
-      } else {
-        const fileName = path.basename(doc.uri.fsPath);
-        vscode.window.setStatusBarMessage(`$(check) Uploaded ${fileName}`, 3000);
       }
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      vscode.window.showErrorMessage(`FileFerry: Upload on save failed — ${message}`);
+      return;
     }
-  }
 
-  private isGitIgnored(filePath: string, cwd: string): Promise<boolean> {
-    return new Promise(resolve => {
-      execFile('git', ['check-ignore', '-q', filePath], { cwd }, (err) => {
-        if (!err) {
-          resolve(true); // exit 0 = ignored
-        } else if ((err as any).code === 1) {
-          resolve(false); // exit 1 = not ignored
-        } else {
-          resolve(false); // git not available or other error — don't block
-        }
-      });
-    });
+    if (outcome.status === 'error') {
+      vscode.window.showErrorMessage(`FileFerry: Upload on save failed — ${outcome.error}`);
+      return;
+    }
+
+    if (outcome.summary.failed.length > 0) {
+      vscode.window.showErrorMessage(
+        `FileFerry: Upload on save failed — ${outcome.summary.failed[0].error}`
+      );
+    } else {
+      vscode.window.setStatusBarMessage(`$(check) Uploaded ${outcome.fileName}`, 3000);
+    }
   }
 }

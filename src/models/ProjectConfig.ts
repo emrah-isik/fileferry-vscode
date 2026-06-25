@@ -25,6 +25,10 @@ export interface ProjectConfig {
   backupMaxSizeMB?: number;         // max total backup size in MB (default: 100)
   dryRun?: boolean;                 // preview mode — show what would be deployed without transferring (default: false)
   historyMaxEntries?: number;        // max entries in upload history file (default: 10000, 0 disables logging)
+  watch?: {                          // auto-upload generated/build-output files matching the globs (#25)
+    enabled: boolean;
+    patterns: string[];              // workspace-relative globs, e.g. ["dist/**", "build/**/*.js"]
+  };
   servers: {
     [serverName: string]: ProjectServer;
   };

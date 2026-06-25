@@ -100,3 +100,35 @@ h2 {
   outline: 1px solid var(--vscode-focusBorder);
   outline-offset: -1px;
 }
+
+.sub-settings--full {
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sub-settings--full label {
+  font-size: 0.85em;
+  color: var(--vscode-descriptionForeground);
+}
+
+.sub-settings textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  font-size: var(--vscode-editor-font-size, var(--vscode-font-size));
+  font-family: var(--vscode-editor-font-family, monospace);
+  color: var(--vscode-input-foreground);
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, transparent);
+  border-radius: 2px;
+  resize: vertical;
+}
+
+.sub-settings textarea::placeholder {
+  color: var(--vscode-input-placeholderForeground);
+}
+
+.sub-settings textarea:focus {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
