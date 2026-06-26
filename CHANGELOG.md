@@ -2,6 +2,15 @@
 
 All notable changes to FileFerry will be documented in this file.
 
+## [0.9.2] - 2026-06-26
+
+### Added
+
+- **Watch & auto-upload generated / build-output files** — a new opt-in file-system watcher (`watch` in `.vscode/fileferry.json`, toggle + glob list under **Project Settings → "Watch & Auto-Upload Generated Files"**) auto-uploads files matching workspace-relative globs whenever they change on disk. This covers build outputs and other externally-generated files that never fire an editor save — the gap upload-on-save can't reach. The watched globs are an explicit allowlist and upload **even when git-ignored** (build dirs like `dist/` usually are), while still honouring `excludedPaths` and the file-date guard. A build's burst of writes is debounced and batched (400 ms), the watcher never re-uploads its own writes, and dry-run logs instead of transferring. Upload history records these as a new **Watch** source.
+- **Source column and source filter in Upload History** — the Upload History panel now shows a **Source** column (Manual / On Save / Multi-Server / Watch) and a matching source filter chip beside the existing server/result filters, so automated watch/save uploads can be told apart from deliberate manual deploys.
+
+---
+
 ## [0.9.1] - 2026-06-22
 
 ### Added
