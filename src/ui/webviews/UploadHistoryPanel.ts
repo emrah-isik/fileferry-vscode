@@ -71,6 +71,7 @@ export class UploadHistoryPanel {
           serverId: msg.serverId,
           result: msg.result,
           search: msg.search,
+          trigger: msg.trigger,
         });
         this.panel.webview.postMessage({ command: 'filtered', entries });
         break;

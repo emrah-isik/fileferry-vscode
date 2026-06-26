@@ -47,6 +47,7 @@ export class UploadHistoryService {
     return all.filter(e => {
       if (filter.serverId && e.serverId !== filter.serverId) { return false; }
       if (filter.result && e.result !== filter.result) { return false; }
+      if (filter.trigger && e.trigger !== filter.trigger) { return false; }
       if (filter.search && !e.localPath.toLowerCase().includes(filter.search.toLowerCase())) { return false; }
       return true;
     });

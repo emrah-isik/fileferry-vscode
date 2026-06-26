@@ -129,6 +129,11 @@ tbody td {
   white-space: nowrap;
 }
 
+.col-source {
+  white-space: nowrap;
+  width: 110px;
+}
+
 .col-action {
   white-space: nowrap;
   width: 60px;
@@ -164,26 +169,70 @@ tbody td {
 
 /* ─── Badges ──────────────────────────────────────────────── */
 
-.badge {
-  display: inline-block;
-  padding: 1px 6px;
+/* Shared pill geometry for the Source and Result columns. An explicit height
+   plus the global box-sizing: border-box means a filled badge and an outlined
+   tag render at exactly the same size (the 1px border sits inside the height),
+   and flex-centring keeps the label vertically centred regardless of the
+   font's baseline/descender metrics. */
+.badge,
+.source-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 20px;
+  padding: 0 8px;
   border-radius: 3px;
   font-size: 0.85em;
+  border: 1px solid transparent;
+}
+
+/* Result badges keep the outlined pill shape of the Source tags, but colour
+   the border + text by result. Colours are muted via color-mix (blended toward
+   transparent/foreground) so they read softer than a solid fill. */
+.badge {
+  border-color: var(--vscode-panel-border);
+  color: var(--vscode-descriptionForeground);
 }
 
 .badge-success {
-  background: var(--vscode-testing-iconPassed, #388a34);
-  color: #fff;
+  border-color: color-mix(in srgb, var(--vscode-testing-iconPassed, #388a34) 55%, transparent);
+  color: color-mix(in srgb, var(--vscode-testing-iconPassed, #388a34) 80%, var(--vscode-foreground));
 }
 
 .badge-failed {
-  background: var(--vscode-testing-iconFailed, #d32f2f);
-  color: #fff;
+  border-color: color-mix(in srgb, var(--vscode-testing-iconFailed, #d32f2f) 55%, transparent);
+  color: color-mix(in srgb, var(--vscode-testing-iconFailed, #d32f2f) 80%, var(--vscode-foreground));
 }
 
 .badge-cancelled {
-  background: var(--vscode-descriptionForeground);
-  color: var(--vscode-editor-background);
+  border-color: var(--vscode-panel-border);
+  color: var(--vscode-descriptionForeground);
+}
+
+/* ─── Source tags ─────────────────────────────────────────── */
+
+/* Source tags share the geometry above; here they just get a visible border so
+   the column reads consistently across themes. Manual vs automated is conveyed
+   by fill + text colour, not by whether a box is present. */
+.source-tag {
+  border-color: var(--vscode-panel-border);
+}
+
+/* Manual deploys: deliberate, so give them the filled, higher-contrast pill.
+   Keep the inherited visible border so it always reads as a box, even in
+   themes where the badge fill is close to the row background. */
+.source-manual {
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+}
+
+/* Automated triggers: muted outline pills so they read as background noise
+   next to deliberate manual deploys. */
+.source-save,
+.source-multi-server,
+.source-watch {
+  background: transparent;
+  color: var(--vscode-descriptionForeground);
 }
 
 /* ─── Empty state ─────────────────────────────────────────── */

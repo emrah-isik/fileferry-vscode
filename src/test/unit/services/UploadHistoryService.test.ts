@@ -103,9 +103,9 @@ describe('UploadHistoryService', () => {
   describe('getFiltered()', () => {
     beforeEach(async () => {
       await service.log([
-        entry({ id: 'e-1', serverId: 'srv-1', result: 'success', localPath: '/workspace/src/app.php' }),
-        entry({ id: 'e-2', serverId: 'srv-2', result: 'failed', error: 'Timeout', localPath: '/workspace/src/util.ts' }),
-        entry({ id: 'e-3', serverId: 'srv-1', result: 'cancelled', localPath: '/workspace/lib/helper.php' }),
+        entry({ id: 'e-1', serverId: 'srv-1', result: 'success', localPath: '/workspace/src/app.php', trigger: 'manual' }),
+        entry({ id: 'e-2', serverId: 'srv-2', result: 'failed', error: 'Timeout', localPath: '/workspace/src/util.ts', trigger: 'watch' }),
+        entry({ id: 'e-3', serverId: 'srv-1', result: 'cancelled', localPath: '/workspace/lib/helper.php', trigger: 'save' }),
       ]);
     });
 
@@ -127,8 +127,20 @@ describe('UploadHistoryService', () => {
       expect(result[0].id).toBe('e-3');
     });
 
+    it('filters by trigger', async () => {
+      const result = await service.getFiltered({ trigger: 'watch' });
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('e-2');
+    });
+
     it('combines multiple filters with AND logic', async () => {
       const result = await service.getFiltered({ serverId: 'srv-1', result: 'success' });
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('e-1');
+    });
+
+    it('combines trigger with other filters using AND logic', async () => {
+      const result = await service.getFiltered({ serverId: 'srv-1', trigger: 'manual' });
       expect(result).toHaveLength(1);
       expect(result[0].id).toBe('e-1');
     });

@@ -11,6 +11,18 @@ let state = {
   servers: [],
 };
 
+// Friendly labels for the recorded `trigger` field.
+const TRIGGER_LABELS = {
+  manual: 'Manual',
+  save: 'On Save',
+  'multi-server': 'Multi-Server',
+  watch: 'Watch',
+};
+
+function triggerLabel(trigger) {
+  return TRIGGER_LABELS[trigger] || trigger || '';
+}
+
 // ─── Boot ─────────────────────────────────────────────────────────────────────
 
 vscode.postMessage({ command: 'ready' });
@@ -57,6 +69,13 @@ function render() {
           <option value="failed">Failed</option>
           <option value="cancelled">Cancelled</option>
         </select>
+        <select id="filter-source">
+          <option value="">All sources</option>
+          <option value="manual">Manual</option>
+          <option value="save">On Save</option>
+          <option value="multi-server">Multi-Server</option>
+          <option value="watch">Watch</option>
+        </select>
         <input type="text" id="filter-search" placeholder="Search file path..." />
       </div>
       <div class="actions">
@@ -69,6 +88,7 @@ function render() {
 
   document.getElementById('filter-server')?.addEventListener('change', sendFilter);
   document.getElementById('filter-result')?.addEventListener('change', sendFilter);
+  document.getElementById('filter-source')?.addEventListener('change', sendFilter);
   document.getElementById('filter-search')?.addEventListener('input', sendFilter);
   document.getElementById('btn-refresh')?.addEventListener('click', () => {
     vscode.postMessage({ command: 'ready' });
@@ -102,6 +122,7 @@ function renderTable() {
       <td class="col-time">${formatTimestamp(e.timestamp)}</td>
       <td class="col-file" title="${escapeHtml(e.localPath || e.remotePath)}">${escapeHtml(shortPath(e.localPath || e.remotePath))}</td>
       <td class="col-server">${escapeHtml(e.serverName)}</td>
+      <td class="col-source"><span class="source-tag source-${escapeHtml(e.trigger || '')}">${escapeHtml(triggerLabel(e.trigger))}</span></td>
       <td class="col-action">${e.action}</td>
       <td class="col-result"><span class="badge badge-${e.result}">${e.result}</span></td>
       <td class="${errorCellClass}" title="${escapeHtml(err)}">${escapeHtml(err)}</td>
@@ -116,6 +137,7 @@ function renderTable() {
           <th class="col-time">Time</th>
           <th class="col-file">File</th>
           <th class="col-server">Server</th>
+          <th class="col-source">Source</th>
           <th class="col-action">Action</th>
           <th class="col-result">Result</th>
           <th class="col-error">Error</th>
@@ -137,8 +159,9 @@ function renderTable() {
 function sendFilter() {
   const serverId = document.getElementById('filter-server')?.value || undefined;
   const result = document.getElementById('filter-result')?.value || undefined;
+  const trigger = document.getElementById('filter-source')?.value || undefined;
   const search = document.getElementById('filter-search')?.value || undefined;
-  vscode.postMessage({ command: 'filter', serverId, result, search });
+  vscode.postMessage({ command: 'filter', serverId, result, search, trigger });
 }
 
 function formatTimestamp(ts) {

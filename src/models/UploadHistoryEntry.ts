@@ -15,4 +15,5 @@ export interface HistoryFilter {
   serverId?: string;
   result?: UploadHistoryEntry['result'];
   search?: string;
+  trigger?: UploadHistoryEntry['trigger'];
 }

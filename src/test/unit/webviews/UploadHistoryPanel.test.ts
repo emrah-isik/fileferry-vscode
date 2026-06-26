@@ -109,8 +109,8 @@ describe('UploadHistoryPanel', () => {
 
   it('handles filter message and returns filtered entries', async () => {
     UploadHistoryPanel.createOrShow(mockContext, { configManager: mockConfigManager });
-    await messageHandler({ command: 'filter', serverId: 'srv-1', result: 'success', search: 'app' });
-    expect(mockGetFiltered).toHaveBeenCalledWith({ serverId: 'srv-1', result: 'success', search: 'app' });
+    await messageHandler({ command: 'filter', serverId: 'srv-1', result: 'success', search: 'app', trigger: 'manual' });
+    expect(mockGetFiltered).toHaveBeenCalledWith({ serverId: 'srv-1', result: 'success', search: 'app', trigger: 'manual' });
     expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
       command: 'filtered',
       entries: [entryFixture],
