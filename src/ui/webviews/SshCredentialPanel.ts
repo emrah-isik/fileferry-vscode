@@ -15,6 +15,21 @@ interface Deps {
   onCredentialChange?: () => void;
 }
 
+// Messages posted from the webview. `command` selects the handler; the other
+// fields are optional because each command carries only the data it needs.
+interface SshCredentialMessage {
+  command: string;
+  payload?: {
+    credential: Partial<SshCredential>;
+    password?: string;
+    passphrase?: string;
+  };
+  id?: string;
+  credential?: SshCredential;
+  password?: string;
+  passphrase?: string;
+}
+
 export class SshCredentialPanel {
   private static currentPanel: SshCredentialPanel | undefined;
 
@@ -62,21 +77,24 @@ export class SshCredentialPanel {
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
   }
 
-  private async handleMessage(msg: any): Promise<void> {
+  private async handleMessage(msg: SshCredentialMessage): Promise<void> {
     switch (msg.command) {
       case 'ready':
         await this.sendInitialState();
         break;
 
       case 'saveCredential':
+        if (!msg.payload) break;
         await this.handleSaveCredential(msg.payload);
         break;
 
       case 'deleteCredential':
+        if (!msg.id) break;
         await this.handleDeleteCredential(msg.id);
         break;
 
       case 'testConnection':
+        if (!msg.credential) break;
         await this.handleTestConnection(msg.credential, msg.password, msg.passphrase);
         break;
 
@@ -85,6 +103,7 @@ export class SshCredentialPanel {
         break;
 
       case 'cloneCredential':
+        if (!msg.id) break;
         await this.handleCloneCredential(msg.id);
         break;
     }
@@ -228,7 +247,7 @@ export class SshCredentialPanel {
 
     const service = createTransferService('sftp');
     try {
-      await service.connect(tempCredential as any, { password: tempCredential.password, passphrase: tempCredential.passphrase });
+      await service.connect(tempCredential, { password: tempCredential.password, passphrase: tempCredential.passphrase });
       await service.disconnect();
       this.panel.webview.postMessage({ command: 'testResult', success: true, message: 'Connected successfully' });
     } catch (err: unknown) {

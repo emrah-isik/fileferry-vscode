@@ -53,7 +53,7 @@ export class ProjectSettingsPanel {
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
   }
 
-  private async handleMessage(msg: any): Promise<void> {
+  private async handleMessage(msg: { command: string; value?: unknown }): Promise<void> {
     switch (msg.command) {
       case 'ready':
         await this.sendInitialState();
@@ -75,12 +75,12 @@ export class ProjectSettingsPanel {
         break;
 
       case 'setBackupRetentionDays':
-        await this.dependencies.configManager.setBackupRetentionDays(msg.value);
+        await this.dependencies.configManager.setBackupRetentionDays(msg.value as number);
         await this.pushConfigUpdate();
         break;
 
       case 'setBackupMaxSizeMB':
-        await this.dependencies.configManager.setBackupMaxSizeMB(msg.value);
+        await this.dependencies.configManager.setBackupMaxSizeMB(msg.value as number);
         await this.pushConfigUpdate();
         break;
 
@@ -95,7 +95,7 @@ export class ProjectSettingsPanel {
         break;
 
       case 'setWatchPatterns':
-        await this.dependencies.configManager.setWatchPatterns(msg.value);
+        await this.dependencies.configManager.setWatchPatterns(msg.value as string[]);
         await this.pushConfigUpdate();
         break;
     }

@@ -20,7 +20,7 @@ export class BackupService {
       return;
     }
 
-    await this.sftp.connect(credential as any, {
+    await this.sftp.connect(credential, {
       password: credential.password,
       passphrase: credential.passphrase,
     });

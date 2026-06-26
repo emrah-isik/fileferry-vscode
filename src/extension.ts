@@ -16,6 +16,8 @@ import { ProjectSettingsPanel } from './ui/webviews/ProjectSettingsPanel';
 import { UploadHistoryPanel } from './ui/webviews/UploadHistoryPanel';
 import { SshCredentialPanel } from './ui/webviews/SshCredentialPanel';
 import { RemoteBrowserConnection } from './remoteBrowser/RemoteBrowserConnection';
+import { RemoteFileItem } from './remoteBrowser/RemoteFileItem';
+import { ServerConfig } from './types';
 import { RemoteBrowserProvider } from './remoteBrowser/RemoteBrowserProvider';
 import { ServersProvider } from './remoteBrowser/ServersProvider';
 import { openRemoteFile } from './commands/openRemoteFile';
@@ -35,8 +37,13 @@ import { uploadChangedFilesOnlyNewer } from './commands/uploadChangedFilesOnlyNe
 
 let output: vscode.OutputChannel;
 
-function withErrorHandling(label: string, fn: (...args: any[]) => Promise<void>): (...args: any[]) => Promise<void> {
-  return wrapErrors(label, output, fn);
+function withErrorHandling<Args extends unknown[]>(
+  label: string,
+  fn: (...args: Args) => Promise<void>
+): (...args: Args) => Promise<void> {
+  return wrapErrors(label, output, fn as (...args: unknown[]) => Promise<void>) as (
+    ...args: Args
+  ) => Promise<void>;
 }
 
 async function readJsonFile<T>(filePath: string): Promise<T | null> {
@@ -319,9 +326,9 @@ export function activate(context: vscode.ExtensionContext): void {
 
     vscode.commands.registerCommand(
       'fileferry.servers.testConnection',
-      withErrorHandling('testConnection', async (item: any) => {
-        const serverId = item?.serverId ?? item;
-        const entry = await configManager.getServerById(serverId);
+      withErrorHandling('testConnection', async (item: { serverId?: string } | string | undefined) => {
+        const serverId = typeof item === 'object' ? item?.serverId : item;
+        const entry = serverId ? await configManager.getServerById(serverId) : undefined;
         if (!entry) {
           vscode.window.showErrorMessage('FileFerry: Server not found.');
           return;
@@ -331,7 +338,10 @@ export function activate(context: vscode.ExtensionContext): void {
         const sftp = new SftpService();
         try {
           await sftp.connect(
-            credential as any,
+            // SshCredentialWithSecret carries every field connect() reads; it
+            // omits the mapping/type fields ServerConfig declares but never uses
+            // when establishing a connection.
+            credential as unknown as ServerConfig,
             { password: credential.password, passphrase: credential.passphrase }
           );
           await sftp.disconnect();
@@ -356,26 +366,26 @@ export function activate(context: vscode.ExtensionContext): void {
 
     vscode.commands.registerCommand(
       'fileferry.remoteBrowser.copyPath',
-      (item: any) => copyRemotePath(item)
+      (item: RemoteFileItem | undefined) => copyRemotePath(item)
     ),
 
     vscode.commands.registerCommand(
       'fileferry.remoteBrowser.downloadToWorkspace',
-      withErrorHandling('downloadToWorkspace', async (item: any) => {
+      withErrorHandling('downloadToWorkspace', async (item: RemoteFileItem) => {
         await downloadToWorkspace(item.entry, browserConnection, configManager);
       })
     ),
 
     vscode.commands.registerCommand(
       'fileferry.remoteBrowser.diffWithLocal',
-      withErrorHandling('diffWithLocal', async (item: any) => {
+      withErrorHandling('diffWithLocal', async (item: RemoteFileItem) => {
         await diffRemoteWithLocal(item.entry, browserConnection, configManager);
       })
     ),
 
     vscode.commands.registerCommand(
       'fileferry.remoteBrowser.delete',
-      (item: any) => deleteRemoteItem(item, browserConnection, () => browserProvider.refresh())
+      (item: RemoteFileItem) => deleteRemoteItem(item, browserConnection, () => browserProvider.refresh())
     ),
 
     vscode.commands.registerCommand(

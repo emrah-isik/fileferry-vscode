@@ -425,7 +425,7 @@ type ExecResponder = (
 
 function setExecResponder(responder: ExecResponder): void {
   mockExecFile.mockImplementation(
-    (_cmd: string, args: string[], _opts: any, cb: Function) => {
+    (_cmd: string, args: string[], _opts: any, cb: (error: Error | null, stdout: string, stderr: string) => void) => {
       const { error, stdout, stderr } = responder(args);
       cb(error, stdout, stderr ?? '');
     }

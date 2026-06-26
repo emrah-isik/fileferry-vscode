@@ -103,7 +103,7 @@ describe('UploadOnSaveService', () => {
       failed: [], deleted: [], deleteFailed: [],
     });
     // Default: file is NOT ignored by git (exit code 1 = not ignored)
-    mockExecFile.mockImplementation((_cmd: string, _args: string[], _opts: any, cb: Function) => {
+    mockExecFile.mockImplementation((_cmd: string, _args: string[], _opts: any, cb: (error: Error | null, stdout: string, stderr: string) => void) => {
       cb(Object.assign(new Error('not ignored'), { code: 1 }), '', '');
     });
   });
@@ -331,7 +331,7 @@ describe('UploadOnSaveService', () => {
   describe('gitignore respect', () => {
     it('does not upload files ignored by git', async () => {
       // exit code 0 = file IS ignored
-      mockExecFile.mockImplementation((_cmd: string, _args: string[], _opts: any, cb: Function) => {
+      mockExecFile.mockImplementation((_cmd: string, _args: string[], _opts: any, cb: (error: Error | null, stdout: string, stderr: string) => void) => {
         cb(null, '/workspace/vendor/autoload.php\n', '');
       });
       const service = createService();
@@ -367,7 +367,7 @@ describe('UploadOnSaveService', () => {
 
     it('still uploads when git check-ignore errors unexpectedly', async () => {
       // e.g. git not installed — don't block uploads
-      mockExecFile.mockImplementation((_cmd: string, _args: string[], _opts: any, cb: Function) => {
+      mockExecFile.mockImplementation((_cmd: string, _args: string[], _opts: any, cb: (error: Error | null, stdout: string, stderr: string) => void) => {
         cb(Object.assign(new Error('git not found'), { code: 127 }), '', '');
       });
       const service = createService();

@@ -6,6 +6,7 @@ import { ProjectConfigManager } from '../../storage/ProjectConfigManager';
 import { createTransferService } from '../../transferServiceFactory';
 import { generateId } from '../../utils/uuid';
 import { ProjectServer } from '../../models/ProjectConfig';
+import { ServerType } from '../../types';
 import { validateProjectServer, validateMappings } from '../../utils/validation';
 import { TimeOffsetDetector } from '../../services/TimeOffsetDetector';
 
@@ -13,6 +14,22 @@ interface Dependencies {
   credentialManager: CredentialManager;
   configManager: ProjectConfigManager;
   credentialsChanged?: vscode.Event<void>;
+}
+
+// Messages posted from the webview. `command` selects the handler; the remaining
+// fields are optional because each command only sends the subset it needs.
+interface DeploymentSettingsMessage {
+  command: string;
+  payload?: unknown;
+  id?: string;
+  serverId?: string;
+  index?: number;
+  mappings?: Array<{ localPath: string; remotePath: string }>;
+  excludedPaths?: string[];
+  server?: { id?: string; type?: string; credentialId?: string; rootPath?: string };
+  credentialId?: string;
+  startPath?: string;
+  serverType?: string;
 }
 
 export class DeploymentSettingsPanel {
@@ -66,17 +83,18 @@ export class DeploymentSettingsPanel {
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
   }
 
-  private async handleMessage(msg: any): Promise<void> {
+  private async handleMessage(msg: DeploymentSettingsMessage): Promise<void> {
     switch (msg.command) {
       case 'ready':
         await this.sendInitialState();
         break;
 
       case 'saveServer':
-        await this.handleSaveServer(msg.payload);
+        await this.handleSaveServer((msg.payload ?? {}) as Partial<ProjectServer> & { name?: string });
         break;
 
       case 'deleteServer': {
+        if (!msg.id) break;
         const found = await this.dependencies.configManager.getServerById(msg.id);
         const answer = await vscode.window.showWarningMessage(
           `Delete server "${found?.name ?? 'this server'}"? This cannot be undone.`,
@@ -89,13 +107,16 @@ export class DeploymentSettingsPanel {
         break;
       }
 
-      case 'setDefaultServer':
+      case 'setDefaultServer': {
+        if (!msg.id) break;
         await this.dependencies.configManager.setDefaultServer(msg.id);
         const configAfterDefault = await this.dependencies.configManager.getConfig();
         this.panel.webview.postMessage({ command: 'configUpdated', config: configAfterDefault });
         break;
+      }
 
       case 'saveMapping': {
+        if (!msg.serverId || !msg.mappings || !msg.excludedPaths) break;
         const entry = await this.dependencies.configManager.getServerById(msg.serverId);
         if (!entry) break;
         const mappingErrors = validateMappings(msg.mappings, msg.excludedPaths);
@@ -118,18 +139,22 @@ export class DeploymentSettingsPanel {
       }
 
       case 'deleteMapping':
+        if (!msg.serverId || msg.index === undefined) break;
         await this.handleDeleteMapping(msg.serverId, msg.index);
         break;
 
       case 'testConnection':
+        if (!msg.server) break;
         await this.handleTestConnection(msg.server);
         break;
 
       case 'detectTimeOffset':
+        if (!msg.server) break;
         await this.handleDetectTimeOffset(msg.server);
         break;
 
       case 'cloneServer': {
+        if (!msg.id) break;
         const original = await this.dependencies.configManager.getServerById(msg.id);
         if (!original) break;
         const config = await this.dependencies.configManager.getConfig();
@@ -146,6 +171,7 @@ export class DeploymentSettingsPanel {
       }
 
       case 'browseDirectory':
+        if (!msg.credentialId) break;
         await this.handleBrowseDirectory(msg.credentialId, msg.startPath ?? '/', msg.serverType);
         break;
 
@@ -168,7 +194,7 @@ export class DeploymentSettingsPanel {
     this.panel.webview.postMessage({ command: 'init', config, credentials });
   }
 
-  private async handleSaveServer(payload: any): Promise<void> {
+  private async handleSaveServer(payload: Partial<ProjectServer> & { name?: string }): Promise<void> {
     const existingCredentials = await this.dependencies.credentialManager.getAll();
     const config = (await this.dependencies.configManager.getConfig()) ?? { defaultServerId: '', servers: {} };
     const existingServerNames = Object.keys(config.servers);
@@ -271,9 +297,9 @@ export class DeploymentSettingsPanel {
       return;
     }
 
-    const service = createTransferService((server.type ?? 'sftp') as any);
+    const service = createTransferService((server.type ?? 'sftp') as ServerType);
     try {
-      await service.connect(credential as any, { password: credential.password, passphrase: credential.passphrase });
+      await service.connect(credential, { password: credential.password, passphrase: credential.passphrase });
 
       const timeOffsetMs = await new TimeOffsetDetector().detect(service);
 
@@ -319,9 +345,9 @@ export class DeploymentSettingsPanel {
     }
 
     const credential = await this.dependencies.credentialManager.getWithSecret(server.credentialId);
-    const service = createTransferService((server.type ?? 'sftp') as any);
+    const service = createTransferService((server.type ?? 'sftp') as ServerType);
     try {
-      await service.connect(credential as any, { password: credential.password, passphrase: credential.passphrase });
+      await service.connect(credential, { password: credential.password, passphrase: credential.passphrase });
 
       const timeOffsetMs = await new TimeOffsetDetector().detect(service);
       await service.disconnect();
@@ -391,9 +417,9 @@ export class DeploymentSettingsPanel {
       return;
     }
 
-    const sftp = createTransferService((serverType as any) ?? 'sftp');
+    const sftp = createTransferService((serverType ?? 'sftp') as ServerType);
     try {
-      await sftp.connect(credential as any, { password: credential.password, passphrase: credential.passphrase });
+      await sftp.connect(credential, { password: credential.password, passphrase: credential.passphrase });
     } catch (err: unknown) {
       this.panel.webview.postMessage({ command: 'browseError', message: `Connection failed: ${(err as Error).message}` });
       return;

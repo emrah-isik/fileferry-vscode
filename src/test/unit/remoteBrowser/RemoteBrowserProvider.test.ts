@@ -1,8 +1,6 @@
 import { RemoteBrowserProvider } from '../../../remoteBrowser/RemoteBrowserProvider';
 import { RemoteFileItem, RemoteEntry } from '../../../remoteBrowser/RemoteFileItem';
 
-const vscode = require('vscode');
-
 const mockConnection = {
   ensureConnected: jest.fn(),
   listDirectory: jest.fn(),

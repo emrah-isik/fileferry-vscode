@@ -1,14 +1,13 @@
 import { DryRunReporter, DryRunPlan } from '../../../services/DryRunReporter';
 import type { OutputChannel } from 'vscode';
 
-function makeOutput(): { lines: string[]; shown: boolean; channel: OutputChannel } {
+function makeOutput(): { lines: string[]; channel: OutputChannel } {
   const lines: string[] = [];
-  let shown = false;
   const channel = {
     appendLine: jest.fn((line: string) => { lines.push(line); }),
-    show: jest.fn(() => { shown = true; }),
+    show: jest.fn(),
   } as unknown as OutputChannel;
-  return { lines, shown: false, channel };
+  return { lines, channel };
 }
 
 const workspaceRoot = '/workspace';

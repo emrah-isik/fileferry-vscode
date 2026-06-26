@@ -15,7 +15,9 @@ function isNewFormatConfig(config: ProjectConfig): boolean {
   const entries = Object.values(config.servers);
   if (entries.length === 0) { return false; }
   // New format has `type` on every server entry; old binding format has `mappings` but no `type`
-  return entries.every((s: any) => typeof s.type === 'string');
+  return entries.every(
+    (entry) => typeof (entry as { type?: unknown }).type === 'string'
+  );
 }
 
 export async function migrateIfNeeded(deps: MigrationDeps): Promise<boolean> {

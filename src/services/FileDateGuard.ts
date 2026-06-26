@@ -27,7 +27,7 @@ export class FileDateGuard {
       return [];
     }
 
-    await this.sftp.connect(credential as any, {
+    await this.sftp.connect(credential, {
       password: credential.password,
       passphrase: credential.passphrase,
     });
@@ -69,7 +69,7 @@ export class FileDateGuard {
       return { toUpload: [], skipped: [] };
     }
 
-    await this.sftp.connect(credential as any, {
+    await this.sftp.connect(credential, {
       password: credential.password,
       passphrase: credential.passphrase,
     });

@@ -1,4 +1,4 @@
-import { UploadOrchestratorV2, UploadSummaryV2 } from '../../../services/UploadOrchestratorV2';
+import { UploadOrchestratorV2 } from '../../../services/UploadOrchestratorV2';
 import type { ResolvedUploadItem } from '../../../path/PathResolver';
 import type { CancellationToken } from 'vscode';
 

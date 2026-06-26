@@ -6,9 +6,9 @@ import * as vscode from 'vscode';
 export function withErrorHandling(
   label: string,
   output: vscode.OutputChannel,
-  fn: (...args: any[]) => Promise<void>
-): (...args: any[]) => Promise<void> {
-  return async (...args: any[]) => {
+  fn: (...args: unknown[]) => Promise<void>
+): (...args: unknown[]) => Promise<void> {
+  return async (...args: unknown[]) => {
     try {
       await fn(...args);
     } catch (err: unknown) {

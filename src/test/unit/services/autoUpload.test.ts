@@ -59,7 +59,7 @@ describe('autoUploadFile', () => {
     mockDateGuardCheck.mockResolvedValue([]);
     mockSummaryToHistoryEntries.mockReturnValue([{ id: 'h-1' }]);
     // Default git mock: file IS ignored (exit 0) — proves the allowlist bypasses it
-    mockExecFile.mockImplementation((_c: string, _a: string[], _o: any, cb: Function) => cb(null, '', ''));
+    mockExecFile.mockImplementation((_c: string, _a: string[], _o: any, cb: (error: Error | null, stdout: string, stderr: string) => void) => cb(null, '', ''));
   });
 
   describe('the allowlist decision (applyGitIgnore)', () => {

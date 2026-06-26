@@ -78,14 +78,17 @@ export class SftpService implements TransferService {
       server = applySshConfig(server, resolveHostAlias(server.host));
     }
 
-    // Build the connection config based on auth method.
-    // TypeScript uses `any` here because ssh2-sftp-client's ConnectConfig
-    // has optional fields that vary by auth method.
-    const connectConfig: Record<string, unknown> = {
+    // Build the connection config based on auth method. ssh2-sftp-client's
+    // ConnectOptions has optional fields that vary by auth method, so we
+    // assemble it incrementally below.
+    const connectConfig: SftpClient.ConnectOptions = {
       host: server.host,
       port: server.port,
       username: server.username,
-      algorithms: server.algorithms ?? DEFAULT_ALGORITHMS,
+      // ssh2 types `algorithms` with string-literal unions per category; our
+      // values are plain string arrays validated at runtime, so narrow to the
+      // library's expected shape here.
+      algorithms: (server.algorithms ?? DEFAULT_ALGORITHMS) as SftpClient.ConnectOptions['algorithms'],
       ...(options?.hostVerifier ? { hostVerifier: options.hostVerifier } : {}),
     };
 
@@ -111,7 +114,24 @@ export class SftpService implements TransferService {
     // before calling connect, so it's ready when the server sends a challenge.
     if (server.authMethod === 'keyboard-interactive' && options?.keyboardInteractiveHandler) {
       const handler = options.keyboardInteractiveHandler;
-      (this.client as any).client.on('keyboard-interactive',
+      // ssh2-sftp-client exposes the underlying ssh2 Client as `.client`, which
+      // is not part of its published type surface. Reach through with a minimal
+      // shape so we can register the keyboard-interactive challenge listener.
+      const underlyingClient = (this.client as unknown as {
+        client: {
+          on(
+            event: 'keyboard-interactive',
+            listener: (
+              name: string,
+              instructions: string,
+              lang: string,
+              prompts: Array<{ prompt: string; echo: boolean }>,
+              finish: (responses: string[]) => void
+            ) => void
+          ): void;
+        };
+      }).client;
+      underlyingClient.on('keyboard-interactive',
         async (_name: string, _instructions: string, _lang: string,
           prompts: Array<{ prompt: string; echo: boolean }>,
           finish: (responses: string[]) => void) => {
@@ -122,7 +142,7 @@ export class SftpService implements TransferService {
     }
 
     try {
-      await this.client.connect(connectConfig as any);
+      await this.client.connect(connectConfig);
     } catch (err: unknown) {
       const msg = (err as Error).message ?? '';
       if (msg.includes('parse') && msg.toLowerCase().includes('privatekey')) {
@@ -165,14 +185,14 @@ export class SftpService implements TransferService {
       // posixRename uses OpenSSH's POSIX rename extension — atomic overwrite.
       // Falls back to regular rename (works when the target doesn't exist yet).
       try {
-        await (this.client as any).posixRename(tempPath, remotePath);
+        await this.client.posixRename(tempPath, remotePath);
       } catch {
-        await (this.client as any).rename(tempPath, remotePath);
+        await this.client.rename(tempPath, remotePath);
       }
     } catch (err: unknown) {
       // Clean up the orphaned temp file
       try {
-        await (this.client as any).delete(tempPath);
+        await this.client.delete(tempPath);
       } catch {
         // Best effort — ignore cleanup failure
       }
@@ -186,7 +206,7 @@ export class SftpService implements TransferService {
     if (!this.client) {
       throw new Error('Not connected. Call connect() before downloading.');
     }
-    const result = await (this.client as any).get(remotePath);
+    const result = await this.client.get(remotePath);
     if (Buffer.isBuffer(result)) {
       return result;
     }
@@ -235,7 +255,7 @@ export class SftpService implements TransferService {
     if (!this.client) {
       throw new Error('Not connected. Call connect() before resolving paths.');
     }
-    return await (this.client as any).realPath(remotePath);
+    return await this.client.realPath(remotePath);
   }
 
   async statType(remotePath: string): Promise<'d' | '-' | null> {
@@ -243,7 +263,7 @@ export class SftpService implements TransferService {
       throw new Error('Not connected. Call connect() before stat.');
     }
     try {
-      const stats = await (this.client as any).stat(remotePath);
+      const stats = await this.client.stat(remotePath);
       return stats.isDirectory ? 'd' : '-';
     } catch {
       return null;
@@ -277,7 +297,7 @@ export class SftpService implements TransferService {
     if (!this.client) {
       throw new Error('Not connected. Call connect() before deleting files.');
     }
-    await (this.client as any).delete(remotePath);
+    await this.client.delete(remotePath);
   }
 
   async deleteDirectory(remotePath: string): Promise<void> {
@@ -291,7 +311,7 @@ export class SftpService implements TransferService {
     if (!this.client) {
       throw new Error('Not connected. Call connect() before chmod.');
     }
-    await (this.client as any).chmod(remotePath, mode);
+    await this.client.chmod(remotePath, mode);
   }
 
   async disconnect(): Promise<void> {

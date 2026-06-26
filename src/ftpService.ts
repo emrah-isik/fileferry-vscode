@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Writable } from 'stream';
 import { TransferService, FileEntry } from './transferService';
+import { ServerConfig } from './types';
 
 // 553 = file name not allowed; some servers use it for write-denied temp
 // files. 550 is also reused here when its body says "permission denied".
@@ -21,7 +22,7 @@ export class FtpService implements TransferService {
   }
 
   async connect(
-    server: any,
+    server: Pick<ServerConfig, 'type' | 'host' | 'port' | 'username'>,
     credentials: { password?: string; passphrase?: string },
     _options?: unknown
   ): Promise<void> {

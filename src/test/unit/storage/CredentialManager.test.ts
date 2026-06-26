@@ -1,4 +1,3 @@
-import * as path from 'path';
 import { CredentialManager } from '../../../storage/CredentialManager';
 import { SshCredential } from '../../../models/SshCredential';
 

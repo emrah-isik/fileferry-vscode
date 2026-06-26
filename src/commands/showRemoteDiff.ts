@@ -6,6 +6,7 @@ import { DiffService } from '../diffService';
 import { createTransferService } from '../transferServiceFactory';
 import { CredentialManager } from '../storage/CredentialManager';
 import { ProjectConfigManager } from '../storage/ProjectConfigManager';
+import { ServerConfig } from '../types';
 
 interface Dependencies {
   credentialManager: CredentialManager;
@@ -84,7 +85,10 @@ export async function showRemoteDiff(
       let tempPath: string;
       try {
         tempPath = await diffService.downloadRemoteFile(
-          credential as any,
+          // SshCredentialWithSecret carries every connection field connect()
+          // reads; it lacks the mapping/type fields ServerConfig declares but
+          // never uses on this path.
+          credential as unknown as ServerConfig,
           { password: credential.password, passphrase: credential.passphrase },
           remotePath
         );

@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { randomBytes } from 'crypto';
 import { ProjectConfigManager } from '../../storage/ProjectConfigManager';
 import { UploadHistoryService } from '../../services/UploadHistoryService';
+import type { HistoryFilter } from '../../models/UploadHistoryEntry';
 
 interface Dependencies {
   configManager: ProjectConfigManager;
@@ -59,7 +60,7 @@ export class UploadHistoryPanel {
     return new UploadHistoryService(workspaceRoot, 10000);
   }
 
-  private async handleMessage(msg: any): Promise<void> {
+  private async handleMessage(msg: { command: string } & Partial<HistoryFilter>): Promise<void> {
     switch (msg.command) {
       case 'ready':
         await this.sendInitialState();

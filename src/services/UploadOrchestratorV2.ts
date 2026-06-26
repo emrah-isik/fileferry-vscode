@@ -22,7 +22,7 @@ export class UploadOrchestratorV2 {
     deleteRemotePaths: string[] = [],
     token?: CancellationToken
   ): Promise<UploadSummaryV2> {
-    await this.sftp.connect(credential as any, {
+    await this.sftp.connect(credential, {
       password: credential.password,
       passphrase: credential.passphrase,
     });

@@ -12,7 +12,8 @@ import * as vscode from 'vscode';
 // 4 files selected only uploaded the right-clicked one.
 
 function isUri(arg: unknown): arg is vscode.Uri {
-  return !!arg && typeof (arg as vscode.Uri).fsPath === 'string' && !(arg as any).resourceUri;
+  return !!arg && typeof (arg as vscode.Uri).fsPath === 'string'
+    && !(arg as { resourceUri?: unknown }).resourceUri;
 }
 
 function isResourceState(arg: unknown): arg is vscode.SourceControlResourceState {
