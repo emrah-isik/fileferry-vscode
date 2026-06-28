@@ -14,7 +14,7 @@ import { UploadHistoryService } from '../services/UploadHistoryService';
 import { summaryToHistoryEntries } from '../services/summaryToHistoryEntries';
 import { reconcile, LocalFileEntry, RemoteFileEntry } from '../services/SyncReconciler';
 import { walkLocalTree, walkRemoteTree } from '../services/SyncTreeWalker';
-import { ProjectServer, ServerType } from '../models/ProjectConfig';
+import { ProjectConfig, ProjectServer, ServerType } from '../models/ProjectConfig';
 import { CredentialManager } from '../storage/CredentialManager';
 import { ProjectConfigManager } from '../storage/ProjectConfigManager';
 
@@ -29,6 +29,25 @@ interface ServerConfig {
   rootPath: string;
   mappings: ProjectServer['mappings'];
   excludedPaths: string[];
+}
+
+// Server-level facts shared by every sync scope (whole-mapping or folder).
+interface SyncServerContext {
+  config: ProjectConfig;
+  server: ProjectServer;
+  serverName: string;
+  serverConfig: ServerConfig;
+  workspaceRoot: string;
+  pathResolver: PathResolver;
+  credential: SshCredentialWithSecret;
+}
+
+// One sync run's bounds: which local dirs to walk, which remote subtree roots
+// bound the walk + deletes, and a display label (server, or "server › folder").
+interface SyncScope {
+  localRoots: string[];
+  remoteRoots: string[];
+  label: string;
 }
 
 interface DeleteChoiceItem extends vscode.QuickPickItem {
@@ -50,12 +69,107 @@ const SYNC_IGNORED_DIRECTORY_NAMES: ReadonlySet<string> = new Set(['.git', 'node
  * the existing {@link UploadOrchestratorV2}.
  */
 export async function syncToRemote(dependencies: Dependencies): Promise<void> {
+  const serverContext = await resolveSyncServerContext(dependencies);
+  if (!serverContext) {
+    return; // error already surfaced
+  }
+
+  const { serverName, serverConfig, workspaceRoot, pathResolver } = serverContext;
+
+  // Whole-mapping scope: walk every mapping's local root; bound the remote walk
+  // and deletes to the mapped remote roots (safety #5).
+  const localRoots = mappingLocalRoots(workspaceRoot, serverConfig);
+  const remoteRoots = mappedRemoteRoots(pathResolver, workspaceRoot, serverConfig);
+
+  await runSyncForScope(dependencies, serverContext, { localRoots, remoteRoots, label: serverName });
+}
+
+/**
+ * Sync Folder to Remote (#21c): run the same reconcile/prune pipeline over one
+ * or more selected folders instead of the whole mapping. Delete-extras is
+ * confined to the selected folders' remote subtrees, so a folder-sync can never
+ * prune anything outside what was right-clicked.
+ */
+export async function syncFolderToRemote(
+  folderPaths: string[],
+  dependencies: Dependencies
+): Promise<void> {
+  if (folderPaths.length === 0) {
+    vscode.window.showWarningMessage('FileFerry: No folder selected to sync.');
+    return;
+  }
+
+  const serverContext = await resolveSyncServerContext(dependencies);
+  if (!serverContext) {
+    return; // error already surfaced
+  }
+
+  const { scope, error } = resolveFolderScope(serverContext, folderPaths);
+  if (!scope) {
+    vscode.window.showErrorMessage(error ?? 'FileFerry: Could not resolve the sync scope.');
+    return;
+  }
+
+  await runSyncForScope(dependencies, serverContext, scope);
+}
+
+/**
+ * Resolves selected folders into a {@link SyncScope}: each folder's remote
+ * subtree root (the walk + delete bound) and a labelled scope. Returns an error
+ * when a selected folder is under no mapping.
+ */
+function resolveFolderScope(
+  serverContext: SyncServerContext,
+  folderPaths: string[]
+): { scope?: SyncScope; error?: string } {
+  const { pathResolver, workspaceRoot, serverConfig, serverName } = serverContext;
+  const localRoots: string[] = [];
+  const remoteRoots: string[] = [];
+
+  for (const folderPath of folderPaths) {
+    if (localRoots.includes(folderPath)) {
+      continue; // duplicate selection
+    }
+    let remotePath: string;
+    try {
+      // ignoreExclusions so an excluded *folder name* doesn't block syncing into
+      // it; per-file exclusion still applies during the walk.
+      remotePath = pathResolver.resolve(folderPath, workspaceRoot, {
+        ...serverConfig,
+        ignoreExclusions: true,
+      }).remotePath;
+    } catch {
+      const relative = path.relative(workspaceRoot, folderPath) || folderPath;
+      return {
+        error: `FileFerry: "${relative}" is not under any mapping for "${serverName}". Nothing to sync.`,
+      };
+    }
+    localRoots.push(folderPath);
+    remoteRoots.push(remotePath);
+  }
+
+  const firstRelative = path.relative(workspaceRoot, localRoots[0]) || '/';
+  const label = localRoots.length === 1
+    ? `${serverName} › ${firstRelative}`
+    : `${serverName} › ${localRoots.length} folders`;
+
+  return { scope: { localRoots, remoteRoots, label } };
+}
+
+/**
+ * Resolves the project config, default server, credential, and derived helpers
+ * shared by every sync scope. Surfaces an error and returns null when there is
+ * no config, no default server, or no mappings.
+ */
+async function resolveSyncServerContext(
+  dependencies: Dependencies
+): Promise<SyncServerContext | null> {
   const config = await dependencies.configManager.getConfig();
   if (!config) {
     vscode.window.showErrorMessage(
       'FileFerry: No project configuration found. Run "FileFerry: Deployment Settings" to configure.'
     );
-    return;
+    return null;
   }
 
   const match = await dependencies.configManager.getServerById(config.defaultServerId);
@@ -63,7 +177,7 @@ export async function syncToRemote(dependencies: Dependencies): Promise<void> {
     vscode.window.showErrorMessage(
       'FileFerry: Default server not found. Open Deployment Settings to fix.'
     );
-    return;
+    return null;
   }
   const { name: serverName, server } = match;
 
@@ -71,7 +185,7 @@ export async function syncToRemote(dependencies: Dependencies): Promise<void> {
     vscode.window.showErrorMessage(
       `FileFerry: No mappings configured for server "${serverName}". Nothing to sync.`
     );
-    return;
+    return null;
   }
 
   const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
@@ -81,21 +195,35 @@ export async function syncToRemote(dependencies: Dependencies): Promise<void> {
     mappings: server.mappings,
     excludedPaths: server.excludedPaths,
   };
-
-  // The mapped remote roots — used to bound the remote walk AND to guard deletes
-  // so a prune can never escape the mapping (safety #5).
-  const remoteRoots = mappedRemoteRoots(pathResolver, workspaceRoot, serverConfig);
-
-  const localFiles = gatherLocalFiles(pathResolver, workspaceRoot, serverConfig);
-
   const credential = await dependencies.credentialManager.getWithSecret(server.credentialId);
+
+  return { config, server, serverName, serverConfig, workspaceRoot, pathResolver, credential };
+}
+
+/**
+ * The shared sync pipeline for one scope: gather the local files under the
+ * scope's roots, walk the bounded remote tree, reconcile, present the
+ * delete-extras choice, enforce the destructive-safety gates, and execute via
+ * {@link UploadOrchestratorV2}. The whole-mapping and folder-scoped commands
+ * differ only in the {@link SyncScope} they pass.
+ */
+async function runSyncForScope(
+  dependencies: Dependencies,
+  serverContext: SyncServerContext,
+  scope: SyncScope
+): Promise<void> {
+  const { config, server, serverName, serverConfig, workspaceRoot, pathResolver, credential } =
+    serverContext;
+  const { localRoots, remoteRoots, label } = scope;
+
+  const localFiles = gatherLocalFilesUnder(pathResolver, workspaceRoot, serverConfig, localRoots);
 
   let plan;
   try {
     plan = await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
-        title: `FileFerry: Comparing "${serverName}"`,
+        title: `FileFerry: Comparing "${label}"`,
         cancellable: true,
       },
       async (progress, token) => {
@@ -114,7 +242,7 @@ export async function syncToRemote(dependencies: Dependencies): Promise<void> {
 
   if (plan.toUpload.length === 0 && plan.remoteExtras.length === 0) {
     vscode.window.showInformationMessage(
-      `FileFerry: "${serverName}" is already up to date — ${plan.upToDate.length} file(s) match.`
+      `FileFerry: "${label}" is already up to date — ${plan.upToDate.length} file(s) match.`
     );
     return;
   }
@@ -136,7 +264,7 @@ export async function syncToRemote(dependencies: Dependencies): Promise<void> {
       },
     ];
     const choice = await vscode.window.showQuickPick(items, {
-      placeHolder: `Sync to "${serverName}": ${plan.toUpload.length} to upload, ${extrasCount} remote extra(s)`,
+      placeHolder: `Sync to "${label}": ${plan.toUpload.length} to upload, ${extrasCount} remote extra(s)`,
     });
     if (!choice) {
       return; // cancelled the QuickPick
@@ -159,12 +287,12 @@ export async function syncToRemote(dependencies: Dependencies): Promise<void> {
   if (config.dryRun) {
     const reporter = new DryRunReporter(dependencies.output);
     reporter.report([
-      { serverName, uploadItems: plan.toUpload, deleteRemotePaths, workspaceRoot },
+      { serverName: label, uploadItems: plan.toUpload, deleteRemotePaths, workspaceRoot },
     ]);
     vscode.window
       .showInformationMessage(
         `FileFerry (dry run): ${plan.toUpload.length} to upload, ${deleteRemotePaths.length} to delete, ` +
-          `${plan.upToDate.length} up to date on "${serverName}".`,
+          `${plan.upToDate.length} up to date on "${label}".`,
         'Show Log'
       )
       .then(selection => {
@@ -180,18 +308,18 @@ export async function syncToRemote(dependencies: Dependencies): Promise<void> {
   let confirmed: boolean;
   if (deleteRemotePaths.length > 0) {
     dependencies.output.appendLine(
-      `FileFerry (sync): ${deleteRemotePaths.length} remote file(s) to delete on "${serverName}":`
+      `FileFerry (sync): ${deleteRemotePaths.length} remote file(s) to delete on "${label}":`
     );
     for (const remotePath of deleteRemotePaths) {
       dependencies.output.appendLine(`  DELETE  ${remotePath}`);
     }
     confirmed = await confirmation.confirmSyncDeletions(
-      serverName,
+      label,
       plan.toUpload.length,
       deleteRemotePaths.length
     );
   } else {
-    confirmed = await confirmation.confirm(server.id, plan.toUpload.length, serverName);
+    confirmed = await confirmation.confirm(server.id, plan.toUpload.length, label);
   }
   if (!confirmed) {
     return;
@@ -204,7 +332,7 @@ export async function syncToRemote(dependencies: Dependencies): Promise<void> {
   await vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Notification,
-      title: `FileFerry: Syncing to "${serverName}"`,
+      title: `FileFerry: Syncing to "${label}"`,
       cancellable: true,
     },
     async (progress, token) => {
@@ -262,7 +390,7 @@ export async function syncToRemote(dependencies: Dependencies): Promise<void> {
       } else if (totalFailed === 0) {
         vscode.window
           .showInformationMessage(
-            `FileFerry: Synced "${serverName}" — ${result.succeeded.length} uploaded, ` +
+            `FileFerry: Synced "${label}" — ${result.succeeded.length} uploaded, ` +
               `${result.deleted.length} deleted, ${plan.upToDate.length} up to date.`,
             'Show History'
           )
@@ -274,7 +402,7 @@ export async function syncToRemote(dependencies: Dependencies): Promise<void> {
       } else {
         vscode.window
           .showErrorMessage(
-            `FileFerry: Sync to "${serverName}" — ${totalFailed} failed, ${totalDone} succeeded.`,
+            `FileFerry: Sync to "${label}" — ${totalFailed} failed, ${totalDone} succeeded.`,
             'Show Log',
             'Show History'
           )
@@ -314,21 +442,26 @@ function mappedRemoteRoots(
   return [...roots];
 }
 
-/** Walks every mapping's local root, resolving + stat-ing eligible files. */
-function gatherLocalFiles(
-  pathResolver: PathResolver,
-  workspaceRoot: string,
-  serverConfig: ServerConfig
-): LocalFileEntry[] {
-  const entries: LocalFileEntry[] = [];
-  const seen = new Set<string>();
+/** The absolute local directory each mapping is rooted at. */
+function mappingLocalRoots(workspaceRoot: string, serverConfig: ServerConfig): string[] {
   const mappings = serverConfig.mappings.length > 0
     ? serverConfig.mappings
     : [{ localPath: '/', remotePath: '' }];
+  return mappings.map(mapping => path.join(workspaceRoot, mapping.localPath.replace(/^\//, '')));
+}
 
-  for (const mapping of mappings) {
-    const mappingLocalRoot = path.join(workspaceRoot, mapping.localPath.replace(/^\//, ''));
-    for (const localPath of walkLocalTree(mappingLocalRoot, SYNC_IGNORED_DIRECTORY_NAMES)) {
+/** Walks each given local root, resolving + stat-ing eligible files. */
+function gatherLocalFilesUnder(
+  pathResolver: PathResolver,
+  workspaceRoot: string,
+  serverConfig: ServerConfig,
+  localRoots: string[]
+): LocalFileEntry[] {
+  const entries: LocalFileEntry[] = [];
+  const seen = new Set<string>();
+
+  for (const localRoot of localRoots) {
+    for (const localPath of walkLocalTree(localRoot, SYNC_IGNORED_DIRECTORY_NAMES)) {
       if (seen.has(localPath)) {
         continue;
       }

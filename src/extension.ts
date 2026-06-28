@@ -7,6 +7,7 @@ import { migrateIfNeeded } from './storage/ConfigMigration';
 import { makeUploadSelectedHandler } from './commands/uploadSelectedHandler';
 import { makeUploadToServersHandler } from './commands/uploadToServersHandler';
 import { makeSyncToRemoteHandler } from './commands/syncToRemoteHandler';
+import { makeSyncFolderToRemoteHandler } from './commands/syncFolderToRemoteHandler';
 import { makeShowRemoteDiffHandler } from './commands/showRemoteDiffHandler';
 import { uploadAllChanged } from './commands/uploadAllChanged';
 import { uploadOnlyNewer } from './commands/uploadOnlyNewer';
@@ -115,6 +116,13 @@ export function activate(context: vscode.ExtensionContext): void {
       'fileferry.syncToRemote',
       withErrorHandling('syncToRemote',
         makeSyncToRemoteHandler({ credentialManager, configManager, context, output })
+      )
+    ),
+
+    vscode.commands.registerCommand(
+      'fileferry.syncFolderToRemote',
+      withErrorHandling('syncFolderToRemote',
+        makeSyncFolderToRemoteHandler({ credentialManager, configManager, context, output })
       )
     ),
 

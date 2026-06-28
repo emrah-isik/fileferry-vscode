@@ -127,6 +127,10 @@
         "title": "FileFerry: Sync to Remote (mirror local tree)"
       },
       {
+        "command": "fileferry.syncFolderToRemote",
+        "title": "FileFerry: Sync Folder to Remote"
+      },
+      {
         "command": "fileferry.showUploadHistory",
         "title": "FileFerry: Upload History"
       },
@@ -228,6 +232,11 @@
           "command": "fileferry.showRemoteDiff",
           "when": "resourceScheme == file && !explorerResourceIsFolder",
           "group": "fileferry@3"
+        },
+        {
+          "command": "fileferry.syncFolderToRemote",
+          "when": "explorerResourceIsFolder && resourceScheme == file",
+          "group": "fileferry@4"
         }
       ],
       "scm/title": [
