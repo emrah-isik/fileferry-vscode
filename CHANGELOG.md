@@ -2,6 +2,15 @@
 
 All notable changes to FileFerry will be documented in this file.
 
+## [0.10.0] - 2026-06-29
+
+### Added
+
+- **Sync to Remote — mirror your whole local tree to the server.** New command **FileFerry: Sync to Remote** (Command Palette + status-bar menu) walks the entire mapped local tree and the remote tree, then reconciles: uploads new and locally-newer files (skipping anything the remote already holds at the same age or newer) and — only when you opt in per run — **deletes remote files that no longer exist locally** ("delete extras"). Delete-extras is off by default and wrapped in defense-in-depth: a dry-run-first preview of the full plan, a modal confirmation naming the exact delete count, deletes restricted to the mapped remote root, and exclude-aware detection so `excludedPaths` / `.fileferryignore` files are never pruned. A new project setting **Back up remote files before sync deletes** (on by default) downloads each to-be-deleted file to `.vscode/fileferry-backups/` first; overwrites still honour Backup Before Overwrite. `.git` / `node_modules` are skipped. Synced transfers appear in Upload History under a new **Sync** source.
+- **Sync Folder to Remote — the same mirror, scoped to one folder.** Right-click any folder (or several) in the Explorer → **FileFerry: Sync Folder to Remote** to reconcile just that subtree. Delete-extras is confined to the selected folders, so pruning can never touch anything outside what you right-clicked.
+
+---
+
 ## [0.9.2] - 2026-06-26
 
 ### Added
