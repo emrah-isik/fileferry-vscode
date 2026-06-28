@@ -1,3 +1,4 @@
+import * as vscode from 'vscode';
 import { UploadConfirmation } from '../uploadConfirmation';
 
 const mockGlobalState = {
@@ -176,5 +177,65 @@ describe('UploadConfirmation.confirmWithDeletions', () => {
     mockShowMessage.mockResolvedValue('Proceed');
     await confirmation.confirmWithDeletions('Production', 1, 2);
     expect(mockGlobalState.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('UploadConfirmation.confirmSyncDeletions', () => {
+  let confirmation: UploadConfirmation;
+  const mockShowModalWarning = jest.fn();
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    // The destructive delete confirm goes through the injected modal-warning
+    // channel, NOT the dismissable info toast used for ordinary confirms.
+    confirmation = new UploadConfirmation(mockGlobalState as any, mockShowMessage, mockShowModalWarning);
+  });
+
+  it('names the upload and delete counts and warns deletes are irreversible', async () => {
+    mockShowModalWarning.mockResolvedValue('Sync and Delete');
+    await confirmation.confirmSyncDeletions('Production', 4, 3);
+    const [message] = mockShowModalWarning.mock.calls[0];
+    expect(message).toContain('Production');
+    expect(message).toContain('4');
+    expect(message).toContain('3');
+    expect(message.toLowerCase()).toContain('cannot be recovered');
+    // Uses the modal channel, never the plain info toast.
+    expect(mockShowMessage).not.toHaveBeenCalled();
+  });
+
+  it('returns true only when the user picks the delete action', async () => {
+    mockShowModalWarning.mockResolvedValue('Sync and Delete');
+    expect(await confirmation.confirmSyncDeletions('Production', 1, 1)).toBe(true);
+  });
+
+  it('returns false when the user cancels or dismisses', async () => {
+    mockShowModalWarning.mockResolvedValue('Cancel');
+    expect(await confirmation.confirmSyncDeletions('Production', 1, 1)).toBe(false);
+    mockShowModalWarning.mockResolvedValue(undefined);
+    expect(await confirmation.confirmSyncDeletions('Production', 1, 1)).toBe(false);
+  });
+
+  it('never suppresses and never offers "don\'t ask again"', async () => {
+    mockGlobalState.get.mockReturnValue(true); // even if a suppress flag exists
+    mockShowModalWarning.mockResolvedValue('Sync and Delete');
+    await confirmation.confirmSyncDeletions('Production', 1, 1);
+    expect(mockShowModalWarning).toHaveBeenCalled();
+    const options = mockShowModalWarning.mock.calls[0].slice(1);
+    expect(options.join(' ')).not.toContain("don't ask again");
+    expect(mockGlobalState.update).not.toHaveBeenCalled();
+  });
+
+  it('defaults to a real modal warning dialog (not a dismissable toast)', async () => {
+    const realConfirmation = new UploadConfirmation(mockGlobalState as any, mockShowMessage);
+    (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue('Sync and Delete');
+
+    const confirmed = await realConfirmation.confirmSyncDeletions('Production', 2, 1);
+
+    expect(confirmed).toBe(true);
+    expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+      expect.stringContaining('cannot be recovered'),
+      { modal: true },
+      'Sync and Delete'
+    );
   });
 });

@@ -340,6 +340,41 @@ describe('ProjectConfigManager — toggleBackupBeforeOverwrite', () => {
   });
 });
 
+describe('ProjectConfigManager — toggleSyncBackupBeforeDelete', () => {
+  let manager: ProjectConfigManager;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    manager = new ProjectConfigManager();
+  });
+
+  it('disables syncBackupBeforeDelete when currently undefined (default is on)', async () => {
+    const noFlag = { ...configFixture };
+    delete (noFlag as Record<string, unknown>).syncBackupBeforeDelete;
+    mockReadFile.mockResolvedValue(JSON.stringify(noFlag));
+    const result = await manager.toggleSyncBackupBeforeDelete();
+    const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string);
+    expect(written.syncBackupBeforeDelete).toBe(false);
+    expect(result).toBe(false);
+  });
+
+  it('enables syncBackupBeforeDelete when currently false', async () => {
+    mockReadFile.mockResolvedValue(JSON.stringify({ ...configFixture, syncBackupBeforeDelete: false }));
+    const result = await manager.toggleSyncBackupBeforeDelete();
+    const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string);
+    expect(written.syncBackupBeforeDelete).toBe(true);
+    expect(result).toBe(true);
+  });
+
+  it('creates a new config if none exists', async () => {
+    mockReadFile.mockRejectedValue({ code: 'ENOENT' });
+    const result = await manager.toggleSyncBackupBeforeDelete();
+    const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string);
+    expect(written.syncBackupBeforeDelete).toBe(false);
+    expect(result).toBe(false);
+  });
+});
+
 describe('ProjectConfigManager — setBackupRetentionDays', () => {
   let manager: ProjectConfigManager;
 

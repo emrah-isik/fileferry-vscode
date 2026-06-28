@@ -169,6 +169,18 @@ describe('StatusBarItem', () => {
       expect(vscode.commands.executeCommand).toHaveBeenCalledWith('fileferry.switchServer');
     });
 
+    it('offers a Sync to Remote entry that runs fileferry.syncToRemote', async () => {
+      (vscode.window.showQuickPick as jest.Mock).mockResolvedValue({ id: 'syncToRemote' });
+      (vscode.commands.executeCommand as jest.Mock).mockResolvedValue(undefined);
+      const ctx = makeContext();
+      const bar = new StatusBarItem(ctx, mockConfigManager);
+      await bar.refresh();
+      await bar.showMenu();
+      const items = (vscode.window.showQuickPick as jest.Mock).mock.calls[0][0];
+      expect(items.find((i: any) => i.id === 'syncToRemote')).toBeDefined();
+      expect(vscode.commands.executeCommand).toHaveBeenCalledWith('fileferry.syncToRemote');
+    });
+
     it('executes openSettings command when settings is selected', async () => {
       (vscode.window.showQuickPick as jest.Mock).mockResolvedValue({ id: 'openSettings' });
       (vscode.commands.executeCommand as jest.Mock).mockResolvedValue(undefined);

@@ -21,6 +21,7 @@ export interface ProjectConfig {
   uploadOnSave?: boolean;
   fileDateGuard?: boolean;   // warn before overwriting newer remote files (default: true)
   backupBeforeOverwrite?: boolean;  // download remote files before uploading (default: false)
+  syncBackupBeforeDelete?: boolean; // back up each remote file before Sync delete-extras prunes it (default: true)
   backupRetentionDays?: number;     // days to keep backup folders (default: 7)
   backupMaxSizeMB?: number;         // max total backup size in MB (default: 100)
   dryRun?: boolean;                 // preview mode — show what would be deployed without transferring (default: false)

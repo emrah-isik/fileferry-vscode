@@ -58,6 +58,7 @@ const mockConfigManager = {
   toggleUploadOnSave: jest.fn().mockResolvedValue(true),
   toggleFileDateGuard: jest.fn().mockResolvedValue(false),
   toggleBackupBeforeOverwrite: jest.fn().mockResolvedValue(true),
+  toggleSyncBackupBeforeDelete: jest.fn().mockResolvedValue(false),
   setBackupRetentionDays: jest.fn().mockResolvedValue(undefined),
   setBackupMaxSizeMB: jest.fn().mockResolvedValue(undefined),
   toggleDryRun: jest.fn().mockResolvedValue(true),
@@ -129,6 +130,17 @@ describe('ProjectSettingsPanel', () => {
     ProjectSettingsPanel.createOrShow(mockContext, { configManager: mockConfigManager });
     await messageHandler({ command: 'toggleBackupBeforeOverwrite' });
     expect(mockConfigManager.toggleBackupBeforeOverwrite).toHaveBeenCalled();
+    expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      command: 'configUpdated',
+    }));
+  });
+
+  it('handles toggleSyncBackupBeforeDelete: calls manager and posts configUpdated', async () => {
+    (mockConfigManager.toggleSyncBackupBeforeDelete as jest.Mock).mockResolvedValue(false);
+    (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({ ...configFixture, syncBackupBeforeDelete: false });
+    ProjectSettingsPanel.createOrShow(mockContext, { configManager: mockConfigManager });
+    await messageHandler({ command: 'toggleSyncBackupBeforeDelete' });
+    expect(mockConfigManager.toggleSyncBackupBeforeDelete).toHaveBeenCalled();
     expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
       command: 'configUpdated',
     }));

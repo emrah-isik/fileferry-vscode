@@ -11,7 +11,14 @@ export class UploadConfirmation {
     private showMessage: (
       message: string,
       ...items: string[]
-    ) => Thenable<string | undefined> = vscode.window.showInformationMessage.bind(vscode.window)
+    ) => Thenable<string | undefined> = vscode.window.showInformationMessage.bind(vscode.window),
+    // Destructive confirmations (irreversible deletes) use a true modal warning so
+    // they can't be missed or auto-dismissed like the ordinary info toast above.
+    private showModalWarning: (
+      message: string,
+      ...items: string[]
+    ) => Thenable<string | undefined> = (message, ...items) =>
+      vscode.window.showWarningMessage(message, { modal: true }, ...items)
   ) {}
 
   async confirm(serverId: string, fileCount: number, serverName?: string): Promise<boolean> {
@@ -61,6 +68,26 @@ export class UploadConfirmation {
       'Cancel'
     );
     return result === 'Proceed';
+  }
+
+  // Confirmation for Sync to Remote when delete-extras will prune remote files.
+  // Deletes are irreversible, so this is never suppressed, never offers
+  // "don't ask again", and names the exact count being deleted (safety #3).
+  async confirmSyncDeletions(
+    serverName: string,
+    uploadCount: number,
+    deleteCount: number
+  ): Promise<boolean> {
+    const uploadLabel = uploadCount === 1 ? '1 file' : `${uploadCount} files`;
+    const deleteLabel = deleteCount === 1 ? '1 remote file' : `${deleteCount} remote files`;
+    // Modal warning (not the dismissable info toast) — a destructive, irreversible
+    // delete must force a deliberate choice. The modal supplies its own Cancel.
+    const result = await this.showModalWarning(
+      `Sync to "${serverName}" will upload ${uploadLabel} and DELETE ${deleteLabel} not present locally. ` +
+        `Deleted files cannot be recovered.`,
+      'Sync and Delete'
+    );
+    return result === 'Sync and Delete';
   }
 
   // Clears "don't ask again" for all servers — called by the reset command.

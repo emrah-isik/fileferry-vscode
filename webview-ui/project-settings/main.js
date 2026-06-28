@@ -41,6 +41,8 @@ function render() {
   // fileDateGuard defaults to true when undefined
   const fileDateGuard = state.config.fileDateGuard !== false;
   const backupBeforeOverwrite = !!state.config.backupBeforeOverwrite;
+  // syncBackupBeforeDelete defaults to true when undefined
+  const syncBackupBeforeDelete = state.config.syncBackupBeforeDelete !== false;
   const backupRetentionDays = state.config.backupRetentionDays ?? 7;
   const backupMaxSizeMB = state.config.backupMaxSizeMB ?? 100;
   const watch = state.config.watch || { enabled: false, patterns: [] };
@@ -105,6 +107,16 @@ function render() {
 
     <div class="setting-row">
       <label class="toggle-label">
+        <input type="checkbox" id="chk-sync-backup-before-delete" ${syncBackupBeforeDelete ? 'checked' : ''}>
+        <span class="toggle-text">
+          <strong>Back up remote files before sync deletes</strong>
+          <span class="toggle-description">When Sync to Remote deletes remote files with no local counterpart, download each to a local backup first. Deletes are irreversible, so this is on by default.</span>
+        </span>
+      </label>
+    </div>
+
+    <div class="setting-row">
+      <label class="toggle-label">
         <input type="checkbox" id="chk-watch" ${watchEnabled ? 'checked' : ''}>
         <span class="toggle-text">
           <strong>Watch &amp; Auto-Upload Generated Files</strong>
@@ -134,6 +146,10 @@ function render() {
 
   document.getElementById('chk-backup-before-overwrite')?.addEventListener('change', () => {
     vscode.postMessage({ command: 'toggleBackupBeforeOverwrite' });
+  });
+
+  document.getElementById('chk-sync-backup-before-delete')?.addEventListener('change', () => {
+    vscode.postMessage({ command: 'toggleSyncBackupBeforeDelete' });
   });
 
   document.getElementById('input-retention-days')?.addEventListener('change', (e) => {

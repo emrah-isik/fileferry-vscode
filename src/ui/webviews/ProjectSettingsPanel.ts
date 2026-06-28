@@ -74,6 +74,11 @@ export class ProjectSettingsPanel {
         await this.pushConfigUpdate();
         break;
 
+      case 'toggleSyncBackupBeforeDelete':
+        await this.dependencies.configManager.toggleSyncBackupBeforeDelete();
+        await this.pushConfigUpdate();
+        break;
+
       case 'setBackupRetentionDays':
         await this.dependencies.configManager.setBackupRetentionDays(msg.value as number);
         await this.pushConfigUpdate();

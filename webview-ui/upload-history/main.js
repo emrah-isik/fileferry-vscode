@@ -17,6 +17,7 @@ const TRIGGER_LABELS = {
   save: 'On Save',
   'multi-server': 'Multi-Server',
   watch: 'Watch',
+  sync: 'Sync',
 };
 
 function triggerLabel(trigger) {
@@ -75,6 +76,7 @@ function render() {
           <option value="save">On Save</option>
           <option value="multi-server">Multi-Server</option>
           <option value="watch">Watch</option>
+          <option value="sync">Sync</option>
         </select>
         <input type="text" id="filter-search" placeholder="Search file path..." />
       </div>

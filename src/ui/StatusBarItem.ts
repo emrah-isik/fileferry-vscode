@@ -70,6 +70,11 @@ export class StatusBarItem implements vscode.Disposable {
         description: this.uploadOnSave ? 'ON' : 'OFF',
       },
       {
+        label: '$(sync) Sync to Remote',
+        id: 'syncToRemote',
+        description: 'mirror local tree',
+      },
+      {
         label: '$(server) Switch Server',
         id: 'switchServer',
       },
@@ -94,6 +99,7 @@ export class StatusBarItem implements vscode.Disposable {
     const commandMap: Record<string, string> = {
       toggleDryRun: 'fileferry.toggleDryRun',
       toggleUploadOnSave: 'fileferry.toggleUploadOnSave',
+      syncToRemote: 'fileferry.syncToRemote',
       switchServer: 'fileferry.switchServer',
       openSettings: 'fileferry.openSettings',
       showUploadHistory: 'fileferry.showUploadHistory',

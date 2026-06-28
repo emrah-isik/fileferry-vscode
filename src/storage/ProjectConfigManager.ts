@@ -120,6 +120,14 @@ export class ProjectConfigManager {
     return config.backupBeforeOverwrite;
   }
 
+  async toggleSyncBackupBeforeDelete(): Promise<boolean> {
+    const config = (await this.getConfig()) ?? this.emptyConfig();
+    // syncBackupBeforeDelete defaults to true when undefined, so toggling undefined → false
+    config.syncBackupBeforeDelete = config.syncBackupBeforeDelete === false;
+    await this.saveConfig(config);
+    return config.syncBackupBeforeDelete;
+  }
+
   async setBackupRetentionDays(days: number): Promise<void> {
     const config = (await this.getConfig()) ?? this.emptyConfig();
     config.backupRetentionDays = days;

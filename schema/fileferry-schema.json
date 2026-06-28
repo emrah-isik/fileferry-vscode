@@ -26,6 +26,11 @@
       "description": "When true, downloads each existing remote file to .vscode/fileferry-backups/ before uploading the new version.",
       "default": false
     },
+    "syncBackupBeforeDelete": {
+      "type": "boolean",
+      "description": "When true (the default), Sync to Remote downloads each remote file to .vscode/fileferry-backups/ before its delete-extras step prunes it. Deletes are irreversible, so this is opt-out.",
+      "default": true
+    },
     "backupRetentionDays": {
       "type": "integer",
       "description": "Number of days to keep backup folders before automatic cleanup.",

@@ -123,6 +123,10 @@
         "title": "FileFerry: Upload to Servers"
       },
       {
+        "command": "fileferry.syncToRemote",
+        "title": "FileFerry: Sync to Remote (mirror local tree)"
+      },
+      {
         "command": "fileferry.showUploadHistory",
         "title": "FileFerry: Upload History"
       },

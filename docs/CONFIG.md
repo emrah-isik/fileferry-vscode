@@ -30,6 +30,7 @@ No extra configuration needed — the schema is registered via `contributes.json
 | `dryRun` | `boolean` | no | `false` | When `true`, upload commands write a structured plan to the FileFerry output channel without opening any connections. |
 | `fileDateGuard` | `boolean` | no | `true` | When `false`, skips the remote mtime check that warns before overwriting newer remote files. |
 | `backupBeforeOverwrite` | `boolean` | no | `false` | When `true`, downloads each existing remote file to `.vscode/fileferry-backups/<timestamp>-<server>/` before uploading the replacement. |
+| `syncBackupBeforeDelete` | `boolean` | no | `true` | When `true` (the default), **Sync to Remote** downloads each remote file to `.vscode/fileferry-backups/<timestamp>-<server>/` before its delete-extras step prunes it. Deletes are irreversible, so this is opt-out. |
 | `backupRetentionDays` | `integer` ≥ 0 | no | `7` | Days to keep backup folders before automatic cleanup. |
 | `backupMaxSizeMB` | `integer` ≥ 0 | no | `100` | Maximum total size of the backups folder in megabytes. Oldest backups are pruned first. |
 | `historyMaxEntries` | `integer` ≥ 0 | no | `10000` | Cap on entries in `.vscode/fileferry-history.jsonl`. Set to `0` to disable history logging entirely. |
