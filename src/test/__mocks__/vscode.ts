@@ -8,6 +8,9 @@ const vscode = {
       get: jest.fn(),
       update: jest.fn()
     }),
+    // Workspace Trust — deploy hooks never run when this is false. Defaults to
+    // trusted; tests flip it per-case via (vscode.workspace as any).isTrusted.
+    isTrusted: true,
     workspaceFolders: [{ uri: { fsPath: '/tmp/workspace' } }],
     onDidSaveTextDocument: jest.fn().mockReturnValue({ dispose: jest.fn() }),
     createFileSystemWatcher: jest.fn().mockReturnValue({
@@ -86,6 +89,9 @@ const vscode = {
       writeText: jest.fn().mockResolvedValue(undefined),
       readText: jest.fn().mockResolvedValue(''),
     },
+    // The user's default integrated-terminal shell. Local hooks pass this to
+    // Node's spawn `shell` option; tests set/clear it per-case.
+    shell: undefined as string | undefined,
   },
   extensions: {
     getExtension: jest.fn(),

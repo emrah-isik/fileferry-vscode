@@ -86,6 +86,11 @@ export async function autoUploadFile(
     }
 
     const orchestrator = new UploadOrchestratorV2();
+    // Auto-triggers (on-save / watch) deliberately run NO deploy hooks (feature 27
+    // scope decision #5): a remote reload/migration on every save would hammer the
+    // server. Passing no hook context — like the null server — keeps this path
+    // hook-free; only deliberate deploys (uploadSelected / uploadToServers / sync)
+    // supply a hook context.
     const summary = await orchestrator.upload([resolved], credential, null, []);
 
     const historyMaxEntries = config.historyMaxEntries ?? 10000;

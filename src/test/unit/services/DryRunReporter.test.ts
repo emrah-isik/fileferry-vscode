@@ -133,4 +133,33 @@ describe('DryRunReporter', () => {
     reporter.report([{ serverName: 'myserver', uploadItems: [], deleteRemotePaths: [], workspaceRoot }]);
     expect(lines.some(l => l.includes('myserver'))).toBe(true);
   });
+
+  it('lists configured pre/post hooks with phase and location', () => {
+    const { lines, channel } = makeOutput();
+    const reporter = new DryRunReporter(channel);
+    reporter.report([{
+      serverName: 'production',
+      uploadItems: [],
+      deleteRemotePaths: [],
+      workspaceRoot,
+      hooks: {
+        preDeploy: [{ command: 'npm run build', location: 'local' }],
+        postDeploy: [{ command: 'systemctl reload nginx', location: 'remote' }],
+      },
+    }]);
+    const text = lines.join('\n');
+    expect(text).toContain('npm run build');
+    expect(text).toContain('systemctl reload nginx');
+    expect(text).toMatch(/pre/);
+    expect(text).toMatch(/post/);
+    expect(text).toMatch(/local/);
+    expect(text).toMatch(/remote/);
+  });
+
+  it('writes no hook lines when the plan has no hooks', () => {
+    const { lines, channel } = makeOutput();
+    const reporter = new DryRunReporter(channel);
+    reporter.report([{ serverName: 'production', uploadItems: [], deleteRemotePaths: [], workspaceRoot }]);
+    expect(lines.some(l => l.includes('HOOK'))).toBe(false);
+  });
 });

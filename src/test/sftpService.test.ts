@@ -1,12 +1,14 @@
 import { SftpService } from '../sftpService';
 import { ServerConfig } from '../types';
 import * as fs from 'fs';
+import { EventEmitter } from 'events';
 import * as agentResolverModule from '../ssh/agentResolver';
 
 // Mock for the underlying ssh2 Client that ssh2-sftp-client wraps
 const mockSsh2Client = {
   on: jest.fn(),
   removeAllListeners: jest.fn(),
+  exec: jest.fn(),
 };
 
 // Shared mock methods — defined outside the factory so tests can configure them.
@@ -760,6 +762,128 @@ describe('SftpService', () => {
     it('throws if not connected', async () => {
       const fresh = new SftpService();
       await expect(fresh.chmod('/var/www/index.php', 0o644)).rejects.toThrow('Not connected');
+    });
+  });
+
+  describe('execCommand', () => {
+    // Build a fake ssh2 exec channel: an EventEmitter that also carries a
+    // separate `stderr` EventEmitter and a `destroy` spy, matching the shape
+    // execCommand listens on ('data'/'exit'/'close' + channel.stderr 'data').
+    type FakeChannel = EventEmitter & { stderr: EventEmitter; destroy: jest.Mock };
+    type ExecCallback = (error: Error | undefined, channel: FakeChannel | undefined) => void;
+
+    function makeChannel(): FakeChannel {
+      const channel = new EventEmitter() as FakeChannel;
+      channel.stderr = new EventEmitter();
+      channel.destroy = jest.fn();
+      return channel;
+    }
+
+    beforeEach(async () => {
+      mockMethods.connect.mockResolvedValue(undefined);
+      await service.connect(serverConfig, { password: 'secret' });
+    });
+
+    it('runs the command with pty:false and returns stdout, stderr, and exitCode', async () => {
+      const channel = makeChannel();
+      mockSsh2Client.exec.mockImplementation((_command: string, _options: unknown, callback: ExecCallback) => {
+        callback(undefined, channel);
+        process.nextTick(() => {
+          channel.emit('data', Buffer.from('hello\n'));
+          channel.stderr.emit('data', Buffer.from('a warning\n'));
+          channel.emit('exit', 0);
+          channel.emit('close');
+        });
+      });
+
+      const result = await service.execCommand('echo hello');
+
+      expect(mockSsh2Client.exec).toHaveBeenCalledWith('echo hello', { pty: false }, expect.any(Function));
+      expect(result).toEqual({ stdout: 'hello\n', stderr: 'a warning\n', exitCode: 0 });
+    });
+
+    // The defining invariant: exit 0 with noisy stderr (MOTD, login banners,
+    // shell-init/locale warnings) is a SUCCESS. execCommand makes no pass/fail
+    // judgment — it returns exitCode 0 unmodified and the caller decides.
+    it('returns exitCode 0 even when stderr is non-empty (MOTD/banner is not a failure)', async () => {
+      const channel = makeChannel();
+      mockSsh2Client.exec.mockImplementation((_command: string, _options: unknown, callback: ExecCallback) => {
+        callback(undefined, channel);
+        process.nextTick(() => {
+          channel.stderr.emit('data', Buffer.from('Welcome to Ubuntu\nstty: standard input: Inaccessible\n'));
+          channel.emit('exit', 0);
+          channel.emit('close');
+        });
+      });
+
+      const result = await service.execCommand('systemctl reload nginx');
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stderr).toContain('Welcome to Ubuntu');
+    });
+
+    it('reports a non-zero exit code without throwing', async () => {
+      const channel = makeChannel();
+      mockSsh2Client.exec.mockImplementation((_command: string, _options: unknown, callback: ExecCallback) => {
+        callback(undefined, channel);
+        process.nextTick(() => {
+          channel.stderr.emit('data', Buffer.from('command not found\n'));
+          channel.emit('exit', 127);
+          channel.emit('close');
+        });
+      });
+
+      const result = await service.execCommand('does-not-exist');
+
+      expect(result).toEqual({ stdout: '', stderr: 'command not found\n', exitCode: 127 });
+    });
+
+    // A channel closed by a signal (or with no exit reported) yields a null
+    // exitCode — distinct from 0, and the caller's failure trigger.
+    it('returns null exitCode when the channel closes without an exit event', async () => {
+      const channel = makeChannel();
+      mockSsh2Client.exec.mockImplementation((_command: string, _options: unknown, callback: ExecCallback) => {
+        callback(undefined, channel);
+        process.nextTick(() => {
+          channel.emit('data', Buffer.from('partial\n'));
+          channel.emit('close');
+        });
+      });
+
+      const result = await service.execCommand('killed-by-signal');
+
+      expect(result.exitCode).toBeNull();
+      expect(result.stdout).toBe('partial\n');
+    });
+
+    it('destroys the channel on timeout and resolves with a null exitCode', async () => {
+      jest.useFakeTimers();
+      const channel = makeChannel();
+      mockSsh2Client.exec.mockImplementation((_command: string, _options: unknown, callback: ExecCallback) => {
+        callback(undefined, channel);
+        // never emits exit/close — simulates a hung command
+      });
+
+      const promise = service.execCommand('sleep 100', { timeoutMs: 5000 });
+      jest.advanceTimersByTime(5000);
+      const result = await promise;
+
+      expect(channel.destroy).toHaveBeenCalled();
+      expect(result.exitCode).toBeNull();
+      jest.useRealTimers();
+    });
+
+    it('rejects when the exec callback returns an error', async () => {
+      mockSsh2Client.exec.mockImplementation((_command: string, _options: unknown, callback: ExecCallback) => {
+        callback(new Error('Channel open failure'), undefined);
+      });
+
+      await expect(service.execCommand('whoami')).rejects.toThrow('Channel open failure');
+    });
+
+    it('throws if not connected', async () => {
+      const fresh = new SftpService();
+      await expect(fresh.execCommand('whoami')).rejects.toThrow('Not connected');
     });
   });
 });

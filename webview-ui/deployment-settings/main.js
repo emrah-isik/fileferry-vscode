@@ -90,6 +90,10 @@ window.addEventListener('message', ({ data: msg }) => {
     case 'validationError':
       showValidationErrors(msg.errors);
       break;
+
+    case 'hookSecretWarning':
+      showHookSecretWarnings(msg.commands || []);
+      break;
   }
 });
 
@@ -229,9 +233,11 @@ function renderDetailPanel() {
       <div class="tabs">
         <button class="tab-btn active" data-tab="connection">Connection</button>
         <button class="tab-btn" data-tab="mappings">Mappings</button>
+        <button class="tab-btn" data-tab="hooks">Hooks</button>
       </div>
       <div id="connection-tab" class="tab-content active"></div>
       <div id="mappings-tab" class="tab-content"></div>
+      <div id="hooks-tab" class="tab-content"></div>
     `;
   }
 
@@ -251,6 +257,7 @@ function renderDetailPanel() {
 
   renderConnectionTab(server);
   renderMappingsTab(server);
+  renderHooksTab(server);
 }
 
 function renderConnectionTab(server) {
@@ -536,6 +543,133 @@ function wireRemoveButtons() {
     clone.addEventListener('click', () => {
       clone.closest('tr')?.remove();
     });
+  });
+}
+
+// ─── Hooks tab ──────────────────────────────────────────────────────────────
+
+// Renders one editable row: command input + local/remote select + continue-on-error
+// checkbox + remove button. Remote is disabled on FTP (no shell exec over FTP).
+function hookRowHtml(hook, isFtp) {
+  const command = escapeHtml(hook?.command ?? '');
+  const location = hook?.location === 'remote' ? 'remote' : 'local';
+  const continueOnError = !!hook?.continueOnError;
+  const remoteDisabled = isFtp ? 'disabled' : '';
+  const remoteTitle = isFtp ? 'title="Remote hooks require SFTP"' : '';
+  return `
+    <div class="hook-row">
+      <input class="hook-command" type="text" value="${command}" placeholder="e.g. npm run build">
+      <select class="hook-location" ${remoteTitle}>
+        <option value="local" ${location === 'local' ? 'selected' : ''}>local</option>
+        <option value="remote" ${location === 'remote' ? 'selected' : ''} ${remoteDisabled}>remote</option>
+      </select>
+      <label class="hook-coe" title="Continue the deploy even if this hook fails">
+        <input class="hook-continue" type="checkbox" ${continueOnError ? 'checked' : ''}> continue on error
+      </label>
+      <button class="btn-remove-hook" type="button" title="Remove">×</button>
+      <div class="hook-warning" hidden></div>
+    </div>
+  `;
+}
+
+function renderHooksTab(server) {
+  const el = document.getElementById('hooks-tab');
+  if (!el || !server) return;
+
+  const isNew = !server.id;
+  const isFtp = isFtpType(server.type);
+  const hooks = server.hooks || {};
+  const preDeploy = hooks.preDeploy || [];
+  const postDeploy = hooks.postDeploy || [];
+
+  el.innerHTML = `
+    <p class="hint">Commands run automatically before and after a deliberate deploy to this server. They only run in a <strong>trusted workspace</strong> and are shown in the deploy confirmation before running.</p>
+    <p class="hint">Don't put secrets here — <code>fileferry.json</code> is committed to git. Use <code>$ENV_VAR</code> references or the git-ignored <code>fileferry.local.json</code>.</p>
+
+    <div class="section-title">Pre-deploy</div>
+    <div id="pre-hooks-body">${preDeploy.map(h => hookRowHtml(h, isFtp)).join('')}</div>
+    <button id="btn-add-pre-hook" class="btn-secondary" type="button">+ Add pre-deploy hook</button>
+
+    <div class="section-title" style="margin-top:24px">Post-deploy</div>
+    <div id="post-hooks-body">${postDeploy.map(h => hookRowHtml(h, isFtp)).join('')}</div>
+    <button id="btn-add-post-hook" class="btn-secondary" type="button">+ Add post-deploy hook</button>
+
+    <div class="form-actions">
+      ${isNew
+        ? '<p class="hint">Save the server on the Connection tab first, then add hooks here.</p>'
+        : '<button id="btn-save-hooks" type="button">Save Hooks</button>'}
+    </div>
+  `;
+
+  const addRow = (bodyId) => {
+    const body = document.getElementById(bodyId);
+    if (!body) return;
+    body.insertAdjacentHTML('beforeend', hookRowHtml(null, isFtp));
+    wireHookRows();
+  };
+  document.getElementById('btn-add-pre-hook')?.addEventListener('click', () => addRow('pre-hooks-body'));
+  document.getElementById('btn-add-post-hook')?.addEventListener('click', () => addRow('post-hooks-body'));
+
+  wireHookRows();
+
+  document.getElementById('btn-save-hooks')?.addEventListener('click', () => {
+    vscode.postMessage({
+      command: 'saveHooks',
+      serverId: server.id,
+      hooks: collectHookInputs(),
+    });
+  });
+}
+
+function wireHookRows() {
+  document.querySelectorAll('.btn-remove-hook').forEach(btn => {
+    const clone = btn.cloneNode(true);
+    btn.replaceWith(clone);
+    clone.addEventListener('click', () => {
+      clone.closest('.hook-row')?.remove();
+    });
+  });
+}
+
+// Reads one hooks list (#pre-hooks-body / #post-hooks-body) out of the DOM,
+// dropping rows whose command is blank.
+function collectHookList(bodyId) {
+  const body = document.getElementById(bodyId);
+  if (!body) return [];
+  return Array.from(body.querySelectorAll('.hook-row'))
+    .map(row => {
+      const command = row.querySelector('.hook-command').value.trim();
+      const location = row.querySelector('.hook-location').value === 'remote' ? 'remote' : 'local';
+      const continueOnError = row.querySelector('.hook-continue').checked;
+      const hook = { command, location };
+      if (continueOnError) hook.continueOnError = true;
+      return hook;
+    })
+    .filter(hook => hook.command.length > 0);
+}
+
+function collectHookInputs() {
+  return {
+    preDeploy: collectHookList('pre-hooks-body'),
+    postDeploy: collectHookList('post-hooks-body'),
+  };
+}
+
+// On a save-time secret-scan hit, flag every matching command row inline. The
+// warning is advisory and non-blocking — the hooks are already saved.
+function showHookSecretWarnings(commands) {
+  const flagged = new Set(commands);
+  document.querySelectorAll('#hooks-tab .hook-row').forEach(row => {
+    const warningEl = row.querySelector('.hook-warning');
+    if (!warningEl) return;
+    const command = row.querySelector('.hook-command').value.trim();
+    if (flagged.has(command)) {
+      warningEl.textContent = '⚠ This looks like it contains a secret. Use $ENV_VAR or fileferry.local.json instead.';
+      warningEl.hidden = false;
+    } else {
+      warningEl.textContent = '';
+      warningEl.hidden = true;
+    }
   });
 }
 

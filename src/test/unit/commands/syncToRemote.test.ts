@@ -86,6 +86,7 @@ function makeConfig(overrides: Partial<ProjectConfig> = {}): ProjectConfig {
 const uploadItem = { localPath: '/workspace/a.php', remotePath: '/var/www/a.php' };
 
 const mockConfigManager = {
+  getServerHooks: jest.fn().mockResolvedValue(undefined),
   getConfig: jest.fn(),
   getServerById: jest.fn().mockResolvedValue({ name: 'Production', server }),
 } as unknown as ProjectConfigManager;

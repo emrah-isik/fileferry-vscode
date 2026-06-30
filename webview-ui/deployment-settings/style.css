@@ -383,3 +383,45 @@ button.btn-danger:hover:not(:disabled) {
   border-radius: 50%;
   animation: fileferry-spin 0.7s linear infinite;
 }
+
+/* ─── Hooks tab ────────────────────────────────────────────────── */
+
+.hook-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.hook-row .hook-command {
+  flex: 1 1 280px;
+}
+
+.hook-row .hook-location {
+  flex: 0 0 auto;
+}
+
+.hook-row .hook-coe {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.85em;
+  color: var(--vscode-descriptionForeground);
+  white-space: nowrap;
+}
+
+.hook-row .btn-remove-hook {
+  flex: 0 0 auto;
+}
+
+.hook-warning {
+  flex: 1 1 100%;
+  margin-top: 2px;
+  padding: 4px 8px;
+  font-size: 0.85em;
+  background: var(--vscode-inputValidation-warningBackground);
+  border-left: 3px solid var(--vscode-inputValidation-warningBorder, #f0ad4e);
+  color: var(--vscode-inputValidation-warningForeground);
+}

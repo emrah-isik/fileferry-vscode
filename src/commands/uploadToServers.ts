@@ -11,6 +11,7 @@ import { ProjectServer } from '../models/ProjectConfig';
 import { DryRunReporter } from '../services/DryRunReporter';
 import { UploadHistoryService } from '../services/UploadHistoryService';
 import { summaryToHistoryEntries } from '../services/summaryToHistoryEntries';
+import { UploadConfirmation } from '../uploadConfirmation';
 
 interface Dependencies {
   credentialManager: CredentialManager;
@@ -105,6 +106,10 @@ export async function uploadToServers(
       continue;
     }
 
+    // Effective hooks (committed + fileferry.local.json) for the confirmation
+    // listing and for execution by this server's orchestrator pass.
+    server.hooks = await dependencies.configManager.getServerHooks(serverName);
+
     const pathResolver = new PathResolver();
     const serverConfig = {
       rootPath: server.rootPath,
@@ -137,6 +142,7 @@ export async function uploadToServers(
       uploadItems: p.uploadItems,
       deleteRemotePaths: p.deleteRemotePaths,
       workspaceRoot,
+      hooks: p.server.hooks,
     })));
     const totalUploads = plans.reduce((sum, p) => sum + p.uploadItems.length, 0);
     const totalDeletes = plans.reduce((sum, p) => sum + p.deleteRemotePaths.length, 0);
@@ -144,6 +150,16 @@ export async function uploadToServers(
       `FileFerry (dry run): ${totalUploads} file(s) to upload, ${totalDeletes} to delete across ${plans.length} server(s).`,
       'Show Log'
     ).then(choice => { if (choice === 'Show Log') { dependencies.output.show(); } });
+    return;
+  }
+
+  // Multi-server has no per-file confirmation, so hooks would otherwise run
+  // unseen. When any selected server has hooks, list them before deploying.
+  const confirmation = new UploadConfirmation(dependencies.context.globalState);
+  const hooksConfirmed = await confirmation.confirmHooks(
+    plans.map(plan => ({ serverName: plan.serverName, hooks: plan.server.hooks }))
+  );
+  if (!hooksConfirmed) {
     return;
   }
 
@@ -205,7 +221,12 @@ export async function uploadToServers(
             const credential = await dependencies.credentialManager.getWithSecret(plan.server.credentialId);
             const orchestrator = new UploadOrchestratorV2();
             const summary = await orchestrator.upload(
-              plan.uploadItems, credential, plan.server, plan.deleteRemotePaths, token
+              plan.uploadItems, credential, plan.server, plan.deleteRemotePaths, token, {
+                workspaceRoot,
+                dryRun: !!config.dryRun,
+                isTrusted: vscode.workspace.isTrusted,
+                output: dependencies.output,
+              }
             );
             return { serverName: plan.serverName, summary };
           } catch (err: unknown) {
@@ -242,7 +263,9 @@ export async function uploadToServers(
           failed.push(result);
         } else if (result.summary) {
           const totalFailed = result.summary.failed.length + result.summary.deleteFailed.length;
-          if (totalFailed > 0) {
+          // A pre-deploy hook abort transferred nothing — count it as a failure
+          // for this server rather than a silent "0 files succeeded".
+          if (result.summary.hookAborted || totalFailed > 0) {
             failed.push(result);
           } else {
             succeeded.push(result);

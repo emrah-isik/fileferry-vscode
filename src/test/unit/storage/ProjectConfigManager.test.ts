@@ -5,6 +5,7 @@ jest.mock('fs/promises', () => ({
   readFile: jest.fn(),
   writeFile: jest.fn().mockResolvedValue(undefined),
   mkdir: jest.fn().mockResolvedValue(undefined),
+  appendFile: jest.fn().mockResolvedValue(undefined),
 }));
 
 jest.mock('vscode', () => ({
@@ -23,8 +24,30 @@ jest.mock('vscode', () => ({
 }));
 
 import * as fs from 'fs/promises';
+import { HookCommand } from '../../../models/ProjectConfig';
 const mockReadFile = fs.readFile as jest.Mock;
 const mockWriteFile = fs.writeFile as jest.Mock;
+const mockAppendFile = fs.appendFile as jest.Mock;
+
+// Routes readFile by which config file the manager asks for, so getEffectiveConfig
+// (committed base + git-ignored local override) can be exercised in one test.
+function mockReadByPath(files: { committed?: string; local?: string; gitignore?: string }): void {
+  mockReadFile.mockImplementation((filePath: string) => {
+    if (filePath.endsWith('fileferry.local.json')) {
+      return files.local !== undefined ? Promise.resolve(files.local) : Promise.reject({ code: 'ENOENT' });
+    }
+    if (filePath.endsWith('fileferry.json')) {
+      return files.committed !== undefined ? Promise.resolve(files.committed) : Promise.reject({ code: 'ENOENT' });
+    }
+    if (filePath.endsWith('.gitignore')) {
+      return files.gitignore !== undefined ? Promise.resolve(files.gitignore) : Promise.reject({ code: 'ENOENT' });
+    }
+    return Promise.reject({ code: 'ENOENT' });
+  });
+}
+
+const localHooks: HookCommand[] = [{ command: 'mysql -p"$DB_PASS" < dump.sql', location: 'remote' }];
+const committedHooks: HookCommand[] = [{ command: 'npm run build', location: 'local' }];
 
 const serverFixture: ProjectServer = {
   id: 'uuid-prod-1',
@@ -525,5 +548,185 @@ describe('ProjectConfigManager — setWatchPatterns', () => {
     await manager.setWatchPatterns(['dist/**']);
     const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string);
     expect(written.watch).toEqual({ enabled: false, patterns: ['dist/**'] });
+  });
+});
+
+describe('ProjectConfigManager — setServerHooks', () => {
+  let manager: ProjectConfigManager;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    manager = new ProjectConfigManager();
+  });
+
+  it('sets hooks on the named server and writes the committed config', async () => {
+    mockReadFile.mockResolvedValue(JSON.stringify(configFixture));
+    await manager.setServerHooks('production', { preDeploy: committedHooks });
+    const writePath = mockWriteFile.mock.calls[0][0] as string;
+    const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string);
+    expect(writePath).toContain('.vscode/fileferry.json');
+    expect(written.servers['production'].hooks).toEqual({ preDeploy: committedHooks });
+  });
+
+  it('fires onDidSaveConfig', async () => {
+    mockReadFile.mockResolvedValue(JSON.stringify(configFixture));
+    const listener = jest.fn();
+    manager.onDidSaveConfig(listener);
+    await manager.setServerHooks('production', { postDeploy: committedHooks });
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it('throws when the server does not exist', async () => {
+    mockReadFile.mockResolvedValue(JSON.stringify(configFixture));
+    await expect(manager.setServerHooks('nonexistent', { preDeploy: committedHooks }))
+      .rejects.toThrow('Server "nonexistent" not found');
+  });
+});
+
+describe('ProjectConfigManager — getEffectiveConfig (fileferry.local.json merge)', () => {
+  let manager: ProjectConfigManager;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    manager = new ProjectConfigManager();
+  });
+
+  it('returns the committed config unchanged when no local file exists', async () => {
+    const committed = {
+      ...configFixture,
+      servers: { production: { ...serverFixture, hooks: { preDeploy: committedHooks } } },
+    };
+    mockReadByPath({ committed: JSON.stringify(committed) });
+    const effective = await manager.getEffectiveConfig();
+    expect(effective?.servers['production'].hooks).toEqual({ preDeploy: committedHooks });
+  });
+
+  it('returns null when no committed config exists', async () => {
+    mockReadByPath({});
+    expect(await manager.getEffectiveConfig()).toBeNull();
+  });
+
+  it('lets the local file override a server\'s hooks (local wins)', async () => {
+    const committed = {
+      ...configFixture,
+      servers: { production: { ...serverFixture, hooks: { preDeploy: committedHooks } } },
+    };
+    const local = { servers: { production: { hooks: { postDeploy: localHooks } } } };
+    mockReadByPath({ committed: JSON.stringify(committed), local: JSON.stringify(local) });
+    const effective = await manager.getEffectiveConfig();
+    expect(effective?.servers['production'].hooks).toEqual({ postDeploy: localHooks });
+  });
+
+  it('only merges hooks — other committed server fields are untouched', async () => {
+    const committed = { ...configFixture, servers: { production: { ...serverFixture } } };
+    const local = { servers: { production: { hooks: { preDeploy: localHooks } } } };
+    mockReadByPath({ committed: JSON.stringify(committed), local: JSON.stringify(local) });
+    const effective = await manager.getEffectiveConfig();
+    expect(effective?.servers['production'].rootPath).toBe('/var/www/html');
+    expect(effective?.servers['production'].hooks).toEqual({ preDeploy: localHooks });
+  });
+
+  it('leaves servers absent from the local file with their committed hooks', async () => {
+    const committed = {
+      ...configFixture,
+      servers: {
+        production: { ...serverFixture, hooks: { preDeploy: committedHooks } },
+        staging: { ...serverFixture, id: 'uuid-staging-1', hooks: { postDeploy: committedHooks } },
+      },
+    };
+    const local = { servers: { production: { hooks: { postDeploy: localHooks } } } };
+    mockReadByPath({ committed: JSON.stringify(committed), local: JSON.stringify(local) });
+    const effective = await manager.getEffectiveConfig();
+    expect(effective?.servers['production'].hooks).toEqual({ postDeploy: localHooks });
+    expect(effective?.servers['staging'].hooks).toEqual({ postDeploy: committedHooks });
+  });
+
+  it('ignores local hooks for a server not present in the committed config', async () => {
+    const committed = { ...configFixture, servers: { production: { ...serverFixture } } };
+    const local = { servers: { ghost: { hooks: { preDeploy: localHooks } } } };
+    mockReadByPath({ committed: JSON.stringify(committed), local: JSON.stringify(local) });
+    const effective = await manager.getEffectiveConfig();
+    expect(effective?.servers['ghost']).toBeUndefined();
+    expect(effective?.servers['production'].hooks).toBeUndefined();
+  });
+});
+
+describe('ProjectConfigManager — getServerHooks (effective per-server hooks)', () => {
+  let manager: ProjectConfigManager;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    manager = new ProjectConfigManager();
+  });
+
+  it('returns the committed hooks when no local override exists', async () => {
+    const committed = {
+      ...configFixture,
+      servers: { production: { ...serverFixture, hooks: { preDeploy: committedHooks } } },
+    };
+    mockReadByPath({ committed: JSON.stringify(committed) });
+    expect(await manager.getServerHooks('production')).toEqual({ preDeploy: committedHooks });
+  });
+
+  it('returns the local override hooks when present (local wins)', async () => {
+    const committed = {
+      ...configFixture,
+      servers: { production: { ...serverFixture, hooks: { preDeploy: committedHooks } } },
+    };
+    const local = { servers: { production: { hooks: { postDeploy: localHooks } } } };
+    mockReadByPath({ committed: JSON.stringify(committed), local: JSON.stringify(local) });
+    expect(await manager.getServerHooks('production')).toEqual({ postDeploy: localHooks });
+  });
+
+  it('returns undefined when the server has no hooks', async () => {
+    mockReadByPath({ committed: JSON.stringify(configFixture) });
+    expect(await manager.getServerHooks('production')).toBeUndefined();
+  });
+
+  it('returns undefined for an unknown server', async () => {
+    mockReadByPath({ committed: JSON.stringify(configFixture) });
+    expect(await manager.getServerHooks('nope')).toBeUndefined();
+  });
+});
+
+describe('ProjectConfigManager — setLocalServerHooks', () => {
+  let manager: ProjectConfigManager;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    manager = new ProjectConfigManager();
+  });
+
+  it('writes hooks to fileferry.local.json (never the committed file)', async () => {
+    mockReadByPath({});
+    await manager.setLocalServerHooks('production', { postDeploy: localHooks });
+    const writePath = mockWriteFile.mock.calls[0][0] as string;
+    const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string);
+    expect(writePath).toContain('.vscode/fileferry.local.json');
+    expect(written.servers['production'].hooks).toEqual({ postDeploy: localHooks });
+  });
+
+  it('appends fileferry.local.json to .gitignore on first write', async () => {
+    mockReadByPath({ gitignore: 'node_modules\n' });
+    await manager.setLocalServerHooks('production', { postDeploy: localHooks });
+    expect(mockAppendFile).toHaveBeenCalledTimes(1);
+    const [appendPath, appended] = mockAppendFile.mock.calls[0];
+    expect(appendPath).toContain('.gitignore');
+    expect(appended).toContain('.vscode/fileferry.local.json');
+  });
+
+  it('does not duplicate the .gitignore entry when it is already present', async () => {
+    mockReadByPath({ gitignore: 'node_modules\n.vscode/fileferry.local.json\n' });
+    await manager.setLocalServerHooks('production', { postDeploy: localHooks });
+    expect(mockAppendFile).not.toHaveBeenCalled();
+  });
+
+  it('merges into existing local hooks for other servers', async () => {
+    const existingLocal = { servers: { staging: { hooks: { preDeploy: localHooks } } } };
+    mockReadByPath({ local: JSON.stringify(existingLocal), gitignore: '.vscode/fileferry.local.json\n' });
+    await manager.setLocalServerHooks('production', { postDeploy: localHooks });
+    const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string);
+    expect(written.servers['staging'].hooks).toEqual({ preDeploy: localHooks });
+    expect(written.servers['production'].hooks).toEqual({ postDeploy: localHooks });
   });
 });

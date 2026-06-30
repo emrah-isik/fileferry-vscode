@@ -5,7 +5,7 @@ import * as path from 'path';
 import { ServerConfig, UploadPair, UploadResult } from './types';
 import { resolveAgentSocket } from './ssh/agentResolver';
 import { resolveHostAlias, applySshConfig } from './ssh/SshConfigResolver';
-import { TransferService } from './transferService';
+import { TransferService, RemoteCommandResult, RemoteCommandRunner } from './transferService';
 
 // Default algorithms that ensure compatibility with modern OpenSSH 8.8+ servers.
 // ssh2 1.17.0 supports these natively — we set them explicitly so they can't be
@@ -55,7 +55,7 @@ function isPermissionDenied(err: { code?: string | number; message?: string }): 
   return /permission denied/i.test(err.message ?? '');
 }
 
-export class SftpService implements TransferService {
+export class SftpService implements TransferService, RemoteCommandRunner {
   private client: SftpClient | null = null;
 
   get connected(): boolean {
@@ -314,8 +314,91 @@ export class SftpService implements TransferService {
     await this.client.chmod(remotePath, mode);
   }
 
+  // Runs a shell command on the remote host over the same ssh2 connection the
+  // SFTP session already holds — no second auth, the deploy's own context.
+  // Returns stdout, stderr, and the raw exit code WITHOUT judging success:
+  // many servers write benign chatter to stderr on a 0-exit command (MOTD,
+  // login banners, shell-init/locale warnings), so judging on stderr would
+  // abort deploys on noise. The caller decides on exitCode alone. A `null`
+  // exitCode (channel closed via signal, or destroyed on timeout) is the real
+  // failure case, distinct from a 0 exit with non-empty stderr.
+  async execCommand(command: string, options?: { timeoutMs?: number }): Promise<RemoteCommandResult> {
+    if (!this.client) {
+      throw new Error('Not connected. Call connect() before running remote commands.');
+    }
+
+    // ssh2-sftp-client exposes the underlying ssh2 Client as `.client`, which is
+    // not part of its published type surface. Reach through with a minimal shape
+    // (same accessor the keyboard-interactive handler uses) to call `.exec()`.
+    const underlyingClient = (this.client as unknown as {
+      client: {
+        exec(
+          command: string,
+          options: { pty: boolean },
+          callback: (error: Error | undefined, channel: RemoteExecChannel) => void
+        ): void;
+      };
+    }).client;
+
+    return new Promise<RemoteCommandResult>((resolve, reject) => {
+      // Deliberately pty:false — a PTY merges stdout+stderr and invites
+      // login-shell banner noise; a plain exec channel keeps the streams
+      // separate and quieter.
+      underlyingClient.exec(command, { pty: false }, (error, channel) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        let stdout = '';
+        let stderr = '';
+        let exitCode: number | null = null;
+        let settled = false;
+        let timer: ReturnType<typeof setTimeout> | undefined;
+
+        const finish = (): void => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          if (timer) {
+            clearTimeout(timer);
+          }
+          resolve({ stdout, stderr, exitCode });
+        };
+
+        if (options?.timeoutMs && options.timeoutMs > 0) {
+          timer = setTimeout(() => {
+            // A hung command can't be allowed to wedge the deploy: tear the
+            // channel down and resolve with whatever was captured. exitCode
+            // stays null, so the caller treats the timeout as a failure.
+            channel.destroy();
+            finish();
+          }, options.timeoutMs);
+        }
+
+        channel.on('data', (data: Buffer) => { stdout += data.toString(); });
+        channel.stderr.on('data', (data: Buffer) => { stderr += data.toString(); });
+        // 'exit' carries the real exit code (or null on a signal); 'close'
+        // fires once the streams are fully drained, so we resolve there.
+        channel.on('exit', (code: number | null) => { exitCode = code; });
+        channel.on('close', () => { finish(); });
+      });
+    });
+  }
+
   async disconnect(): Promise<void> {
     await this.client?.end();
     this.client = null;
   }
+}
+
+// Minimal shape of the ssh2 exec channel we consume: a stdout stream emitting
+// 'data'/'exit'/'close', a separate `stderr` stream, and `destroy()` for timeout.
+interface RemoteExecChannel {
+  on(event: 'data', listener: (data: Buffer) => void): void;
+  on(event: 'exit', listener: (code: number | null) => void): void;
+  on(event: 'close', listener: () => void): void;
+  stderr: { on(event: 'data', listener: (data: Buffer) => void): void };
+  destroy(): void;
 }

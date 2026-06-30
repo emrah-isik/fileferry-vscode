@@ -79,6 +79,7 @@ const mockConfigManager = {
   getServerById: jest.fn().mockResolvedValue({ name: 'Production', server: serverFixture }),
   getServer: jest.fn().mockResolvedValue(serverFixture),
   getServerNames: jest.fn().mockResolvedValue(['Production']),
+  setServerHooks: jest.fn().mockResolvedValue(undefined),
 } as unknown as ProjectConfigManager;
 
 function dependencies() {
@@ -234,6 +235,54 @@ describe('DeploymentSettingsPanel message handling', () => {
     expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
       expect.stringContaining('Production')
     );
+  });
+
+  // ── Deploy hooks ──────────────────────────────────────────────────────────────
+
+  it('handles saveHooks message: persists hooks for the server and posts configUpdated', async () => {
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    const hooks = { preDeploy: [{ command: 'npm run build', location: 'local' }], postDeploy: [] };
+    await messageHandler({ command: 'saveHooks', serverId: 'srv-1', hooks });
+    expect(mockConfigManager.setServerHooks).toHaveBeenCalledWith('Production', hooks);
+    expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({ command: 'configUpdated' }));
+  });
+
+  it('saveHooks shows an info notification with the server name', async () => {
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    const hooks = { preDeploy: [], postDeploy: [{ command: 'systemctl reload nginx', location: 'remote' }] };
+    await messageHandler({ command: 'saveHooks', serverId: 'srv-1', hooks });
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(expect.stringContaining('Production'));
+  });
+
+  it('saveHooks posts a hookSecretWarning when a command looks like it contains a secret', async () => {
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    const hooks = {
+      preDeploy: [{ command: 'mysql -psupersecret123 mydb < dump.sql', location: 'remote' }],
+      postDeploy: [],
+    };
+    await messageHandler({ command: 'saveHooks', serverId: 'srv-1', hooks });
+    const warning = (mockWebview.postMessage as jest.Mock).mock.calls
+      .map(c => c[0])
+      .find(m => m.command === 'hookSecretWarning');
+    expect(warning).toBeDefined();
+    expect(warning.commands).toContain('mysql -psupersecret123 mydb < dump.sql');
+  });
+
+  it('saveHooks does not post a hookSecretWarning for benign commands', async () => {
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    const hooks = { preDeploy: [{ command: 'npm run build', location: 'local' }], postDeploy: [] };
+    await messageHandler({ command: 'saveHooks', serverId: 'srv-1', hooks });
+    const warning = (mockWebview.postMessage as jest.Mock).mock.calls
+      .map(c => c[0])
+      .find(m => m.command === 'hookSecretWarning');
+    expect(warning).toBeUndefined();
+  });
+
+  it('saveHooks does nothing when the server id is not found', async () => {
+    (mockConfigManager.getServerById as jest.Mock).mockResolvedValue(undefined);
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    await messageHandler({ command: 'saveHooks', serverId: 'unknown', hooks: { preDeploy: [], postDeploy: [] } });
+    expect(mockConfigManager.setServerHooks).not.toHaveBeenCalled();
   });
 
   it('handles deleteMapping message: removes mapping entry', async () => {

@@ -2,6 +2,20 @@ import { PathMapping } from './ProjectBinding';
 
 export type ServerType = 'sftp' | 'ftp' | 'ftps' | 'ftps-implicit';
 
+// Where a deploy hook runs: 'local' on the user's machine via the shell,
+// 'remote' on the server over the deploy's own SSH connection (SFTP only).
+export type HookLocation = 'local' | 'remote';
+
+// A single pre/post-deploy command. Lives in fileferry.json (committed) or the
+// git-ignored fileferry.local.json. The model owns this shape; HookRunner
+// (the executor) imports it from here.
+export interface HookCommand {
+  command: string;
+  location: HookLocation;
+  continueOnError?: boolean;  // a failure is logged but doesn't abort the deploy
+  timeoutMs?: number;         // per-hook timeout so a hung command can't wedge the deploy
+}
+
 export interface ProjectServer {
   id: string;              // internal UUID — stable across renames
   type: ServerType;
@@ -13,6 +27,10 @@ export interface ProjectServer {
   filePermissions?: number;       // octal mode applied to uploaded files (e.g. 0o644)
   directoryPermissions?: number;  // octal mode applied to created directories (e.g. 0o755)
   timeOffsetMs?: number;          // clock skew in ms (remote minus local); detected via Test Connection
+  hooks?: {                       // commands run before/after a deliberate deploy (#27)
+    preDeploy?: HookCommand[];
+    postDeploy?: HookCommand[];
+  };
 }
 
 // What's stored in .vscode/fileferry.json — server name is the object key

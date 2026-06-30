@@ -87,6 +87,7 @@ Each entry in the `servers` object is keyed by its display name (the name you se
 | `filePermissions` | `integer` 0–511 | no | (server default) | Decimal representation of an octal permission mode applied to uploaded files. `0644` is `420`, `0600` is `384`. SFTP only; FTP makes a best-effort `SITE CHMOD`. |
 | `directoryPermissions` | `integer` 0–511 | no | (server default) | Same as above, for created directories. `0755` is `493`, `0700` is `448`. |
 | `timeOffsetMs` | `integer` | no | `0` | Clock skew in milliseconds (`remote − local`). Detected automatically during Test Connection; `FileDateGuard` subtracts this before comparing timestamps. |
+| `hooks` | `object` | no | — | Commands run automatically before/after a deliberate deploy to this server. See [Deploy Hooks](#deploy-hooks). |
 
 ### Path Mappings
 
@@ -112,6 +113,50 @@ When multiple mappings could match a file, the **most specific (longest) `localP
 | `0750` | `488` | Group-readable directories |
 | `0755` | `493` | Standard directories |
 | `0775` | `509` | Group-writable directories |
+
+### Deploy Hooks
+
+`hooks` runs a command automatically before and/or after a deploy to this server — to build artifacts before upload, or reload a service / run migrations / fix ownership after. Hooks run only for **deliberate** deploys (Upload Selected/All Changed/To Servers, Upload From Commits, Only-If-Newer, and the Sync commands). **Upload-on-save and the file watcher never run hooks.**
+
+```json
+"hooks": {
+  "preDeploy": [
+    { "command": "npm run build", "location": "local" }
+  ],
+  "postDeploy": [
+    { "command": "sudo systemctl reload nginx", "location": "remote" },
+    { "command": "php artisan migrate --force", "location": "remote", "continueOnError": true }
+  ]
+}
+```
+
+Each hook:
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `command` | `string` | yes | — | The shell command. Local commands run in your default shell at the workspace root; remote commands run on the server. |
+| `location` | `"local"` \| `"remote"` | yes | — | Where it runs. `remote` requires **SFTP** — on FTP/FTPS a remote hook is skipped with a warning (FTP can't run shell commands). |
+| `continueOnError` | `boolean` | no | `false` | When `true`, a failure is logged but doesn't abort the deploy or stop later hooks. |
+| `timeoutMs` | `integer` | no | — | Per-hook timeout. On timeout the command is killed (local) / its channel destroyed (remote) and the hook fails. |
+
+**Ordering and failure.** Local pre-hooks run **before** the connection opens (a build can take minutes — no point holding SSH idle); remote pre-hooks run on the just-opened session. A failed **pre**-hook **aborts the deploy** (nothing is uploaded) unless `continueOnError` is set. A failed **post**-hook is reported but does **not** roll back the files already uploaded. "Failed" means a non-zero/`null` exit code, a process that wouldn't start, or a timeout — **never** stderr output on its own: many servers write banners/MOTD/locale warnings to stderr on a successful (exit 0) command, so that's logged for visibility, not treated as a failure.
+
+**Security — hooks run shell commands.** Two guards apply:
+
+1. **Workspace Trust.** Hooks **never run in an untrusted workspace**. Opening someone else's repo is untrusted by default, so their hooks stay inert until you explicitly trust the folder.
+2. **Visible in the deploy confirmation.** The pre-deploy confirmation lists the exact hook commands that will run, so nothing runs that you didn't see.
+
+**No secrets in `fileferry.json`** — it's committed to git. Keep secrets out of the command string:
+
+- **Environment variables (recommended).** Local hooks inherit your shell environment, so write `mysql -p"$DB_PASS" …` and keep `DB_PASS` in your environment or a git-ignored `.env`. The committed file holds only the literal `$DB_PASS`; it's expanded at run time.
+- **`fileferry.local.json` (git-ignored escape hatch).** For a command you don't want committed at all, put the server's `hooks` in `.vscode/fileferry.local.json` instead. FileFerry reads it and **merges its hooks over** the committed config for that server, and adds the file to `.gitignore` on first write so it's never committed. The committed `fileferry.json` stays clean for everyone else.
+- **Remote-hook caveat.** SSH usually rejects client-set environment variables (`AcceptEnv` is restrictive), so `$VAR` expansion is unreliable for **remote** hooks. Prefer keeping remote secrets in the *server's* own environment / a remote `.env` so FileFerry never handles the value.
+
+FileFerry masks values it resolved itself in the output channel, but it can't catch a secret a command prints on its own — so the rules above matter.
+
+**Build artifacts won't deploy via a git-changed upload.** A local `npm run build` in `preDeploy` does **not** add files to an *Upload Changed Files* deploy. The changed set is resolved before the hook runs, and it's read from git state — which is `.gitignore`-respecting, so build output in `dist/` (usually git-ignored) never appears in it regardless. To deploy generated files, use **Sync to Remote** (walks the filesystem tree at transfer time) or the **Watch** feature (an explicit glob allowlist that uploads git-ignored files).
+
+**Duplication across servers.** Hooks are per-server, so a local build identical across dev/staging/prod must be repeated in each server's config (and kept in sync). Project-level shared hooks are a planned future addition.
 
 ---
 
@@ -216,12 +261,14 @@ These files live alongside `fileferry.json` in `.vscode/`:
 | File | Purpose | Commit? |
 | --- | --- | --- |
 | `fileferry.json` | This file — config and server definitions | yes |
+| `fileferry.local.json` | Per-server `hooks` overrides you don't want committed (e.g. secret-bearing commands). Merged over `fileferry.json` at deploy time. | no — added to `.gitignore` automatically on first write |
 | `fileferry-history.jsonl` | Per-project upload log (one JSON entry per line) | no — machine-local |
 | `fileferry-backups/` | Pre-overwrite backups when `backupBeforeOverwrite` is on | no — machine-local |
 
-Add the latter two to `.gitignore`:
+Add the machine-local ones to `.gitignore` (`fileferry.local.json` is added for you):
 
 ```gitignore
+.vscode/fileferry.local.json
 .vscode/fileferry-history.jsonl
 .vscode/fileferry-backups/
 ```

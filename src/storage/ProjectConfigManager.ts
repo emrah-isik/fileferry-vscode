@@ -3,16 +3,35 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { ProjectConfig, ProjectServer } from '../models/ProjectConfig';
 
+// Shape of .vscode/fileferry.local.json. v1 only merges hooks, so it carries
+// just the per-server hooks block — deliberately narrow to limit blast radius.
+interface LocalProjectConfig {
+  servers?: {
+    [serverName: string]: { hooks?: ProjectServer['hooks'] };
+  };
+}
+
 export class ProjectConfigManager {
   private readonly _onDidSaveConfig = new vscode.EventEmitter<void>();
   readonly onDidSaveConfig = this._onDidSaveConfig.event;
 
-  private getConfigPath(): string {
+  private workspaceRoot(): string {
     const folders = vscode.workspace.workspaceFolders;
     if (!folders || folders.length === 0) {
       throw new Error('No workspace open');
     }
-    return path.join(folders[0].uri.fsPath, '.vscode', 'fileferry.json');
+    return folders[0].uri.fsPath;
+  }
+
+  private getConfigPath(): string {
+    return path.join(this.workspaceRoot(), '.vscode', 'fileferry.json');
+  }
+
+  // Git-ignored sibling of fileferry.json. Holds hook overrides a user doesn't
+  // want committed (e.g. secret-bearing commands). Never written to the
+  // committed file; merged in by getEffectiveConfig at read time.
+  private getLocalConfigPath(): string {
+    return path.join(this.workspaceRoot(), '.vscode', 'fileferry.local.json');
   }
 
   async getConfig(): Promise<ProjectConfig | null> {
@@ -22,6 +41,39 @@ export class ProjectConfigManager {
     } catch {
       return null;
     }
+  }
+
+  async getLocalConfig(): Promise<LocalProjectConfig | null> {
+    try {
+      const raw = await fs.readFile(this.getLocalConfigPath(), 'utf-8');
+      return JSON.parse(raw) as LocalProjectConfig;
+    } catch {
+      return null;
+    }
+  }
+
+  // The committed config with fileferry.local.json hook overrides merged in
+  // (local wins, per server, hooks-only). This is what the deploy path reads so
+  // local-only hooks take effect; the plain getConfig()/setters never see the
+  // merge, so local hooks can't leak back into the committed file.
+  async getEffectiveConfig(): Promise<ProjectConfig | null> {
+    const base = await this.getConfig();
+    if (!base) {
+      return null;
+    }
+    const local = await this.getLocalConfig();
+    if (!local?.servers) {
+      return base;
+    }
+    for (const [serverName, localServer] of Object.entries(local.servers)) {
+      const baseServer = base.servers[serverName];
+      // Only servers that exist in the committed config get overridden, and
+      // only their hooks — every other field stays as committed.
+      if (baseServer && localServer && localServer.hooks !== undefined) {
+        baseServer.hooks = localServer.hooks;
+      }
+    }
+    return base;
   }
 
   async saveConfig(config: ProjectConfig): Promise<void> {
@@ -93,6 +145,14 @@ export class ProjectConfigManager {
     return config?.servers[name];
   }
 
+  // The effective deploy hooks for a server — committed hooks with any
+  // fileferry.local.json override merged in. This is what the deploy path and
+  // the confirmation dialog read, so local-only hooks both run and are shown.
+  async getServerHooks(serverName: string): Promise<ProjectServer['hooks'] | undefined> {
+    const config = await this.getEffectiveConfig();
+    return config?.servers[serverName]?.hooks;
+  }
+
   async getServerNames(): Promise<string[]> {
     const config = await this.getConfig();
     return config ? Object.keys(config.servers) : [];
@@ -159,5 +219,51 @@ export class ProjectConfigManager {
     const config = (await this.getConfig()) ?? this.emptyConfig();
     config.watch = { enabled: config.watch?.enabled ?? false, patterns };
     await this.saveConfig(config);
+  }
+
+  // Sets a server's deploy hooks in the committed fileferry.json. Per-server
+  // because "restart nginx on prod" is server-specific (see feature 27).
+  async setServerHooks(serverName: string, hooks: ProjectServer['hooks']): Promise<void> {
+    const config = (await this.getConfig()) ?? this.emptyConfig();
+    const server = config.servers[serverName];
+    if (!server) {
+      throw new Error(`Server "${serverName}" not found`);
+    }
+    server.hooks = hooks;
+    await this.saveConfig(config);
+  }
+
+  // Sets a server's hooks in the git-ignored fileferry.local.json — the escape
+  // hatch for hooks a user does not want committed (e.g. secret-bearing
+  // commands). Ensures the file is git-ignored on first write so it can't be
+  // committed by accident.
+  async setLocalServerHooks(serverName: string, hooks: ProjectServer['hooks']): Promise<void> {
+    const local: LocalProjectConfig = (await this.getLocalConfig()) ?? {};
+    local.servers = local.servers ?? {};
+    local.servers[serverName] = { ...local.servers[serverName], hooks };
+
+    const filePath = this.getLocalConfigPath();
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    await fs.writeFile(filePath, JSON.stringify(local, null, 2), 'utf-8');
+    await this.ensureGitignored('.vscode/fileferry.local.json');
+    this._onDidSaveConfig.fire();
+  }
+
+  // Appends an entry to the workspace .gitignore if it isn't already listed,
+  // creating the file when absent. Idempotent — never adds a duplicate line.
+  private async ensureGitignored(entry: string): Promise<void> {
+    const gitignorePath = path.join(this.workspaceRoot(), '.gitignore');
+    let existing = '';
+    try {
+      existing = await fs.readFile(gitignorePath, 'utf-8');
+    } catch {
+      existing = '';
+    }
+    const alreadyListed = existing.split('\n').some(line => line.trim() === entry);
+    if (alreadyListed) {
+      return;
+    }
+    const separator = existing.length > 0 && !existing.endsWith('\n') ? '\n' : '';
+    await fs.appendFile(gitignorePath, `${separator}${entry}\n`, 'utf-8');
   }
 }

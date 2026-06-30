@@ -66,6 +66,10 @@ export async function uploadSelected(
     return;
   }
 
+  // Use the EFFECTIVE hooks (committed + fileferry.local.json override) for both
+  // the confirmation listing and execution, so local-only hooks run and are shown.
+  server.hooks = await dependencies.configManager.getServerHooks(serverName);
+
   const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
   const pathResolver = new PathResolver();
   const serverConfig = {
@@ -138,7 +142,7 @@ export async function uploadSelected(
   // Dry run intercept — report plan and skip all transfers
   if (config.dryRun) {
     const reporter = new DryRunReporter(dependencies.output);
-    reporter.report([{ serverName, uploadItems, deleteRemotePaths, workspaceRoot }]);
+    reporter.report([{ serverName, uploadItems, deleteRemotePaths, workspaceRoot, hooks: server.hooks }]);
     vscode.window.showInformationMessage(
       `FileFerry (dry run): ${uploadItems.length} file(s) to upload, ${deleteRemotePaths.length} to delete on "${serverName}".`,
       'Show Log'
@@ -150,9 +154,9 @@ export async function uploadSelected(
   const confirmation = new UploadConfirmation(dependencies.context.globalState);
   let confirmed: boolean;
   if (deleteRemotePaths.length > 0) {
-    confirmed = await confirmation.confirmWithDeletions(serverName, uploadItems.length, deleteRemotePaths.length);
+    confirmed = await confirmation.confirmWithDeletions(serverName, uploadItems.length, deleteRemotePaths.length, server.hooks);
   } else {
-    confirmed = await confirmation.confirm(server.id, uploadItems.length, serverName);
+    confirmed = await confirmation.confirm(server.id, uploadItems.length, serverName, server.hooks);
   }
   if (!confirmed) {
     return;
@@ -198,7 +202,21 @@ export async function uploadSelected(
       }
 
       progress.report({ message: 'Uploading...' });
-      const result = await orchestrator.upload(uploadItems, credential, server, deleteRemotePaths, token);
+      const result = await orchestrator.upload(uploadItems, credential, server, deleteRemotePaths, token, {
+        workspaceRoot,
+        dryRun: !!config.dryRun,
+        isTrusted: vscode.workspace.isTrusted,
+        output: dependencies.output,
+      });
+
+      // A failed pre-deploy hook aborts the deploy before anything is transferred.
+      if (result.hookAborted) {
+        vscode.window.showErrorMessage(
+          'FileFerry: Deploy aborted — a pre-deploy hook failed. See the FileFerry output for details.',
+          'Show Log'
+        ).then(choice => { if (choice === 'Show Log') { dependencies.output.show(); } });
+        return;
+      }
 
       // Log upload history
       const historyMaxEntries = config.historyMaxEntries ?? 10000;

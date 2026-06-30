@@ -51,6 +51,7 @@ const mockCredentialManager = {
 } as unknown as CredentialManager;
 
 const mockConfigManager = {
+  getServerHooks: jest.fn().mockResolvedValue(undefined),
   getConfig: jest.fn(),
   getServerById: jest.fn(),
 } as unknown as ProjectConfigManager;
@@ -147,7 +148,8 @@ describe('uploadSelected command', () => {
       expect.objectContaining({ password: 'secret' }),
       expect.any(Object),
       [],
-      expect.objectContaining({ isCancellationRequested: false })
+      expect.objectContaining({ isCancellationRequested: false }),
+      expect.objectContaining({ workspaceRoot: expect.any(String), isTrusted: expect.any(Boolean) })
     );
   });
 
@@ -194,7 +196,8 @@ describe('uploadSelected command', () => {
         expect.objectContaining({ password: 'secret' }),
         expect.any(Object),
         ['/var/www/src/deleted.php'],
-        expect.objectContaining({ isCancellationRequested: false })
+        expect.objectContaining({ isCancellationRequested: false }),
+        expect.objectContaining({ workspaceRoot: expect.any(String) })
       );
     });
 
@@ -367,7 +370,8 @@ describe('uploadSelected command', () => {
         expect.any(Object),
         expect.any(Object),
         expect.any(Array),
-        fakeToken
+        fakeToken,
+        expect.objectContaining({ workspaceRoot: expect.any(String) })
       );
     });
 
@@ -570,7 +574,8 @@ describe('uploadSelected command', () => {
         expect.objectContaining({ password: 'secret' }),
         expect.any(Object),
         [],
-        expect.anything()
+        expect.anything(),
+        expect.objectContaining({ workspaceRoot: expect.any(String) })
       );
     });
 

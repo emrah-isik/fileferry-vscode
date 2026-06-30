@@ -9,6 +9,7 @@ import { ProjectServer } from '../../models/ProjectConfig';
 import { ServerType } from '../../types';
 import { validateProjectServer, validateMappings } from '../../utils/validation';
 import { TimeOffsetDetector } from '../../services/TimeOffsetDetector';
+import { detectSecret } from '../../utils/detectSecret';
 
 interface Dependencies {
   credentialManager: CredentialManager;
@@ -30,6 +31,7 @@ interface DeploymentSettingsMessage {
   credentialId?: string;
   startPath?: string;
   serverType?: string;
+  hooks?: ProjectServer['hooks'];
 }
 
 export class DeploymentSettingsPanel {
@@ -141,6 +143,11 @@ export class DeploymentSettingsPanel {
       case 'deleteMapping':
         if (!msg.serverId || msg.index === undefined) break;
         await this.handleDeleteMapping(msg.serverId, msg.index);
+        break;
+
+      case 'saveHooks':
+        if (!msg.serverId) break;
+        await this.handleSaveHooks(msg.serverId, msg.hooks);
         break;
 
       case 'testConnection':
@@ -255,6 +262,31 @@ export class DeploymentSettingsPanel {
     await this.dependencies.configManager.saveConfig(config);
     this.panel.webview.postMessage({ command: 'configUpdated', config });
     vscode.window.showInformationMessage(`FileFerry: Server "${trimmedName}" saved.`);
+  }
+
+  private async handleSaveHooks(serverId: string, hooks: ProjectServer['hooks']): Promise<void> {
+    const entry = await this.dependencies.configManager.getServerById(serverId);
+    if (!entry) return;
+
+    // Hooks edited here live in the committed fileferry.json (the team-shared
+    // config). setServerHooks writes there; the git-ignored fileferry.local.json
+    // override is managed separately.
+    await this.dependencies.configManager.setServerHooks(entry.name, hooks);
+
+    // Advisory secret scan — never blocks the save. Flag commands that look like
+    // they embed a literal secret so the webview can warn inline; resolution is
+    // up to the user (use $ENV_VAR / fileferry.local.json).
+    const allHooks = [...(hooks?.preDeploy ?? []), ...(hooks?.postDeploy ?? [])];
+    const flaggedCommands = allHooks
+      .map(hook => hook.command)
+      .filter(command => detectSecret(command));
+    if (flaggedCommands.length > 0) {
+      this.panel.webview.postMessage({ command: 'hookSecretWarning', commands: flaggedCommands });
+    }
+
+    const config = await this.dependencies.configManager.getConfig();
+    this.panel.webview.postMessage({ command: 'configUpdated', config });
+    vscode.window.showInformationMessage(`FileFerry: Hooks saved for "${entry.name}".`);
   }
 
   private async handleDeleteMapping(serverId: string, index: number): Promise<void> {
@@ -398,9 +430,11 @@ export class DeploymentSettingsPanel {
       <div class="tabs">
         <button class="tab-btn active" data-tab="connection">Connection</button>
         <button class="tab-btn" data-tab="mappings">Mappings</button>
+        <button class="tab-btn" data-tab="hooks">Hooks</button>
       </div>
       <div id="connection-tab" class="tab-content active"></div>
       <div id="mappings-tab" class="tab-content"></div>
+      <div id="hooks-tab" class="tab-content"></div>
     </div>
   </div>
   <script nonce="${nonce}" src="${scriptUri}"></script>

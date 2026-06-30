@@ -88,6 +88,7 @@ const mockCredentialManager = {
 } as unknown as CredentialManager;
 
 const mockConfigManager = {
+  getServerHooks: jest.fn().mockResolvedValue(undefined),
   getConfig: jest.fn().mockResolvedValue(configFixture),
   getServerById: jest.fn(),
 } as unknown as ProjectConfigManager;

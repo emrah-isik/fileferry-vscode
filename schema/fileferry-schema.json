@@ -135,6 +135,23 @@
           "timeOffsetMs": {
             "type": "integer",
             "description": "Clock skew offset in milliseconds (remote minus local). Detected automatically via Test Connection."
+          },
+          "hooks": {
+            "type": "object",
+            "description": "Commands run automatically before/after a deliberate deploy to this server. Only run in a trusted workspace and shown in the deploy confirmation first. Don't put secrets here (this file is committed) — use $ENV_VAR or the git-ignored fileferry.local.json.",
+            "additionalProperties": false,
+            "properties": {
+              "preDeploy": {
+                "type": "array",
+                "description": "Commands run before uploading. A failed pre-hook aborts the deploy unless continueOnError is set. Local pre-hooks (e.g. a build) run before the connection opens; remote pre-hooks run on the just-opened SSH session.",
+                "items": { "$ref": "#/definitions/hookCommand" }
+              },
+              "postDeploy": {
+                "type": "array",
+                "description": "Commands run after a successful upload (e.g. reload nginx, run migrations). A failed post-hook is reported but does not roll back the uploaded files.",
+                "items": { "$ref": "#/definitions/hookCommand" }
+              }
+            }
           }
         },
         "additionalProperties": false
@@ -142,5 +159,33 @@
     }
   },
   "required": ["defaultServerId", "servers"],
-  "additionalProperties": false
+  "additionalProperties": false,
+  "definitions": {
+    "hookCommand": {
+      "type": "object",
+      "required": ["command", "location"],
+      "additionalProperties": false,
+      "properties": {
+        "command": {
+          "type": "string",
+          "description": "The shell command to run. Local commands run in your default shell at the workspace root; remote commands run over the deploy's SSH connection (SFTP servers only — skipped with a warning on FTP)."
+        },
+        "location": {
+          "type": "string",
+          "enum": ["local", "remote"],
+          "description": "'local' runs on your machine; 'remote' runs on the server. Remote requires SFTP."
+        },
+        "continueOnError": {
+          "type": "boolean",
+          "description": "When true, a failure (non-zero/null exit, spawn error, or timeout) is logged but does not abort the deploy or stop later hooks. Note: stderr output on a zero exit is NOT a failure.",
+          "default": false
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "description": "Per-hook timeout in milliseconds. On timeout the command is killed (local) or its channel destroyed (remote) and the hook is treated as failed.",
+          "minimum": 0
+        }
+      }
+    }
+  }
 }

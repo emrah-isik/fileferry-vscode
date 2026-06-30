@@ -216,6 +216,10 @@ async function runSyncForScope(
     serverContext;
   const { localRoots, remoteRoots, label } = scope;
 
+  // Effective hooks (committed + fileferry.local.json) for the confirmation and
+  // for execution — set on the server passed to the orchestrator below.
+  server.hooks = await dependencies.configManager.getServerHooks(serverName);
+
   const localFiles = gatherLocalFilesUnder(pathResolver, workspaceRoot, serverConfig, localRoots);
 
   let plan;
@@ -287,7 +291,7 @@ async function runSyncForScope(
   if (config.dryRun) {
     const reporter = new DryRunReporter(dependencies.output);
     reporter.report([
-      { serverName: label, uploadItems: plan.toUpload, deleteRemotePaths, workspaceRoot },
+      { serverName: label, uploadItems: plan.toUpload, deleteRemotePaths, workspaceRoot, hooks: server.hooks },
     ]);
     vscode.window
       .showInformationMessage(
@@ -316,10 +320,11 @@ async function runSyncForScope(
     confirmed = await confirmation.confirmSyncDeletions(
       label,
       plan.toUpload.length,
-      deleteRemotePaths.length
+      deleteRemotePaths.length,
+      server.hooks
     );
   } else {
-    confirmed = await confirmation.confirm(server.id, plan.toUpload.length, label);
+    confirmed = await confirmation.confirm(server.id, plan.toUpload.length, label, server.hooks);
   }
   if (!confirmed) {
     return;
@@ -368,8 +373,23 @@ async function runSyncForScope(
         credential,
         server,
         deleteRemotePaths,
-        token
+        token,
+        {
+          workspaceRoot,
+          dryRun: !!config.dryRun,
+          isTrusted: vscode.workspace.isTrusted,
+          output: dependencies.output,
+        }
       );
+
+      // A failed pre-deploy hook aborts the sync before anything is transferred.
+      if (result.hookAborted) {
+        vscode.window.showErrorMessage(
+          `FileFerry: Sync to "${label}" aborted — a pre-deploy hook failed. See the FileFerry output for details.`,
+          'Show Log'
+        ).then(selection => { if (selection === 'Show Log') { dependencies.output.show(); } });
+        return;
+      }
 
       const historyMaxEntries = config.historyMaxEntries ?? 10000;
       if (historyMaxEntries > 0) {

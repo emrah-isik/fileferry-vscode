@@ -1,12 +1,14 @@
 import * as path from 'path';
 import type { OutputChannel } from 'vscode';
 import { ResolvedUploadItem } from '../path/PathResolver';
+import { ProjectServer } from '../models/ProjectConfig';
 
 export interface DryRunPlan {
   serverName: string;
   uploadItems: ResolvedUploadItem[];
   deleteRemotePaths: string[];
   workspaceRoot: string;
+  hooks?: ProjectServer['hooks'];
 }
 
 export class DryRunReporter {
@@ -25,6 +27,15 @@ export class DryRunReporter {
 
       for (const remotePath of plan.deleteRemotePaths) {
         this.output.appendLine(`  DELETE  ${remotePath}`);
+      }
+
+      // List the hooks that would run, so a dry run previews shell commands too
+      // (the deploy path short-circuits before the orchestrator under dry run).
+      for (const hook of plan.hooks?.preDeploy ?? []) {
+        this.output.appendLine(`  HOOK (pre, ${hook.location})  ${hook.command}`);
+      }
+      for (const hook of plan.hooks?.postDeploy ?? []) {
+        this.output.appendLine(`  HOOK (post, ${hook.location})  ${hook.command}`);
       }
 
       this.output.appendLine(

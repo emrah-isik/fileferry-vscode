@@ -77,6 +77,7 @@ function makeConfig(overrides: Partial<ProjectConfig> = {}): ProjectConfig {
 const uploadItem = { localPath: '/workspace/public/assets/site.css', remotePath: '/www/public/assets/site.css' };
 
 const mockConfigManager = {
+  getServerHooks: jest.fn().mockResolvedValue(undefined),
   getConfig: jest.fn(),
   getServerById: jest.fn().mockResolvedValue({ name: 'SyncTest', server }),
 } as unknown as ProjectConfigManager;
