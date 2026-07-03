@@ -7,6 +7,7 @@ const mockClient = {
   uploadFrom: jest.fn(),
   downloadTo: jest.fn(),
   list: jest.fn(),
+  lastMod: jest.fn(),
   rename: jest.fn(),
   remove: jest.fn(),
   removeDir: jest.fn(),
@@ -375,6 +376,30 @@ describe('FtpService', () => {
       mockClient.list.mockRejectedValueOnce(new Error('550'));
       const result = await service.stat('/remote/dir/file.txt');
       expect(result).toBe(null);
+    });
+
+    // Many servers' LIST output omits the year/seconds for recent files, so
+    // basic-ftp can't parse modifiedAt. stat() must fall back to MDTM rather than
+    // report a bogus epoch-0 date (which would silently disable the file-date
+    // guard / only-if-newer / sync age checks for FTP deploys).
+    it('falls back to MDTM (lastMod) when the LIST entry has no parsed modifiedAt', async () => {
+      const mdtmDate = new Date('2026-07-03T10:57:48Z');
+      mockClient.list.mockResolvedValueOnce([
+        { name: 'file.txt', type: 1, size: 100, modifiedAt: undefined, isDirectory: false, isFile: true, isSymbolicLink: false },
+      ]);
+      mockClient.lastMod.mockResolvedValueOnce(mdtmDate);
+      const result = await service.stat('/remote/dir/file.txt');
+      expect(mockClient.lastMod).toHaveBeenCalledWith('/remote/dir/file.txt');
+      expect(result).toEqual({ mtime: mdtmDate });
+    });
+
+    it('returns epoch 0 only when neither LIST nor MDTM yields an mtime', async () => {
+      mockClient.list.mockResolvedValueOnce([
+        { name: 'file.txt', type: 1, size: 100, modifiedAt: undefined, isDirectory: false, isFile: true, isSymbolicLink: false },
+      ]);
+      mockClient.lastMod.mockRejectedValueOnce(new Error('MDTM not supported'));
+      const result = await service.stat('/remote/dir/file.txt');
+      expect(result).toEqual({ mtime: new Date(0) });
     });
   });
 

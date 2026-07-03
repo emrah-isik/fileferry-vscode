@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 jest.mock('../../../scm/ScmResourceResolver');
 jest.mock('../../../path/PathResolver');
 jest.mock('../../../services/UploadOrchestratorV2');
+jest.mock('../../../transferServiceFactory');
 jest.mock('../../../services/FileDateGuard');
 jest.mock('../../../services/BackupService');
 jest.mock('../../../services/DryRunReporter');
@@ -13,6 +14,7 @@ jest.mock('../../../services/summaryToHistoryEntries');
 import { ScmResourceResolver } from '../../../scm/ScmResourceResolver';
 import { PathResolver } from '../../../path/PathResolver';
 import { UploadOrchestratorV2 } from '../../../services/UploadOrchestratorV2';
+import { createTransferService } from '../../../transferServiceFactory';
 import { FileDateGuard } from '../../../services/FileDateGuard';
 import { BackupService } from '../../../services/BackupService';
 import { DryRunReporter } from '../../../services/DryRunReporter';
@@ -38,6 +40,9 @@ mockSummaryToHistoryEntries.mockReturnValue([{ id: 'h-1' }]);
 (ScmResourceResolver as jest.Mock).mockImplementation(() => ({ resolve: mockResolve }));
 (PathResolver as jest.Mock).mockImplementation(() => ({ resolveAll: mockResolveAll }));
 (UploadOrchestratorV2 as jest.Mock).mockImplementation(() => ({ upload: mockUpload }));
+
+const sentinelTransfer = { connect: jest.fn(), disconnect: jest.fn() };
+(createTransferService as jest.Mock).mockReturnValue(sentinelTransfer);
 (FileDateGuard as jest.Mock).mockImplementation(() => ({ check: mockDateGuardCheck, partitionByNewerLocal: mockPartition }));
 (BackupService as jest.Mock).mockImplementation(() => ({ backup: mockBackup, cleanup: mockCleanup }));
 (DryRunReporter as jest.Mock).mockImplementation(() => ({ report: mockDryRunReport }));
@@ -139,6 +144,21 @@ describe('uploadSelected command', () => {
     (vscode.window.showInformationMessage as jest.Mock).mockResolvedValue('Cancel');
     await uploadSelected(resource, undefined, dependencies());
     expect(mockUpload).not.toHaveBeenCalled();
+  });
+
+  it('constructs the orchestrator with the transport matching the server type (SFTP)', async () => {
+    await uploadSelected(resource, undefined, dependencies());
+    expect(createTransferService).toHaveBeenCalledWith('sftp');
+    expect(UploadOrchestratorV2).toHaveBeenCalledWith(sentinelTransfer);
+  });
+
+  it('routes an FTP server through the FTP transport, not SFTP', async () => {
+    (mockConfigManager.getServerById as jest.Mock).mockResolvedValue({
+      name: 'Production',
+      server: { ...serverFixture, type: 'ftp' },
+    });
+    await uploadSelected(resource, undefined, dependencies());
+    expect(createTransferService).toHaveBeenCalledWith('ftp');
   });
 
   it('calls UploadOrchestratorV2 with resolved upload items', async () => {

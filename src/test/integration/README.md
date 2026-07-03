@@ -10,7 +10,7 @@ They are **opt-in** and excluded from `npm test`.
 
 ## Run them
 
-```
+```sh
 npm run test:integration
 ```
 
@@ -21,7 +21,7 @@ only `src/test/integration/**/*.integration.test.ts`.
 
 The tests need an SFTP server. The repo ships one in [`dev/ssh-test`](../../../dev/ssh-test):
 
-```
+```sh
 docker build -t fileferry-ssh dev/ssh-test
 docker run -d --rm -p 2222:22 --name fileferry-ssh fileferry-ssh
 ```
@@ -38,6 +38,18 @@ SFTP server:
 | `FILEFERRY_IT_PORT` | `2222` |
 | `FILEFERRY_IT_USER` | `testuser` |
 | `FILEFERRY_IT_PASS` | `testpass` |
+
+## FTP server (for `ftpService.integration.test.ts`)
+
+The FTP suite needs a real FTP server — see [`dev/ftp-test`](../../../dev/ftp-test):
+
+```sh
+docker run -d --name fileferry-ftp -p 21:21 -p 21100-21110:21100-21110 \
+  -e USERS="testuser|testpass|/var/www" -e ADDRESS=127.0.0.1 -e MIN_PORT=21100 -e MAX_PORT=21110 \
+  delfer/alpine-ftp-server
+```
+
+Overrides: `FILEFERRY_FTP_IT_HOST` / `FILEFERRY_FTP_IT_PORT` (default `21`) / `FILEFERRY_FTP_IT_USER` / `FILEFERRY_FTP_IT_PASS`.
 
 ## WSL note
 

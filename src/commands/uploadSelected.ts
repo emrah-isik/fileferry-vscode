@@ -3,6 +3,7 @@ import * as path from 'path';
 import { ScmResourceResolver } from '../scm/ScmResourceResolver';
 import { PathResolver, ResolvedUploadItem } from '../path/PathResolver';
 import { UploadOrchestratorV2 } from '../services/UploadOrchestratorV2';
+import { createTransferService } from '../transferServiceFactory';
 import { FileDateGuard, SkippedItem } from '../services/FileDateGuard';
 import { BackupService } from '../services/BackupService';
 import { UploadConfirmation } from '../uploadConfirmation';
@@ -165,7 +166,10 @@ export async function uploadSelected(
   const credential = await dependencies.credentialManager.getWithSecret(server.credentialId);
   const fileDateGuardEnabled = config.fileDateGuard !== false;
 
-  const orchestrator = new UploadOrchestratorV2();
+  // Deploy over the transport that matches the server's protocol (SFTP vs
+  // FTP/FTPS) — not always SFTP. This also lets canExec() correctly gate remote
+  // hooks off on FTP, which can't run shell commands.
+  const orchestrator = new UploadOrchestratorV2(createTransferService(server.type));
 
   await vscode.window.withProgress(
     {

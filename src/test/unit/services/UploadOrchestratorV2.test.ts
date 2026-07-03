@@ -328,4 +328,22 @@ describe('UploadOrchestratorV2 — deploy hooks', () => {
     const postCalls = mockRunHooks.mock.calls.filter(c => c[0].phase === 'post');
     expect(postCalls).toHaveLength(1);
   });
+
+  it('hands runHooks remote:null when the transport cannot exec (FTP)', async () => {
+    // An FTP transport implements TransferService but NOT RemoteCommandRunner
+    // (no execCommand), so canExec() is false and remote hooks must be skipped.
+    const ftpTransfer = {
+      connect: jest.fn().mockResolvedValue(undefined),
+      uploadFile: jest.fn().mockResolvedValue(undefined),
+      deleteFile: jest.fn().mockResolvedValue(undefined),
+      disconnect: jest.fn().mockResolvedValue(undefined),
+      chmod: jest.fn().mockResolvedValue(undefined),
+    };
+    const ftpOrchestrator = new UploadOrchestratorV2(ftpTransfer as any);
+    const hooks = { postDeploy: [{ command: 'systemctl reload nginx', location: 'remote' }] };
+    await ftpOrchestrator.upload([item('a.php')], credential, serverWithHooks(hooks), [], undefined, hookContext);
+
+    const postCall = mockRunHooks.mock.calls.find(c => c[0].phase === 'post');
+    expect(postCall[0].remote).toBeNull();
+  });
 });

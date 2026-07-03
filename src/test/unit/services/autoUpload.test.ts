@@ -2,6 +2,7 @@ import * as child_process from 'child_process';
 
 jest.mock('../../../path/PathResolver');
 jest.mock('../../../services/UploadOrchestratorV2');
+jest.mock('../../../transferServiceFactory');
 jest.mock('../../../services/FileDateGuard');
 jest.mock('../../../services/UploadHistoryService');
 jest.mock('../../../services/summaryToHistoryEntries');
@@ -9,6 +10,7 @@ jest.mock('child_process');
 
 import { PathResolver } from '../../../path/PathResolver';
 import { UploadOrchestratorV2 } from '../../../services/UploadOrchestratorV2';
+import { createTransferService } from '../../../transferServiceFactory';
 import { FileDateGuard } from '../../../services/FileDateGuard';
 import { UploadHistoryService } from '../../../services/UploadHistoryService';
 import { summaryToHistoryEntries } from '../../../services/summaryToHistoryEntries';
@@ -26,6 +28,9 @@ const mockSummaryToHistoryEntries = summaryToHistoryEntries as jest.Mock;
 
 (PathResolver as jest.Mock).mockImplementation(() => ({ resolve: mockResolve }));
 (UploadOrchestratorV2 as jest.Mock).mockImplementation(() => ({ upload: mockUpload }));
+
+const sentinelTransfer = { connect: jest.fn(), disconnect: jest.fn() };
+(createTransferService as jest.Mock).mockReturnValue(sentinelTransfer);
 (FileDateGuard as jest.Mock).mockImplementation(() => ({ check: mockDateGuardCheck }));
 (UploadHistoryService as jest.Mock).mockImplementation(() => ({ log: mockHistoryLog, enforceRetention: mockHistoryEnforceRetention }));
 
@@ -77,6 +82,12 @@ describe('autoUploadFile', () => {
       expect(mockUpload).not.toHaveBeenCalled();
       expect(outcome).toMatchObject({ status: 'skipped', reason: 'gitignored' });
     });
+  });
+
+  it('constructs the orchestrator with the transport matching the server type', async () => {
+    await autoUploadFile('/workspace/dist/app.js', '/workspace', config, deps(), 'watch', { applyGitIgnore: false });
+    expect(createTransferService).toHaveBeenCalledWith('sftp');
+    expect(UploadOrchestratorV2).toHaveBeenCalledWith(sentinelTransfer);
   });
 
   it('logs history with the given trigger', async () => {

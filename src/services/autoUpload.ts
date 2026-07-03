@@ -2,6 +2,7 @@ import * as path from 'path';
 import { execFile } from 'child_process';
 import { PathResolver } from '../path/PathResolver';
 import { UploadOrchestratorV2, UploadSummaryV2 } from './UploadOrchestratorV2';
+import { createTransferService } from '../transferServiceFactory';
 import { FileDateGuard } from './FileDateGuard';
 import { UploadHistoryService } from './UploadHistoryService';
 import { summaryToHistoryEntries } from './summaryToHistoryEntries';
@@ -85,7 +86,7 @@ export async function autoUploadFile(
       // A date-guard failure must not block the upload.
     }
 
-    const orchestrator = new UploadOrchestratorV2();
+    const orchestrator = new UploadOrchestratorV2(createTransferService(server.type));
     // Auto-triggers (on-save / watch) deliberately run NO deploy hooks (feature 27
     // scope decision #5): a remote reload/migration on every save would hammer the
     // server. Passing no hook context — like the null server — keeps this path

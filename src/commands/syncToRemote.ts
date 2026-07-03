@@ -332,7 +332,7 @@ async function runSyncForScope(
 
   const backupBeforeDelete = config.syncBackupBeforeDelete !== false; // default ON
   const backupBeforeOverwrite = !!config.backupBeforeOverwrite; // default OFF
-  const orchestrator = new UploadOrchestratorV2();
+  const orchestrator = new UploadOrchestratorV2(createTransferService(server.type));
 
   await vscode.window.withProgress(
     {

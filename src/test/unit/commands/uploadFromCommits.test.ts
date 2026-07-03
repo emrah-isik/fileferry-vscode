@@ -2,6 +2,10 @@ import * as vscode from 'vscode';
 
 jest.mock('../../../gitService');
 jest.mock('../../../commands/uploadSelected');
+// uploadSelected now imports the transfer factory (→ ftpService → basic-ftp),
+// whose module-load promisify(fs.*) trips this file's partial fs mock. This test
+// mocks uploadSelected anyway, so stub the factory to keep that graph out.
+jest.mock('../../../transferServiceFactory', () => ({ createTransferService: jest.fn() }));
 jest.mock('fs', () => ({
   statSync: jest.fn(),
   existsSync: jest.fn(),

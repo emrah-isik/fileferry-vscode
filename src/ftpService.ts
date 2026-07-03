@@ -169,7 +169,19 @@ export class FtpService implements TransferService {
       if (!match) {
         return null;
       }
-      return { mtime: match.modifiedAt ?? new Date(0) };
+      if (match.modifiedAt) {
+        return { mtime: match.modifiedAt };
+      }
+      // Many servers' LIST output omits the year/seconds for recent files, so
+      // basic-ftp leaves modifiedAt unparsed. Fall back to MDTM (lastMod), a
+      // precise UTC timestamp — otherwise stat() reports epoch 0 and silently
+      // disables the file-date guard, only-if-newer, and sync age comparisons on
+      // FTP deploys (the FTP analogue of the old SFTP NaN-mtime bug).
+      try {
+        return { mtime: await this.client.lastMod(remotePath) };
+      } catch {
+        return { mtime: new Date(0) };
+      }
     } catch {
       return null;
     }

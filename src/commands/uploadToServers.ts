@@ -3,6 +3,7 @@ import * as path from 'path';
 import { ScmResourceResolver } from '../scm/ScmResourceResolver';
 import { PathResolver, ResolvedUploadItem } from '../path/PathResolver';
 import { UploadOrchestratorV2, UploadSummaryV2 } from '../services/UploadOrchestratorV2';
+import { createTransferService } from '../transferServiceFactory';
 import { FileDateGuard } from '../services/FileDateGuard';
 import { BackupService } from '../services/BackupService';
 import { CredentialManager } from '../storage/CredentialManager';
@@ -219,7 +220,7 @@ export async function uploadToServers(
         plans.map(async (plan): Promise<ServerUploadResult> => {
           try {
             const credential = await dependencies.credentialManager.getWithSecret(plan.server.credentialId);
-            const orchestrator = new UploadOrchestratorV2();
+            const orchestrator = new UploadOrchestratorV2(createTransferService(plan.server.type));
             const summary = await orchestrator.upload(
               plan.uploadItems, credential, plan.server, plan.deleteRemotePaths, token, {
                 workspaceRoot,

@@ -270,6 +270,17 @@ describe('syncToRemote', () => {
     expect(SftpService).not.toHaveBeenCalled();
   });
 
+  it('constructs the upload orchestrator with the factory transport, not hard-coded SFTP', async () => {
+    mockReconcile.mockReturnValue(planWith({ toUpload: [uploadItem] }));
+
+    await syncToRemote(dependencies);
+
+    expect(UploadOrchestratorV2).toHaveBeenCalledWith(
+      expect.objectContaining({ connect: expect.any(Function), disconnect: expect.any(Function) })
+    );
+    expect(SftpService).not.toHaveBeenCalled();
+  });
+
   it('excludes .git and node_modules from the local and remote walks', async () => {
     mockReconcile.mockReturnValue(planWith({ toUpload: [uploadItem] }));
 
