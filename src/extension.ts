@@ -350,17 +350,16 @@ export function activate(context: vscode.ExtensionContext): void {
           return;
         }
         const credential = await credentialManager.getWithSecret(entry.server.credentialId);
-        const { SftpService } = await import('./sftpService');
-        const sftp = new SftpService();
+        const { createTransferService } = await import('./transferServiceFactory');
+        const transfer = createTransferService(entry.server.type);
         try {
-          await sftp.connect(
-            // SshCredentialWithSecret carries every field connect() reads; it
-            // omits the mapping/type fields ServerConfig declares but never uses
-            // when establishing a connection.
-            credential as unknown as ServerConfig,
+          await transfer.connect(
+            // SshCredentialWithSecret carries the fields connect() reads; add the
+            // server type so an FTP/FTPS transport picks the right TLS mode.
+            { ...(credential as unknown as ServerConfig), type: entry.server.type },
             { password: credential.password, passphrase: credential.passphrase }
           );
-          await sftp.disconnect();
+          await transfer.disconnect();
           vscode.window.showInformationMessage(`FileFerry: Connection to "${entry.name}" successful.`);
         } catch (err: unknown) {
           const message = err instanceof Error ? err.message : String(err);

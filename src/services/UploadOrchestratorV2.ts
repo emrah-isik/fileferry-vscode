@@ -1,6 +1,5 @@
 import type { CancellationToken, OutputChannel } from 'vscode';
 import { TransferService, canExec } from '../transferService';
-import { SftpService } from '../sftpService';
 import { SshCredentialWithSecret } from '../models/SshCredential';
 import { ResolvedUploadItem } from '../path/PathResolver';
 import { ProjectServer } from '../models/ProjectConfig';
@@ -35,7 +34,10 @@ type ServerWithHooks = {
 };
 
 export class UploadOrchestratorV2 {
-  constructor(private readonly sftp: TransferService = new SftpService()) {}
+  // Transport is REQUIRED (no SftpService default) so every deploy path injects
+  // the type-correct transport for its server — see FileDateGuard for the bug
+  // this prevents.
+  constructor(private readonly sftp: TransferService) {}
 
   async upload(
     items: ResolvedUploadItem[],

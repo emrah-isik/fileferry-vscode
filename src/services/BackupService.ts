@@ -1,14 +1,16 @@
 import * as path from 'path';
 import * as fsPromises from 'fs/promises';
 import { TransferService } from '../transferService';
-import { SftpService } from '../sftpService';
 import { SshCredentialWithSecret } from '../models/SshCredential';
 import { ResolvedUploadItem } from '../path/PathResolver';
+import { ensureGitignored } from '../utils/ensureGitignored';
 
 const BACKUP_DIR = path.join('.vscode', 'fileferry-backups');
 
 export class BackupService {
-  constructor(private readonly sftp: TransferService = new SftpService()) {}
+  // Transport is REQUIRED (no SftpService default) — see FileDateGuard for why.
+  // cleanup() is local-only and ignores it, but backup() connects to the remote.
+  constructor(private readonly sftp: TransferService) {}
 
   async backup(
     items: ResolvedUploadItem[],
@@ -19,6 +21,11 @@ export class BackupService {
     if (items.length === 0) {
       return;
     }
+
+    // Keep machine-local backups out of source control (best-effort).
+    try {
+      await ensureGitignored(workspaceRoot, '.vscode/fileferry-backups/');
+    } catch { /* ignore */ }
 
     await this.sftp.connect(credential, {
       password: credential.password,

@@ -156,7 +156,7 @@ export async function uploadToServers(
 
   // Multi-server has no per-file confirmation, so hooks would otherwise run
   // unseen. When any selected server has hooks, list them before deploying.
-  const confirmation = new UploadConfirmation(dependencies.context.globalState);
+  const confirmation = new UploadConfirmation(dependencies.context.globalState, dependencies.output);
   const hooksConfirmed = await confirmation.confirmHooks(
     plans.map(plan => ({ serverName: plan.serverName, hooks: plan.server.hooks }))
   );
@@ -178,7 +178,7 @@ export async function uploadToServers(
         for (const plan of plans) {
           if (plan.uploadItems.length > 0) {
             const credential = await dependencies.credentialManager.getWithSecret(plan.server.credentialId);
-            const newerOnRemote = await new FileDateGuard().check(plan.uploadItems, credential, plan.server.timeOffsetMs);
+            const newerOnRemote = await new FileDateGuard(createTransferService(plan.server.type)).check(plan.uploadItems, credential, plan.server.timeOffsetMs);
             if (newerOnRemote.length > 0) {
               const fileNames = newerOnRemote.map(f => path.basename(f.localPath)).join(', ');
               const choice = await vscode.window.showWarningMessage(
@@ -200,17 +200,20 @@ export async function uploadToServers(
         return;
       }
 
-      // Backup before overwrite: cleanup once, then backup per server
+      // Backup before overwrite: cleanup once (local-only), then back up each
+      // server over its OWN protocol transport (servers may differ in type).
       if (backupEnabled) {
         progress.report({ message: 'Backing up remote files...' });
         const retentionDays = config.backupRetentionDays ?? 7;
         const maxSizeMB = config.backupMaxSizeMB ?? 100;
-        const backupService = new BackupService();
-        await backupService.cleanup(workspaceRoot, retentionDays, maxSizeMB);
+        // cleanup() is local and ignores the transport; any type serves here.
+        await new BackupService(createTransferService(plans[0].server.type))
+          .cleanup(workspaceRoot, retentionDays, maxSizeMB);
         for (const plan of plans) {
           if (plan.uploadItems.length > 0) {
             const backupCredential = await dependencies.credentialManager.getWithSecret(plan.server.credentialId);
-            await backupService.backup(plan.uploadItems, backupCredential, plan.serverName, workspaceRoot);
+            await new BackupService(createTransferService(plan.server.type))
+              .backup(plan.uploadItems, backupCredential, plan.serverName, workspaceRoot);
           }
         }
       }

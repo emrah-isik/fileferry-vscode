@@ -1,12 +1,13 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import type { UploadHistoryEntry, HistoryFilter } from '../models/UploadHistoryEntry';
+import { ensureGitignored } from '../utils/ensureGitignored';
 
 export class UploadHistoryService {
   private readonly historyPath: string;
 
   constructor(
-    workspaceRoot: string,
+    private readonly workspaceRoot: string,
     private readonly maxEntries: number
   ) {
     this.historyPath = path.join(workspaceRoot, '.vscode', 'fileferry-history.jsonl');
@@ -16,6 +17,11 @@ export class UploadHistoryService {
     if (entries.length === 0 || this.maxEntries === 0) {
       return;
     }
+    // Keep the machine-local log out of source control (git-agnostic; safe even
+    // before `git init`). Best-effort — never let it block logging.
+    try {
+      await ensureGitignored(this.workspaceRoot, '.vscode/fileferry-history.jsonl');
+    } catch { /* ignore */ }
     await fs.mkdir(path.dirname(this.historyPath), { recursive: true });
     const lines = entries.map(e => JSON.stringify(e)).join('\n') + '\n';
     await fs.appendFile(this.historyPath, lines, 'utf-8');

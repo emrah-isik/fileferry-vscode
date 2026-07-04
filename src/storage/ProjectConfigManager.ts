@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { ProjectConfig, ProjectServer } from '../models/ProjectConfig';
+import { ensureGitignored } from '../utils/ensureGitignored';
 
 // Shape of .vscode/fileferry.local.json. v1 only merges hooks, so it carries
 // just the per-server hooks block — deliberately narrow to limit blast radius.
@@ -245,25 +246,7 @@ export class ProjectConfigManager {
     const filePath = this.getLocalConfigPath();
     await fs.mkdir(path.dirname(filePath), { recursive: true });
     await fs.writeFile(filePath, JSON.stringify(local, null, 2), 'utf-8');
-    await this.ensureGitignored('.vscode/fileferry.local.json');
+    await ensureGitignored(this.workspaceRoot(), '.vscode/fileferry.local.json');
     this._onDidSaveConfig.fire();
-  }
-
-  // Appends an entry to the workspace .gitignore if it isn't already listed,
-  // creating the file when absent. Idempotent — never adds a duplicate line.
-  private async ensureGitignored(entry: string): Promise<void> {
-    const gitignorePath = path.join(this.workspaceRoot(), '.gitignore');
-    let existing = '';
-    try {
-      existing = await fs.readFile(gitignorePath, 'utf-8');
-    } catch {
-      existing = '';
-    }
-    const alreadyListed = existing.split('\n').some(line => line.trim() === entry);
-    if (alreadyListed) {
-      return;
-    }
-    const separator = existing.length > 0 && !existing.endsWith('\n') ? '\n' : '';
-    await fs.appendFile(gitignorePath, `${separator}${entry}\n`, 'utf-8');
   }
 }

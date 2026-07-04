@@ -115,7 +115,7 @@ export async function uploadSelected(
   let skippedNewer: SkippedItem[] = [];
   if (options?.onlyNewer) {
     const onlyNewerCredential = await dependencies.credentialManager.getWithSecret(server.credentialId);
-    const partition = await new FileDateGuard().partitionByNewerLocal(
+    const partition = await new FileDateGuard(createTransferService(server.type)).partitionByNewerLocal(
       uploadItems,
       onlyNewerCredential,
       server.timeOffsetMs
@@ -152,7 +152,7 @@ export async function uploadSelected(
   }
 
   // Confirmation dialog
-  const confirmation = new UploadConfirmation(dependencies.context.globalState);
+  const confirmation = new UploadConfirmation(dependencies.context.globalState, dependencies.output);
   let confirmed: boolean;
   if (deleteRemotePaths.length > 0) {
     confirmed = await confirmation.confirmWithDeletions(serverName, uploadItems.length, deleteRemotePaths.length, server.hooks);
@@ -182,7 +182,7 @@ export async function uploadSelected(
       // only-newer mode — the partition above already removed every such file.
       if (fileDateGuardEnabled && !options?.onlyNewer) {
         progress.report({ message: 'Checking remote files...' });
-        const newerOnRemote = await new FileDateGuard().check(uploadItems, credential, server.timeOffsetMs);
+        const newerOnRemote = await new FileDateGuard(createTransferService(server.type)).check(uploadItems, credential, server.timeOffsetMs);
         if (newerOnRemote.length > 0) {
           const fileNames = newerOnRemote.map(f => path.basename(f.localPath)).join(', ');
           const choice = await vscode.window.showWarningMessage(
@@ -200,7 +200,7 @@ export async function uploadSelected(
         progress.report({ message: 'Backing up remote files...' });
         const retentionDays = config.backupRetentionDays ?? 7;
         const maxSizeMB = config.backupMaxSizeMB ?? 100;
-        const backupService = new BackupService();
+        const backupService = new BackupService(createTransferService(server.type));
         await backupService.cleanup(workspaceRoot, retentionDays, maxSizeMB);
         await backupService.backup(uploadItems, credential, serverName, workspaceRoot);
       }

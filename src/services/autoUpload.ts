@@ -77,7 +77,7 @@ export async function autoUploadFile(
     const fileDateGuardEnabled = config.fileDateGuard !== false;
     try {
       const newerOnRemote = fileDateGuardEnabled
-        ? await new FileDateGuard().check([resolved], credential, server.timeOffsetMs)
+        ? await new FileDateGuard(createTransferService(server.type)).check([resolved], credential, server.timeOffsetMs)
         : [];
       if (newerOnRemote.length > 0) {
         return { status: 'skipped', reason: 'remote-newer', fileName };

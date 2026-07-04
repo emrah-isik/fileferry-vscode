@@ -273,19 +273,22 @@ export class DeploymentSettingsPanel {
     // override is managed separately.
     await this.dependencies.configManager.setServerHooks(entry.name, hooks);
 
+    // Re-render the panel FIRST — configUpdated rebuilds the Hooks-tab DOM. The
+    // secret warning must be posted AFTER so it lands on the freshly-rendered
+    // rows; posting it before would let the re-render wipe the inline warning.
+    const config = await this.dependencies.configManager.getConfig();
+    this.panel.webview.postMessage({ command: 'configUpdated', config });
+
     // Advisory secret scan — never blocks the save. Flag commands that look like
     // they embed a literal secret so the webview can warn inline; resolution is
     // up to the user (use $ENV_VAR / fileferry.local.json).
-    const allHooks = [...(hooks?.preDeploy ?? []), ...(hooks?.postDeploy ?? [])];
-    const flaggedCommands = allHooks
+    const flaggedCommands = [...(hooks?.preDeploy ?? []), ...(hooks?.postDeploy ?? [])]
       .map(hook => hook.command)
       .filter(command => detectSecret(command));
     if (flaggedCommands.length > 0) {
       this.panel.webview.postMessage({ command: 'hookSecretWarning', commands: flaggedCommands });
     }
 
-    const config = await this.dependencies.configManager.getConfig();
-    this.panel.webview.postMessage({ command: 'configUpdated', config });
     vscode.window.showInformationMessage(`FileFerry: Hooks saved for "${entry.name}".`);
   }
 

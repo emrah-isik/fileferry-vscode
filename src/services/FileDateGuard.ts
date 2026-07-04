@@ -1,6 +1,5 @@
 import * as fs from 'fs';
 import { TransferService } from '../transferService';
-import { SftpService } from '../sftpService';
 import { SshCredentialWithSecret } from '../models/SshCredential';
 import { ResolvedUploadItem } from '../path/PathResolver';
 
@@ -16,7 +15,10 @@ export interface NewerPartition {
 }
 
 export class FileDateGuard {
-  constructor(private readonly sftp: TransferService = new SftpService()) {}
+  // Transport is REQUIRED (no SftpService default) so every caller must inject
+  // the type-correct transport — otherwise an FTP server silently gets an SFTP
+  // connection and the deploy dies on an SSH handshake timeout.
+  constructor(private readonly sftp: TransferService) {}
 
   async check(
     items: ResolvedUploadItem[],

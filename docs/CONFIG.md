@@ -143,8 +143,8 @@ Each hook:
 
 **Security — hooks run shell commands.** Two guards apply:
 
-1. **Workspace Trust.** Hooks **never run in an untrusted workspace**. Opening someone else's repo is untrusted by default, so their hooks stay inert until you explicitly trust the folder.
-2. **Visible in the deploy confirmation.** The pre-deploy confirmation lists the exact hook commands that will run, so nothing runs that you didn't see.
+1. **Workspace Trust.** FileFerry **requires a trusted workspace** — the extension is disabled entirely in VS Code's Restricted Mode, so hooks (and every other FileFerry action) are inert until you explicitly trust the folder. Opening someone else's repo is untrusted by default. (Deploying already reads the server, paths, and credential from the repo's `fileferry.json` and connects with your stored credentials, so deploying is itself trust-requiring — not just hooks.)
+2. **Visible in the deploy confirmation.** The pre-deploy confirmation names the hook commands that will run — the full list is written to the FileFerry output channel and the confirmation points you to it — so nothing runs that you didn't see.
 
 **No secrets in `fileferry.json`** — it's committed to git. Keep secrets out of the command string:
 
@@ -261,17 +261,24 @@ These files live alongside `fileferry.json` in `.vscode/`:
 | File | Purpose | Commit? |
 | --- | --- | --- |
 | `fileferry.json` | This file — config and server definitions | yes |
-| `fileferry.local.json` | Per-server `hooks` overrides you don't want committed (e.g. secret-bearing commands). Merged over `fileferry.json` at deploy time. | no — added to `.gitignore` automatically on first write |
-| `fileferry-history.jsonl` | Per-project upload log (one JSON entry per line) | no — machine-local |
-| `fileferry-backups/` | Pre-overwrite backups when `backupBeforeOverwrite` is on | no — machine-local |
+| `fileferry.local.json` | Per-server `hooks` overrides you don't want committed (e.g. secret-bearing commands). Merged over `fileferry.json` at deploy time. | no — auto-`.gitignore`d on first write |
+| `fileferry-history.jsonl` | Per-project upload log (one JSON entry per line) | no — auto-`.gitignore`d on first write |
+| `fileferry-backups/` | Pre-overwrite backups when `backupBeforeOverwrite` is on | no — auto-`.gitignore`d on first write |
 
-Add the machine-local ones to `.gitignore` (`fileferry.local.json` is added for you):
+**FileFerry adds each of these machine-local files to your workspace `.gitignore` the first
+time it writes them** (creating `.gitignore` if needed — it works even before `git init`). You
+shouldn't need to add them by hand, but for reference the entries are:
 
 ```gitignore
 .vscode/fileferry.local.json
 .vscode/fileferry-history.jsonl
 .vscode/fileferry-backups/
 ```
+
+> Note: `.gitignore` can't untrack a file that's **already committed**. If one of these got into
+> git before FileFerry ignored it, run `git rm --cached <path>` once. FileFerry also **never
+> deploys** any of its own files (including the committed `fileferry.json`), so they won't be
+> published to your server regardless.
 
 ---
 

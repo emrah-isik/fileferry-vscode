@@ -308,7 +308,7 @@ async function runSyncForScope(
   }
 
   // Confirmation (safety #3): deletes name the count and list the paths.
-  const confirmation = new UploadConfirmation(dependencies.context.globalState);
+  const confirmation = new UploadConfirmation(dependencies.context.globalState, dependencies.output);
   let confirmed: boolean;
   if (deleteRemotePaths.length > 0) {
     dependencies.output.appendLine(
@@ -345,7 +345,7 @@ async function runSyncForScope(
       const willBackupDeletes = deleteRemotePaths.length > 0 && backupBeforeDelete;
 
       // One BackupService + a single retention cleanup covers both backup passes.
-      const backupService = new BackupService();
+      const backupService = new BackupService(createTransferService(server.type));
       if (willBackupOverwrites || willBackupDeletes) {
         const retentionDays = config.backupRetentionDays ?? 7;
         const maxSizeMB = config.backupMaxSizeMB ?? 100;

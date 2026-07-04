@@ -7,13 +7,14 @@ const mockGlobalState = {
 };
 
 const mockShowMessage = jest.fn();
+const mockOutput = { appendLine: jest.fn(), show: jest.fn() };
 
 describe('UploadConfirmation', () => {
   let confirmation: UploadConfirmation;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    confirmation = new UploadConfirmation(mockGlobalState as any, mockShowMessage);
+    confirmation = new UploadConfirmation(mockGlobalState as any, mockOutput as any, mockShowMessage);
   });
 
   it('returns true without prompting when suppressed for this server', async () => {
@@ -115,7 +116,7 @@ describe('UploadConfirmation.confirmWithDeletions', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    confirmation = new UploadConfirmation(mockGlobalState as any, mockShowMessage);
+    confirmation = new UploadConfirmation(mockGlobalState as any, mockOutput as any, mockShowMessage);
   });
 
   it('always shows dialog even when suppressed (deletions are irreversible)', async () => {
@@ -188,7 +189,7 @@ describe('UploadConfirmation.confirmSyncDeletions', () => {
     jest.clearAllMocks();
     // The destructive delete confirm goes through the injected modal-warning
     // channel, NOT the dismissable info toast used for ordinary confirms.
-    confirmation = new UploadConfirmation(mockGlobalState as any, mockShowMessage, mockShowModalWarning);
+    confirmation = new UploadConfirmation(mockGlobalState as any, mockOutput as any, mockShowMessage, mockShowModalWarning);
   });
 
   it('names the upload and delete counts and warns deletes are irreversible', async () => {
@@ -226,7 +227,7 @@ describe('UploadConfirmation.confirmSyncDeletions', () => {
   });
 
   it('defaults to a real modal warning dialog (not a dismissable toast)', async () => {
-    const realConfirmation = new UploadConfirmation(mockGlobalState as any, mockShowMessage);
+    const realConfirmation = new UploadConfirmation(mockGlobalState as any, mockOutput as any, mockShowMessage);
     (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue('Sync and Delete');
 
     const confirmed = await realConfirmation.confirmSyncDeletions('Production', 2, 1);
@@ -249,23 +250,39 @@ describe('UploadConfirmation — deploy hooks visibility', () => {
     postDeploy: [{ command: 'systemctl reload nginx', location: 'remote' as const }],
   };
 
+  // All lines written to the (mock) output channel, joined for assertions.
+  const outputText = () => mockOutput.appendLine.mock.calls.map(call => call[0]).join('\n');
+
   beforeEach(() => {
     jest.clearAllMocks();
-    confirmation = new UploadConfirmation(mockGlobalState as any, mockShowMessage, mockShowModalWarning);
+    confirmation = new UploadConfirmation(
+      mockGlobalState as any, mockOutput as any, mockShowMessage, mockShowModalWarning
+    );
   });
 
   describe('confirm', () => {
-    it('lists each hook command with its phase and location', async () => {
+    it('writes each hook command (phase + location) to the output channel and reveals it', async () => {
+      mockGlobalState.get.mockReturnValue(false);
+      mockShowMessage.mockResolvedValue('Upload');
+      await confirmation.confirm('prod', 3, 'Production', hooks);
+      const text = outputText();
+      expect(text).toContain('npm run build');
+      expect(text).toContain('systemctl reload nginx');
+      expect(text).toContain('pre');
+      expect(text).toContain('post');
+      expect(text).toContain('local');
+      expect(text).toContain('remote');
+      expect(mockOutput.show).toHaveBeenCalledWith(true);
+    });
+
+    it('shows a quiet toast pointing at the output (not a modal)', async () => {
       mockGlobalState.get.mockReturnValue(false);
       mockShowMessage.mockResolvedValue('Upload');
       await confirmation.confirm('prod', 3, 'Production', hooks);
       const [message] = mockShowMessage.mock.calls[0];
-      expect(message).toContain('npm run build');
-      expect(message).toContain('systemctl reload nginx');
-      expect(message).toContain('pre');
-      expect(message).toContain('post');
-      expect(message).toContain('local');
-      expect(message).toContain('remote');
+      expect(message).toContain('hook');
+      expect(message).toMatch(/FileFerry output/i);
+      expect(mockShowModalWarning).not.toHaveBeenCalled();
     });
 
     it('always shows the dialog when hooks are present, even if suppressed', async () => {
@@ -280,14 +297,14 @@ describe('UploadConfirmation — deploy hooks visibility', () => {
       mockGlobalState.get.mockReturnValue(false);
       mockShowMessage.mockResolvedValue('Upload');
       await confirmation.confirm('prod', 3, 'Production', hooks);
-      const options = mockShowMessage.mock.calls[0].slice(1);
+      const options = mockShowMessage.mock.calls[0].slice(1); // after the message
       expect(options.join(' ')).not.toContain("don't ask again");
       expect(mockGlobalState.update).not.toHaveBeenCalled();
     });
 
     it('returns false when the user cancels a hooked deploy', async () => {
       mockGlobalState.get.mockReturnValue(false);
-      mockShowMessage.mockResolvedValue('Cancel');
+      mockShowMessage.mockResolvedValue(undefined);
       expect(await confirmation.confirm('prod', 3, 'Production', hooks)).toBe(false);
     });
 
@@ -296,6 +313,7 @@ describe('UploadConfirmation — deploy hooks visibility', () => {
       const result = await confirmation.confirm('prod', 3, 'Production');
       expect(result).toBe(true);
       expect(mockShowMessage).not.toHaveBeenCalled();
+      expect(mockOutput.appendLine).not.toHaveBeenCalled();
     });
 
     it('keeps the normal flow when hooks object has empty arrays', async () => {
@@ -307,38 +325,43 @@ describe('UploadConfirmation — deploy hooks visibility', () => {
   });
 
   describe('confirmWithDeletions', () => {
-    it('lists hook commands alongside the upload/delete summary', async () => {
+    it('writes hook commands to the output and shows a toast alongside the summary', async () => {
       mockShowMessage.mockResolvedValue('Proceed');
       await confirmation.confirmWithDeletions('Production', 2, 1, hooks);
       const [message] = mockShowMessage.mock.calls[0];
-      expect(message).toContain('npm run build');
-      expect(message).toContain('systemctl reload nginx');
+      expect(message).toContain('Production');
+      expect(message).toMatch(/FileFerry output/i);
+      expect(outputText()).toContain('npm run build');
+      expect(outputText()).toContain('systemctl reload nginx');
     });
   });
 
   describe('confirmSyncDeletions', () => {
-    it('lists hook commands in the modal delete warning', async () => {
+    it('keeps the destructive modal warning and writes the hook list to the output', async () => {
       mockShowModalWarning.mockResolvedValue('Sync and Delete');
       await confirmation.confirmSyncDeletions('Production', 4, 3, hooks);
       const [message] = mockShowModalWarning.mock.calls[0];
-      expect(message).toContain('npm run build');
-      expect(message).toContain('systemctl reload nginx');
+      expect(message).toContain('cannot be recovered');
+      expect(message).toMatch(/hook/i); // notes hooks will also run
+      expect(outputText()).toContain('npm run build');
+      expect(outputText()).toContain('systemctl reload nginx');
     });
   });
 
   describe('confirmHooks (multi-server, no per-file dialog)', () => {
-    it('shows a modal listing hooks grouped by server and returns true on proceed', async () => {
-      mockShowModalWarning.mockResolvedValue('Proceed');
+    it('lists hooks grouped by server in the output and returns true on proceed', async () => {
+      mockShowMessage.mockResolvedValue('Proceed');
       const result = await confirmation.confirmHooks([
         { serverName: 'Staging', hooks: { preDeploy: [{ command: 'npm run build', location: 'local' }] } },
         { serverName: 'Production', hooks: { postDeploy: [{ command: 'reload nginx', location: 'remote' }] } },
       ]);
       expect(result).toBe(true);
-      const [message] = mockShowModalWarning.mock.calls[0];
-      expect(message).toContain('Staging');
-      expect(message).toContain('npm run build');
-      expect(message).toContain('Production');
-      expect(message).toContain('reload nginx');
+      const text = outputText();
+      expect(text).toContain('Staging');
+      expect(text).toContain('npm run build');
+      expect(text).toContain('Production');
+      expect(text).toContain('reload nginx');
+      expect(mockShowMessage).toHaveBeenCalled();
     });
 
     it('returns true without prompting when no server has hooks', async () => {
@@ -347,11 +370,12 @@ describe('UploadConfirmation — deploy hooks visibility', () => {
         { serverName: 'Production', hooks: { preDeploy: [], postDeploy: [] } },
       ]);
       expect(result).toBe(true);
-      expect(mockShowModalWarning).not.toHaveBeenCalled();
+      expect(mockShowMessage).not.toHaveBeenCalled();
+      expect(mockOutput.appendLine).not.toHaveBeenCalled();
     });
 
     it('returns false when the user cancels', async () => {
-      mockShowModalWarning.mockResolvedValue(undefined);
+      mockShowMessage.mockResolvedValue(undefined);
       const result = await confirmation.confirmHooks([
         { serverName: 'Production', hooks: { postDeploy: [{ command: 'reload', location: 'remote' }] } },
       ]);

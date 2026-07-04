@@ -277,4 +277,59 @@ describe('PathResolver', () => {
       expect(result).toBe('/workspace/index.php');
     });
   });
+
+  // FileFerry's own config/history/backup files must never be deployed —
+  // publishing your deployment config/history to the server leaks it, and on
+  // FTP the missing remote .vscode dir 553s. Always excluded, unconditionally.
+  describe('FileFerry artifact auto-exclusion', () => {
+    const baseConfig = {
+      rootPath: '/var/www',
+      mappings: [{ localPath: '/', remotePath: 'html' }],
+      excludedPaths: [],
+    };
+
+    it.each([
+      '.vscode/fileferry.json',
+      '.vscode/fileferry.local.json',
+      '.vscode/fileferry-history.jsonl',
+      '.vscode/fileferry-backups/2026-01-01/index.php',
+    ])('resolve() excludes %s', relative => {
+      expect(() => resolver.resolve(`/workspace/${relative}`, workspaceRoot, baseConfig))
+        .toThrow(/excluded/);
+    });
+
+    it('excludes FileFerry artifacts even when ignoreExclusions is set (force-upload)', () => {
+      expect(() => resolver.resolve('/workspace/.vscode/fileferry.json', workspaceRoot, {
+        ...baseConfig,
+        ignoreExclusions: true,
+      })).toThrow(/excluded/);
+    });
+
+    it('does NOT exclude an unrelated .vscode file (e.g. settings.json)', () => {
+      const result = resolver.resolve('/workspace/.vscode/settings.json', workspaceRoot, baseConfig);
+      expect(result.remotePath).toBe('/var/www/html/.vscode/settings.json');
+    });
+
+    it('resolveAll silently drops FileFerry artifacts without throwing (no Upload-Anyway prompt)', () => {
+      const results = resolver.resolveAll(
+        [
+          '/workspace/index.php',
+          '/workspace/.vscode/fileferry.json',
+          '/workspace/.vscode/fileferry-history.jsonl',
+        ],
+        workspaceRoot,
+        baseConfig
+      );
+      expect(results).toHaveLength(1);
+      expect(results[0].remotePath).toBe('/var/www/html/index.php');
+    });
+
+    it('resolveAll still throws for user-excluded files (so the force-upload flow works)', () => {
+      expect(() => resolver.resolveAll(
+        ['/workspace/app.log'],
+        workspaceRoot,
+        { ...baseConfig, excludedPaths: ['*.log'] }
+      )).toThrow(/excluded/);
+    });
+  });
 });

@@ -261,11 +261,17 @@ describe('DeploymentSettingsPanel message handling', () => {
       postDeploy: [],
     };
     await messageHandler({ command: 'saveHooks', serverId: 'srv-1', hooks });
-    const warning = (mockWebview.postMessage as jest.Mock).mock.calls
-      .map(c => c[0])
-      .find(m => m.command === 'hookSecretWarning');
+    const posted = (mockWebview.postMessage as jest.Mock).mock.calls.map(c => c[0]);
+    const warning = posted.find(m => m.command === 'hookSecretWarning');
     expect(warning).toBeDefined();
     expect(warning.commands).toContain('mysql -psupersecret123 mydb < dump.sql');
+
+    // configUpdated (which re-renders the Hooks tab) must be posted BEFORE the
+    // warning, otherwise the re-render wipes the just-shown inline warning.
+    const configUpdatedIndex = posted.findIndex(m => m.command === 'configUpdated');
+    const warningIndex = posted.findIndex(m => m.command === 'hookSecretWarning');
+    expect(configUpdatedIndex).toBeGreaterThanOrEqual(0);
+    expect(configUpdatedIndex).toBeLessThan(warningIndex);
   });
 
   it('saveHooks does not post a hookSecretWarning for benign commands', async () => {

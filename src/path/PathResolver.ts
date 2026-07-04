@@ -14,9 +14,35 @@ interface ServerConfig {
   ignoreExclusions?: boolean;
 }
 
+// FileFerry's own workspace artifacts, relative to the workspace root. These are
+// NEVER deployed — publishing your deployment config/history to the server leaks
+// it (server list, paths, credential names), fileferry-history.jsonl changes on
+// every deploy (an endless dirty file), and on FTP the missing remote .vscode dir
+// 553s. Excluded unconditionally — not even a force-upload (ignoreExclusions) can
+// deploy them. `fileferry-backups` is a directory prefix.
+const FILEFERRY_ARTIFACTS: readonly string[] = [
+  '.vscode/fileferry.json',
+  '.vscode/fileferry.local.json',
+  '.vscode/fileferry-history.jsonl',
+  '.vscode/fileferry-backups',
+];
+
+function isFileFerryArtifact(relativeLocal: string): boolean {
+  const normalized = relativeLocal.split(path.sep).join('/');
+  return FILEFERRY_ARTIFACTS.some(
+    artifact => normalized === artifact || normalized.startsWith(artifact + '/')
+  );
+}
+
 export class PathResolver {
   resolve(localPath: string, workspaceRoot: string, serverConfig: ServerConfig): ResolvedUploadItem {
     const relativeLocal = path.relative(workspaceRoot, localPath);
+
+    // FileFerry's own files are never deployable — checked before (and
+    // independent of) user exclusions and ignoreExclusions.
+    if (isFileFerryArtifact(relativeLocal)) {
+      throw new Error(`File is excluded: ${localPath}`);
+    }
 
     // Check excluded paths using glob matching (gitignore-style patterns)
     if (serverConfig.ignoreExclusions) {
@@ -80,7 +106,12 @@ export class PathResolver {
     workspaceRoot: string,
     serverConfig: ServerConfig
   ): ResolvedUploadItem[] {
-    return localPaths.map(p => this.resolve(p, workspaceRoot, serverConfig));
+    // Silently drop FileFerry's own artifacts so a batch deploy that happens to
+    // include them doesn't surface an "Upload Anyway?" prompt — they're never
+    // deployable. User-excluded files still throw (per-file), preserving that flow.
+    return localPaths
+      .filter(p => !isFileFerryArtifact(path.relative(workspaceRoot, p)))
+      .map(p => this.resolve(p, workspaceRoot, serverConfig));
   }
 
   /**
