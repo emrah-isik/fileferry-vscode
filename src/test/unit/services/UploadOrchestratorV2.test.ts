@@ -19,9 +19,11 @@ jest.mock('../../../sftpService', () => ({
 
 jest.mock('../../../services/HookRunner', () => ({
   runHooks: jest.fn().mockResolvedValue({ ok: true }),
+  preflightHookSecrets: jest.fn().mockReturnValue({ ok: true }),
 }));
-import { runHooks } from '../../../services/HookRunner';
+import { runHooks, preflightHookSecrets } from '../../../services/HookRunner';
 const mockRunHooks = runHooks as jest.Mock;
+const mockPreflight = preflightHookSecrets as jest.Mock;
 
 const credential = { id: 'c1', host: 'h', port: 22, username: 'u', authMethod: 'password', password: 'p' } as any;
 const server = { id: 's1', name: 'Prod', rootPath: '/var/www' } as any;
@@ -345,5 +347,130 @@ describe('UploadOrchestratorV2 — deploy hooks', () => {
 
     const postCall = mockRunHooks.mock.calls.find(c => c[0].phase === 'post');
     expect(postCall[0].remote).toBeNull();
+  });
+
+  describe('secret masking (#27b)', () => {
+    it('hands runHooks a masking wrapper around the hook output, not the raw channel', async () => {
+      const innerAppendLine = jest.fn();
+      const context = { ...hookContext, output: { appendLine: innerAppendLine } as any };
+      const hooks = { preDeploy: [{ command: 'deploy ${secret:API_TOKEN}', location: 'local' }] };
+
+      await orchestrator.upload([item('a.php')], credential, serverWithHooks(hooks), [], undefined, context);
+
+      const options = mockRunHooks.mock.calls[0][0];
+      expect(options.output).not.toBe(context.output);
+      expect(typeof options.registerSecretValuesForMasking).toBe('function');
+
+      // A value registered by the runner is masked on its way to the real channel.
+      options.registerSecretValuesForMasking(['tok-secret-123']);
+      options.output.appendLine('leaked tok-secret-123 here');
+      expect(innerAppendLine).toHaveBeenCalledWith('leaked •••• here');
+    });
+
+    it('shares one masking channel across phases — a value resolved pre-deploy is still masked post-deploy', async () => {
+      const innerAppendLine = jest.fn();
+      const context = { ...hookContext, output: { appendLine: innerAppendLine } as any };
+      const hooks = {
+        preDeploy: [{ command: 'build ${secret:API_TOKEN}', location: 'local' }],
+        postDeploy: [{ command: 'reload', location: 'remote' }],
+      };
+
+      await orchestrator.upload([item('a.php')], credential, serverWithHooks(hooks), [], undefined, context);
+
+      const preOptions = mockRunHooks.mock.calls.find(c => c[0].phase === 'pre')![0];
+      const postOptions = mockRunHooks.mock.calls.find(c => c[0].phase === 'post')![0];
+      expect(postOptions.output).toBe(preOptions.output);
+
+      preOptions.registerSecretValuesForMasking(['tok-secret-123']);
+      postOptions.output.appendLine('post says tok-secret-123');
+      expect(innerAppendLine).toHaveBeenCalledWith('post says ••••');
+    });
+  });
+
+  describe('secret pre-flight (#27b)', () => {
+    const secretsSource = { get: jest.fn(), has: jest.fn().mockReturnValue(false) };
+    const contextWithSecrets = { ...hookContext, secrets: secretsSource as any };
+
+    beforeEach(() => {
+      mockPreflight.mockReturnValue({ ok: true });
+      mockPreflight.mockImplementation(() => { callLog.push('preflight'); return { ok: true }; });
+    });
+
+    it('aborts with hookAborted before connecting or transferring when the preflight fails', async () => {
+      mockPreflight.mockImplementation(() => { callLog.push('preflight'); return { ok: false }; });
+      const hooks = { postDeploy: [{ command: 'migrate ${secret:MISSING_TOKEN}', location: 'remote' }] };
+
+      const result = await orchestrator.upload([item('a.php')], credential, serverWithHooks(hooks), [], undefined, contextWithSecrets);
+
+      expect(result.hookAborted).toBe(true);
+      expect(result.succeeded).toHaveLength(0);
+      expect(mockSftp.connect).not.toHaveBeenCalled();
+      expect(mockSftp.uploadFile).not.toHaveBeenCalled();
+      expect(mockRunHooks).not.toHaveBeenCalled();
+    });
+
+    it('runs the preflight before connecting, with all pre+post hooks and the secret source', async () => {
+      const preHook = { command: 'build ${secret:A}', location: 'local' };
+      const postHook = { command: 'migrate ${secret:B}', location: 'remote' };
+      const hooks = { preDeploy: [preHook], postDeploy: [postHook] };
+
+      await orchestrator.upload([item('a.php')], credential, serverWithHooks(hooks), [], undefined, contextWithSecrets);
+
+      expect(callLog.indexOf('preflight')).toBeLessThan(callLog.indexOf('connect'));
+      expect(mockPreflight).toHaveBeenCalledWith(expect.objectContaining({
+        preDeploy: [preHook],
+        postDeploy: [postHook],
+        secrets: secretsSource,
+      }));
+    });
+
+    it('excludes remote hooks from the preflight when the transport cannot exec (FTP skips them anyway)', async () => {
+      const ftpTransfer = {
+        connect: jest.fn().mockResolvedValue(undefined),
+        uploadFile: jest.fn().mockResolvedValue(undefined),
+        deleteFile: jest.fn().mockResolvedValue(undefined),
+        disconnect: jest.fn().mockResolvedValue(undefined),
+        chmod: jest.fn().mockResolvedValue(undefined),
+      };
+      const ftpOrchestrator = new UploadOrchestratorV2(ftpTransfer as any);
+      const localHook = { command: 'build ${secret:A}', location: 'local' };
+      const remoteHook = { command: 'migrate ${secret:B}', location: 'remote' };
+      const hooks = { preDeploy: [localHook, remoteHook], postDeploy: [remoteHook] };
+
+      await ftpOrchestrator.upload([item('a.php')], credential, serverWithHooks(hooks), [], undefined, contextWithSecrets);
+
+      expect(mockPreflight).toHaveBeenCalledWith(expect.objectContaining({
+        preDeploy: [localHook],
+        postDeploy: [],
+      }));
+    });
+
+    it('skips the preflight on dry-run', async () => {
+      const hooks = { preDeploy: [{ command: 'build ${secret:A}', location: 'local' }] };
+      await orchestrator.upload([item('a.php')], credential, serverWithHooks(hooks), [], undefined, {
+        ...contextWithSecrets,
+        dryRun: true,
+      });
+      expect(mockPreflight).not.toHaveBeenCalled();
+    });
+
+    it('skips the preflight in an untrusted workspace (hooks are skipped entirely there)', async () => {
+      const hooks = { preDeploy: [{ command: 'build ${secret:A}', location: 'local' }] };
+      await orchestrator.upload([item('a.php')], credential, serverWithHooks(hooks), [], undefined, {
+        ...contextWithSecrets,
+        isTrusted: false,
+      });
+      expect(mockPreflight).not.toHaveBeenCalled();
+    });
+
+    it('skips the preflight when hooks are disabled or no hook context is given', async () => {
+      const hooks = { preDeploy: [{ command: 'build ${secret:A}', location: 'local' }] };
+      await orchestrator.upload([item('a.php')], credential, serverWithHooks(hooks), [], undefined, {
+        ...contextWithSecrets,
+        runHooks: false,
+      });
+      await orchestrator.upload([item('a.php')], credential, serverWithHooks(hooks));
+      expect(mockPreflight).not.toHaveBeenCalled();
+    });
   });
 });

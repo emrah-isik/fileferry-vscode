@@ -5,16 +5,20 @@ import { CredentialManager } from '../../storage/CredentialManager';
 import { ProjectConfigManager } from '../../storage/ProjectConfigManager';
 import { createTransferService } from '../../transferServiceFactory';
 import { generateId } from '../../utils/uuid';
-import { ProjectServer } from '../../models/ProjectConfig';
+import { ProjectServer, HookCommand } from '../../models/ProjectConfig';
 import { ServerType } from '../../types';
 import { validateProjectServer, validateMappings } from '../../utils/validation';
 import { TimeOffsetDetector } from '../../services/TimeOffsetDetector';
-import { detectSecret } from '../../utils/detectSecret';
+import { detectSecret, findSecretLiteral } from '../../utils/detectSecret';
+import { HookSecretManager } from '../../storage/HookSecretManager';
 
 interface Dependencies {
   credentialManager: CredentialManager;
   configManager: ProjectConfigManager;
   credentialsChanged?: vscode.Event<void>;
+  // Keychain-backed ${secret:NAME} store for hook commands (#27b). Absent when
+  // no workspace folder is open — the secrets UI then reports an error.
+  hookSecretManager?: HookSecretManager;
 }
 
 // Messages posted from the webview. `command` selects the handler; the remaining
@@ -32,6 +36,10 @@ interface DeploymentSettingsMessage {
   startPath?: string;
   serverType?: string;
   hooks?: ProjectServer['hooks'];
+  name?: string;
+  newName?: string;
+  value?: string;
+  hookCommand?: string;
 }
 
 export class DeploymentSettingsPanel {
@@ -150,6 +158,26 @@ export class DeploymentSettingsPanel {
         await this.handleSaveHooks(msg.serverId, msg.hooks);
         break;
 
+      case 'storeSecret':
+        if (!msg.name || msg.value === undefined) break;
+        await this.handleStoreSecret(msg.name, msg.value);
+        break;
+
+      case 'deleteSecret':
+        if (!msg.name) break;
+        await this.handleDeleteSecret(msg.name);
+        break;
+
+      case 'renameSecret':
+        if (!msg.name || !msg.newName) break;
+        await this.handleRenameSecret(msg.name, msg.newName);
+        break;
+
+      case 'moveSecretToKeychain':
+        if (!msg.serverId || !msg.hookCommand || !msg.name) break;
+        await this.handleMoveSecretToKeychain(msg.serverId, msg.hookCommand, msg.name);
+        break;
+
       case 'testConnection':
         if (!msg.server) break;
         await this.handleTestConnection(msg.server);
@@ -198,7 +226,126 @@ export class DeploymentSettingsPanel {
       this.dependencies.configManager.getConfig(),
       this.dependencies.credentialManager.getAll(),
     ]);
-    this.panel.webview.postMessage({ command: 'init', config, credentials });
+    // Names only — secret values never leave the extension host. The webview
+    // renders them as write-only rows and computes missing-secret indicators
+    // by scanning hook commands against this list.
+    const secretNames = this.dependencies.hookSecretManager?.listNames() ?? [];
+    this.panel.webview.postMessage({ command: 'init', config, credentials, secretNames });
+  }
+
+  private postSecretNames(): void {
+    const secretNames = this.dependencies.hookSecretManager?.listNames() ?? [];
+    this.panel.webview.postMessage({ command: 'secretsUpdated', secretNames });
+  }
+
+  private postSecretError(error: unknown): void {
+    const message = error instanceof Error ? error.message : String(error);
+    this.panel.webview.postMessage({ command: 'secretError', message });
+  }
+
+  private async handleStoreSecret(name: string, value: string): Promise<void> {
+    const manager = this.dependencies.hookSecretManager;
+    if (!manager) {
+      this.postSecretError('Open a workspace folder to store hook secrets.');
+      return;
+    }
+    try {
+      await manager.store(name, value);
+    } catch (error: unknown) {
+      this.postSecretError(error);
+      return;
+    }
+    this.postSecretNames();
+  }
+
+  private async handleDeleteSecret(name: string): Promise<void> {
+    const manager = this.dependencies.hookSecretManager;
+    if (!manager) {
+      this.postSecretError('Open a workspace folder to manage hook secrets.');
+      return;
+    }
+    const answer = await vscode.window.showWarningMessage(
+      `Delete secret "${name}" from the OS keychain? Hooks referencing \${secret:${name}} will fail until it is re-added.`,
+      'Delete', 'Cancel'
+    );
+    if (answer !== 'Delete') return;
+    try {
+      await manager.delete(name);
+    } catch (error: unknown) {
+      this.postSecretError(error);
+      return;
+    }
+    this.postSecretNames();
+  }
+
+  private async handleRenameSecret(oldName: string, newName: string): Promise<void> {
+    const manager = this.dependencies.hookSecretManager;
+    if (!manager) {
+      this.postSecretError('Open a workspace folder to manage hook secrets.');
+      return;
+    }
+    try {
+      await manager.rename(oldName, newName);
+    } catch (error: unknown) {
+      this.postSecretError(error);
+      return;
+    }
+    this.postSecretNames();
+  }
+
+  // The one-click fix on a detectSecret warning (#27b): store the flagged
+  // literal in the keychain, rewrite the saved command to ${secret:NAME}, and
+  // re-run the scan so remaining warnings survive and this one clears.
+  private async handleMoveSecretToKeychain(serverId: string, hookCommand: string, name: string): Promise<void> {
+    const manager = this.dependencies.hookSecretManager;
+    if (!manager) {
+      this.postSecretError('Open a workspace folder to store hook secrets.');
+      return;
+    }
+    const entry = await this.dependencies.configManager.getServerById(serverId);
+    if (!entry) return;
+
+    const literal = findSecretLiteral(hookCommand);
+    if (!literal) {
+      this.postSecretError('No secret-looking literal found in that command — edit it manually instead.');
+      return;
+    }
+
+    try {
+      await manager.store(name, literal);
+    } catch (error: unknown) {
+      this.postSecretError(error);
+      return;
+    }
+
+    const token = `\${secret:${name}}`;
+    const rewriteHook = (hook: HookCommand): HookCommand =>
+      hook.command === hookCommand
+        ? { ...hook, command: hook.command.split(literal).join(token) }
+        : hook;
+    const existingHooks = entry.server.hooks ?? {};
+    const updatedHooks = {
+      preDeploy: (existingHooks.preDeploy ?? []).map(rewriteHook),
+      postDeploy: (existingHooks.postDeploy ?? []).map(rewriteHook),
+    };
+    await this.dependencies.configManager.setServerHooks(entry.name, updatedHooks);
+
+    // Same ordering rule as handleSaveHooks: configUpdated re-renders the tab,
+    // so any surviving warnings must be posted after it.
+    const config = await this.dependencies.configManager.getConfig();
+    this.panel.webview.postMessage({ command: 'configUpdated', config });
+    this.postSecretNames();
+
+    const stillFlagged = [...updatedHooks.preDeploy, ...updatedHooks.postDeploy]
+      .map(hook => hook.command)
+      .filter(command => detectSecret(command));
+    if (stillFlagged.length > 0) {
+      this.panel.webview.postMessage({ command: 'hookSecretWarning', commands: stillFlagged });
+    }
+
+    vscode.window.showInformationMessage(
+      `FileFerry: Secret stored in the OS keychain as "${name}" — the hook now references \${secret:${name}}.`
+    );
   }
 
   private async handleSaveServer(payload: Partial<ProjectServer> & { name?: string }): Promise<void> {
@@ -269,8 +416,7 @@ export class DeploymentSettingsPanel {
     if (!entry) return;
 
     // Hooks edited here live in the committed fileferry.json (the team-shared
-    // config). setServerHooks writes there; the git-ignored fileferry.local.json
-    // override is managed separately.
+    // config); secrets belong in the keychain, referenced as ${secret:NAME}.
     await this.dependencies.configManager.setServerHooks(entry.name, hooks);
 
     // Re-render the panel FIRST — configUpdated rebuilds the Hooks-tab DOM. The
@@ -280,8 +426,8 @@ export class DeploymentSettingsPanel {
     this.panel.webview.postMessage({ command: 'configUpdated', config });
 
     // Advisory secret scan — never blocks the save. Flag commands that look like
-    // they embed a literal secret so the webview can warn inline; resolution is
-    // up to the user (use $ENV_VAR / fileferry.local.json).
+    // they embed a literal secret so the webview can warn inline and offer the
+    // one-click "Move to keychain" fix.
     const flaggedCommands = [...(hooks?.preDeploy ?? []), ...(hooks?.postDeploy ?? [])]
       .map(hook => hook.command)
       .filter(command => detectSecret(command));

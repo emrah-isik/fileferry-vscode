@@ -1,4 +1,47 @@
-import { detectSecret } from '../../../utils/detectSecret';
+import { detectSecret, findSecretLiteral } from '../../../utils/detectSecret';
+
+// The extraction behind detectSecret — "Move to keychain" (#27b) stores this
+// exact literal and replaces it with a ${secret:NAME} reference in the command.
+describe('findSecretLiteral', () => {
+  it('extracts the value of an attached password flag, without the -p', () => {
+    expect(findSecretLiteral('mysql -u root -psupersecret123 mydb')).toBe('supersecret123');
+  });
+
+  it('extracts the value of a --password= assignment', () => {
+    expect(findSecretLiteral('deploy --password=hunter2longvalue')).toBe('hunter2longvalue');
+  });
+
+  it('extracts a bearer token', () => {
+    expect(findSecretLiteral('curl -H "Authorization: Bearer ghp_abc123XYZdef456" https://api'))
+      .toBe('ghp_abc123XYZdef456');
+  });
+
+  it('extracts a token= assignment value', () => {
+    expect(findSecretLiteral('deploy --token=ghp_abcd1234EFGHijkl')).toBe('ghp_abcd1234EFGHijkl');
+  });
+
+  it('extracts an AWS access key id', () => {
+    expect(findSecretLiteral('aws configure set key AKIAIOSFODNN7EXAMPLE')).toBe('AKIAIOSFODNN7EXAMPLE');
+  });
+
+  it('extracts a high-entropy blob without its surrounding quotes', () => {
+    expect(findSecretLiteral('./deploy.sh "AbCd1234EfGh5678IjKl9012MnOpQrSt"'))
+      .toBe('AbCd1234EfGh5678IjKl9012MnOpQrSt');
+  });
+
+  it('returns null for benign commands', () => {
+    expect(findSecretLiteral('npm run build')).toBeNull();
+  });
+
+  it('returns null for variable references (the safe path)', () => {
+    expect(findSecretLiteral('mysql -u root -p$DB_PASS mydb')).toBeNull();
+    expect(findSecretLiteral('deploy --token=${secret:API_TOKEN}')).toBeNull();
+  });
+
+  it('returns null for an empty command', () => {
+    expect(findSecretLiteral('')).toBeNull();
+  });
+});
 
 describe('detectSecret', () => {
   describe('flags likely inline secrets', () => {

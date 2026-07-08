@@ -28,8 +28,8 @@ describe('ensureGitignored', () => {
 
   it('adds a leading newline when the file does not end in one', async () => {
     mockReadFile.mockResolvedValue('node_modules'); // no trailing newline
-    await ensureGitignored('/ws', '.vscode/fileferry.local.json');
-    expect(mockAppendFile.mock.calls[0][1]).toBe('\n.vscode/fileferry.local.json\n');
+    await ensureGitignored('/ws', '.vscode/fileferry-history.jsonl');
+    expect(mockAppendFile.mock.calls[0][1]).toBe('\n.vscode/fileferry-history.jsonl\n');
   });
 
   it('is idempotent — does not append when the entry is already present', async () => {

@@ -17,6 +17,7 @@ import { walkLocalTree, walkRemoteTree } from '../services/SyncTreeWalker';
 import { ProjectConfig, ProjectServer, ServerType } from '../models/ProjectConfig';
 import { CredentialManager } from '../storage/CredentialManager';
 import { ProjectConfigManager } from '../storage/ProjectConfigManager';
+import { HookSecretManager } from '../storage/HookSecretManager';
 
 interface Dependencies {
   credentialManager: CredentialManager;
@@ -216,8 +217,8 @@ async function runSyncForScope(
     serverContext;
   const { localRoots, remoteRoots, label } = scope;
 
-  // Effective hooks (committed + fileferry.local.json) for the confirmation and
-  // for execution — set on the server passed to the orchestrator below.
+  // Committed hooks for the confirmation and for execution — set on the server
+  // passed to the orchestrator below.
   server.hooks = await dependencies.configManager.getServerHooks(serverName);
 
   const localFiles = gatherLocalFilesUnder(pathResolver, workspaceRoot, serverConfig, localRoots);
@@ -379,6 +380,7 @@ async function runSyncForScope(
           dryRun: !!config.dryRun,
           isTrusted: vscode.workspace.isTrusted,
           output: dependencies.output,
+          secrets: new HookSecretManager(dependencies.context, workspaceRoot),
         }
       );
 

@@ -425,3 +425,101 @@ button.btn-danger:hover:not(:disabled) {
   border-left: 3px solid var(--vscode-inputValidation-warningBorder, #f0ad4e);
   color: var(--vscode-inputValidation-warningForeground);
 }
+
+.hook-row .hook-insert-secret {
+  flex: 0 0 auto;
+  max-width: 140px;
+}
+
+.hook-warning .move-secret-form {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 6px;
+}
+
+.hook-warning .move-secret-name {
+  width: 180px;
+}
+
+.hook-secret-missing {
+  flex: 1 1 100%;
+  margin-top: 2px;
+  padding: 4px 8px;
+  font-size: 0.85em;
+  background: var(--vscode-inputValidation-warningBackground);
+  border-left: 3px solid var(--vscode-inputValidation-warningBorder, #f0ad4e);
+  color: var(--vscode-inputValidation-warningForeground);
+}
+
+/* ─── Hook secrets (#27b) ──────────────────────────────────────── */
+
+.secrets-details {
+  margin: 12px 0 20px;
+  padding: 8px 12px;
+  border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+  border-radius: 4px;
+  background: var(--vscode-sideBar-background, transparent);
+}
+
+.secrets-details > summary {
+  cursor: pointer;
+  font-weight: 600;
+  user-select: none;
+  padding: 2px 0;
+}
+
+.secrets-details[open] > summary {
+  margin-bottom: 8px;
+}
+
+.secret-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.secret-row .secret-name,
+.secret-row .secret-rename-input {
+  flex: 0 1 180px;
+  min-width: 120px;
+  overflow-wrap: anywhere;
+}
+
+.secret-row .secret-status {
+  flex: 0 0 auto;
+  font-size: 0.85em;
+  white-space: nowrap;
+}
+
+.secret-row .secret-status.stored {
+  color: var(--vscode-testing-iconPassed, #4caf50);
+}
+
+.secret-row .secret-status.missing {
+  color: var(--vscode-inputValidation-warningForeground, #f0ad4e);
+}
+
+.secret-row .secret-value {
+  flex: 1 1 160px;
+}
+
+.secret-add-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+}
+
+.secret-add-row #new-secret-name {
+  flex: 0 1 180px;
+}
+
+.secret-add-row #new-secret-value {
+  flex: 1 1 160px;
+}

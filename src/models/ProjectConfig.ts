@@ -6,9 +6,9 @@ export type ServerType = 'sftp' | 'ftp' | 'ftps' | 'ftps-implicit';
 // 'remote' on the server over the deploy's own SSH connection (SFTP only).
 export type HookLocation = 'local' | 'remote';
 
-// A single pre/post-deploy command. Lives in fileferry.json (committed) or the
-// git-ignored fileferry.local.json. The model owns this shape; HookRunner
-// (the executor) imports it from here.
+// A single pre/post-deploy command. Lives in the committed fileferry.json —
+// secrets in commands are ${secret:NAME} keychain references, never values.
+// The model owns this shape; HookRunner (the executor) imports it from here.
 export interface HookCommand {
   command: string;
   location: HookLocation;

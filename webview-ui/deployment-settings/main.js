@@ -13,6 +13,8 @@ let state = {
   activeTab: 'connection',
   testStatus: null,       // { success, message } | null
   editingNew: false,      // true when creating a new (unsaved) server
+  secretNames: [],        // hook secret NAMEs stored in the OS keychain (values never reach the webview)
+  secretsSectionOpen: null, // user's explicit open/collapse choice; null = auto (open when a secret is missing)
 };
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────
@@ -27,6 +29,7 @@ window.addEventListener('message', ({ data: msg }) => {
     case 'init':
       state.config = msg.config || { defaultServerId: '', servers: {} };
       state.credentials = msg.credentials || [];
+      state.secretNames = msg.secretNames || [];
       if (!state.selectedServerName) {
         const names = Object.keys(state.config.servers);
         if (names.length > 0) state.selectedServerName = names[0];
@@ -94,6 +97,22 @@ window.addEventListener('message', ({ data: msg }) => {
     case 'hookSecretWarning':
       showHookSecretWarnings(msg.commands || []);
       break;
+
+    // Secrets changed in the keychain — refresh the secrets area and the
+    // per-row indicators WITHOUT re-rendering the whole tab (that would wipe
+    // unsaved hook command edits).
+    case 'secretsUpdated':
+      state.secretNames = msg.secretNames || [];
+      renderSecretsSection();
+      refreshInsertSecretSelects();
+      refreshHookSecretIndicators();
+      break;
+
+    case 'secretError': {
+      const secretsErrorEl = document.getElementById('secrets-error');
+      if (secretsErrorEl) secretsErrorEl.textContent = msg.message || 'Secret operation failed.';
+      break;
+    }
   }
 });
 
@@ -559,6 +578,9 @@ function hookRowHtml(hook, isFtp) {
   return `
     <div class="hook-row">
       <input class="hook-command" type="text" value="${command}" placeholder="e.g. npm run build">
+      <select class="hook-insert-secret" title="Insert a \${secret:NAME} reference at the cursor">
+        ${insertSecretOptionsHtml()}
+      </select>
       <select class="hook-location" ${remoteTitle}>
         <option value="local" ${location === 'local' ? 'selected' : ''}>local</option>
         <option value="remote" ${location === 'remote' ? 'selected' : ''} ${remoteDisabled}>remote</option>
@@ -567,9 +589,42 @@ function hookRowHtml(hook, isFtp) {
         <input class="hook-continue" type="checkbox" ${continueOnError ? 'checked' : ''}> continue on error
       </label>
       <button class="btn-remove-hook" type="button" title="Remove">×</button>
+      <div class="hook-secret-missing" hidden></div>
       <div class="hook-warning" hidden></div>
     </div>
   `;
+}
+
+// ${secret:NAME} tokens in a command string — names only (mirrors the
+// extension-side pattern; names are environment-variable-shaped).
+function secretTokenNames(command) {
+  const names = [];
+  const pattern = /\$\{secret:([A-Za-z_][A-Za-z0-9_]*)\}/g;
+  let match;
+  while ((match = pattern.exec(command || '')) !== null) {
+    if (!names.includes(match[1])) names.push(match[1]);
+  }
+  return names;
+}
+
+// Every ${secret:NAME} referenced anywhere: saved hooks of ALL servers
+// (secrets are project-scoped, not per-server) plus the live, possibly
+// unsaved command inputs on this tab.
+function referencedSecretNames() {
+  const names = [];
+  const collect = (command) => {
+    for (const name of secretTokenNames(command)) {
+      if (!names.includes(name)) names.push(name);
+    }
+  };
+  for (const server of Object.values(state.config?.servers || {})) {
+    const hooks = server.hooks || {};
+    for (const hook of [...(hooks.preDeploy || []), ...(hooks.postDeploy || [])]) {
+      collect(hook.command);
+    }
+  }
+  document.querySelectorAll('#hooks-tab .hook-command').forEach(input => collect(input.value));
+  return names;
 }
 
 function renderHooksTab(server) {
@@ -584,7 +639,14 @@ function renderHooksTab(server) {
 
   el.innerHTML = `
     <p class="hint">Commands run automatically before and after a deliberate deploy to this server. They only run in a <strong>trusted workspace</strong> and are shown in the deploy confirmation before running.</p>
-    <p class="hint">Don't put secrets here — <code>fileferry.json</code> is committed to git. Use <code>$ENV_VAR</code> references or the git-ignored <code>fileferry.local.json</code>.</p>
+    <p class="hint">Don't paste secrets into commands — <code>fileferry.json</code> is committed to git. Store them under <strong>Secrets</strong> and reference them as <code>\${secret:NAME}</code>; <code>$ENV_VAR</code> references also work if you manage the value yourself. For <em>remote</em> hooks, prefer the server's own environment: an inlined secret is briefly visible in the server's process list.</p>
+
+    <details id="secrets-details" class="secrets-details">
+      <summary id="secrets-summary">Secrets</summary>
+      <p class="hint">Named secrets for this project, stored in your <strong>OS keychain</strong> — never in <code>fileferry.json</code>. Values are write-only and machine-local: a teammate cloning the repo re-enters them on their machine.</p>
+      <div id="secrets-error" class="field-error"></div>
+      <div id="secrets-section"></div>
+    </details>
 
     <div class="section-title">Pre-deploy</div>
     <div id="pre-hooks-body">${preDeploy.map(h => hookRowHtml(h, isFtp)).join('')}</div>
@@ -601,6 +663,16 @@ function renderHooksTab(server) {
     </div>
   `;
 
+  // Remember the user's explicit open/collapse choice; renderSecretsSection
+  // applies the auto rule (open when something is missing) only until then.
+  document.getElementById('secrets-details')?.addEventListener('toggle', (event) => {
+    if (event.target.dataset.programmaticToggle) {
+      delete event.target.dataset.programmaticToggle;
+      return;
+    }
+    state.secretsSectionOpen = event.target.open;
+  });
+
   const addRow = (bodyId) => {
     const body = document.getElementById(bodyId);
     if (!body) return;
@@ -611,6 +683,8 @@ function renderHooksTab(server) {
   document.getElementById('btn-add-post-hook')?.addEventListener('click', () => addRow('post-hooks-body'));
 
   wireHookRows();
+  renderSecretsSection();
+  refreshHookSecretIndicators();
 
   document.getElementById('btn-save-hooks')?.addEventListener('click', () => {
     vscode.postMessage({
@@ -627,7 +701,235 @@ function wireHookRows() {
     btn.replaceWith(clone);
     clone.addEventListener('click', () => {
       clone.closest('.hook-row')?.remove();
+      refreshHookSecretIndicators();
+      renderSecretsSection();
     });
+  });
+
+  // Missing-secret indicators follow what's typed, live — not just what's saved.
+  document.querySelectorAll('#hooks-tab .hook-command').forEach(input => {
+    const clone = input.cloneNode(true);
+    clone.value = input.value;
+    input.replaceWith(clone);
+    clone.addEventListener('input', () => {
+      refreshHookSecretIndicators();
+      renderSecretsSection();
+    });
+  });
+
+  wireInsertSecretSelects();
+}
+
+// ─── Hook secrets (#27b) ─────────────────────────────────────────────────────
+
+function insertSecretOptionsHtml() {
+  const options = state.secretNames
+    .map(name => `<option value="${escapeHtml(name)}">\${secret:${escapeHtml(name)}}</option>`)
+    .join('');
+  return `<option value="">Insert secret…</option>${options}<option value="__new__">+ New secret…</option>`;
+}
+
+function wireInsertSecretSelects() {
+  document.querySelectorAll('#hooks-tab .hook-insert-secret').forEach(select => {
+    const clone = select.cloneNode(true);
+    select.replaceWith(clone);
+    clone.addEventListener('change', () => {
+      const chosen = clone.value;
+      clone.value = '';
+      if (!chosen) return;
+      if (chosen === '__new__') {
+        const details = document.getElementById('secrets-details');
+        if (details) details.open = true; // user-initiated: the toggle listener records it
+        const nameInput = document.getElementById('new-secret-name');
+        nameInput?.scrollIntoView({ block: 'center' });
+        nameInput?.focus();
+        return;
+      }
+      const commandInput = clone.closest('.hook-row')?.querySelector('.hook-command');
+      if (!commandInput) return;
+      const token = '${secret:' + chosen + '}';
+      const start = commandInput.selectionStart ?? commandInput.value.length;
+      const end = commandInput.selectionEnd ?? commandInput.value.length;
+      commandInput.value = commandInput.value.slice(0, start) + token + commandInput.value.slice(end);
+      commandInput.focus();
+      commandInput.setSelectionRange(start + token.length, start + token.length);
+      refreshHookSecretIndicators();
+      renderSecretsSection();
+    });
+  });
+}
+
+function refreshInsertSecretSelects() {
+  document.querySelectorAll('#hooks-tab .hook-insert-secret').forEach(select => {
+    select.innerHTML = insertSecretOptionsHtml();
+    select.value = '';
+  });
+}
+
+// Per hook row: warn when the command references a ${secret:NAME} that is not
+// stored on this machine (fresh clone / moved project / typo).
+function refreshHookSecretIndicators() {
+  document.querySelectorAll('#hooks-tab .hook-row').forEach(row => {
+    const indicator = row.querySelector('.hook-secret-missing');
+    const commandInput = row.querySelector('.hook-command');
+    if (!indicator || !commandInput) return;
+    const missing = secretTokenNames(commandInput.value).filter(name => !state.secretNames.includes(name));
+    if (missing.length > 0) {
+      indicator.textContent =
+        `⚠ References ${missing.map(name => '${secret:' + name + '}').join(', ')} — not set on this machine. Set the value in the Secrets section above.`;
+      indicator.hidden = false;
+    } else {
+      indicator.textContent = '';
+      indicator.hidden = true;
+    }
+  });
+}
+
+// One row per known name: stored names plus names referenced by any hook
+// command (saved or typed) that aren't stored yet — the table doubles as the
+// "what do I need to re-enter on this machine?" checklist.
+function secretRowHtml(name, isStored) {
+  const escapedName = escapeHtml(name);
+  const status = isStored
+    ? '<span class="secret-status stored">✓ in OS keychain</span>'
+    : '<span class="secret-status missing">⚠ not set on this machine</span>';
+  return `
+    <div class="secret-row" data-name="${escapedName}">
+      <code class="secret-name">${escapedName}</code>
+      ${status}
+      <input class="secret-value" type="password" autocomplete="off" placeholder="${isStored ? 'enter new value to replace' : 'enter value'}">
+      <button class="btn-store-secret" type="button">${isStored ? 'Update' : 'Set value'}</button>
+      ${isStored ? '<button class="btn-rename-secret" type="button">Rename</button>' : ''}
+      ${isStored ? '<button class="btn-delete-secret" type="button" title="Delete from keychain">Delete</button>' : ''}
+    </div>
+  `;
+}
+
+function renderSecretsSection() {
+  const el = document.getElementById('secrets-section');
+  if (!el) return;
+
+  const referenced = referencedSecretNames();
+  const missingNames = referenced.filter(name => !state.secretNames.includes(name));
+
+  updateSecretsSummary(missingNames.length);
+  applySecretsSectionOpenState(missingNames.length > 0);
+
+  // This re-renders on every hook-command keystroke (missing rows follow the
+  // typing), so carry typed-but-unsubmitted field values across the rebuild.
+  const typedValues = {};
+  el.querySelectorAll('.secret-row').forEach(row => {
+    const value = row.querySelector('.secret-value')?.value;
+    if (value) typedValues[row.dataset.name] = value;
+  });
+  const typedAddName = document.getElementById('new-secret-name')?.value ?? '';
+  const typedAddValue = document.getElementById('new-secret-value')?.value ?? '';
+
+  const rows = [
+    ...state.secretNames.map(name => secretRowHtml(name, true)),
+    ...missingNames.map(name => secretRowHtml(name, false)),
+  ].join('');
+
+  el.innerHTML = `
+    <div id="secrets-body">${rows || '<p class="hint">No secrets yet. Add one below, then reference it in a command as <code>\${secret:NAME}</code>.</p>'}</div>
+    <div class="secret-add-row">
+      <input id="new-secret-name" type="text" autocomplete="off" spellcheck="false" placeholder="NAME (letters, digits, _)">
+      <input id="new-secret-value" type="password" autocomplete="off" placeholder="value">
+      <button id="btn-add-secret" type="button">Add secret</button>
+    </div>
+  `;
+
+  el.querySelectorAll('.secret-row').forEach(row => {
+    if (typedValues[row.dataset.name]) {
+      row.querySelector('.secret-value').value = typedValues[row.dataset.name];
+    }
+  });
+  document.getElementById('new-secret-name').value = typedAddName;
+  document.getElementById('new-secret-value').value = typedAddValue;
+
+  wireSecretRows();
+}
+
+function updateSecretsSummary(missingCount) {
+  const summary = document.getElementById('secrets-summary');
+  if (!summary) return;
+  const storedCount = state.secretNames.length;
+  const parts = [];
+  if (storedCount > 0) parts.push(`${storedCount} stored`);
+  if (missingCount > 0) parts.push(`${missingCount} missing on this machine`);
+  summary.textContent = parts.length > 0 ? `Secrets — ${parts.join(' · ')}` : 'Secrets';
+}
+
+// Auto-open while something is missing (the fresh-clone case); once the user
+// toggles the section themselves, their choice wins for the panel's lifetime.
+function applySecretsSectionOpenState(hasMissing) {
+  const details = document.getElementById('secrets-details');
+  if (!details) return;
+  const shouldOpen = state.secretsSectionOpen ?? hasMissing;
+  if (details.open !== shouldOpen) {
+    details.dataset.programmaticToggle = 'true';
+    details.open = shouldOpen;
+  }
+}
+
+function wireSecretRows() {
+  const clearError = () => {
+    const errorEl = document.getElementById('secrets-error');
+    if (errorEl) errorEl.textContent = '';
+  };
+
+  document.querySelectorAll('#secrets-section .secret-row').forEach(row => {
+    const name = row.dataset.name;
+    const valueInput = row.querySelector('.secret-value');
+
+    row.querySelector('.btn-store-secret')?.addEventListener('click', () => {
+      if (!valueInput.value) return;
+      clearError();
+      vscode.postMessage({ command: 'storeSecret', name, value: valueInput.value });
+      valueInput.value = '';
+    });
+
+    row.querySelector('.btn-delete-secret')?.addEventListener('click', () => {
+      clearError();
+      vscode.postMessage({ command: 'deleteSecret', name });
+    });
+
+    // Rename swaps the name cell for an input; Enter confirms, Escape cancels.
+    row.querySelector('.btn-rename-secret')?.addEventListener('click', () => {
+      const nameEl = row.querySelector('.secret-name');
+      if (!nameEl || row.querySelector('.secret-rename-input')) return;
+      const renameInput = document.createElement('input');
+      renameInput.className = 'secret-rename-input';
+      renameInput.type = 'text';
+      renameInput.value = name;
+      renameInput.spellcheck = false;
+      nameEl.replaceWith(renameInput);
+      renameInput.focus();
+      renameInput.select();
+      renameInput.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+          const newName = renameInput.value.trim();
+          if (newName && newName !== name) {
+            clearError();
+            vscode.postMessage({ command: 'renameSecret', name, newName });
+          } else {
+            renderSecretsSection();
+          }
+        } else if (event.key === 'Escape') {
+          renderSecretsSection();
+        }
+      });
+    });
+  });
+
+  document.getElementById('btn-add-secret')?.addEventListener('click', () => {
+    const nameInput = document.getElementById('new-secret-name');
+    const valueInput = document.getElementById('new-secret-value');
+    const name = nameInput?.value.trim();
+    if (!name || !valueInput?.value) return;
+    clearError();
+    vscode.postMessage({ command: 'storeSecret', name, value: valueInput.value });
+    valueInput.value = '';
   });
 }
 
@@ -656,16 +958,30 @@ function collectHookInputs() {
 }
 
 // On a save-time secret-scan hit, flag every matching command row inline. The
-// warning is advisory and non-blocking — the hooks are already saved.
+// warning is advisory and non-blocking — the hooks are already saved. The
+// one-click fix stores the flagged literal in the OS keychain and rewrites the
+// saved command to a ${secret:NAME} reference (#27b).
 function showHookSecretWarnings(commands) {
   const flagged = new Set(commands);
+  const server = getSelectedServer();
   document.querySelectorAll('#hooks-tab .hook-row').forEach(row => {
     const warningEl = row.querySelector('.hook-warning');
     if (!warningEl) return;
     const command = row.querySelector('.hook-command').value.trim();
     if (flagged.has(command)) {
-      warningEl.textContent = '⚠ This looks like it contains a secret. Use $ENV_VAR or fileferry.local.json instead.';
+      warningEl.innerHTML = `
+        ⚠ This looks like it contains a secret — <code>fileferry.json</code> is committed to git.
+        Name it and move the value to the OS keychain:
+        <span class="move-secret-form">
+          <input class="move-secret-name" type="text" spellcheck="false" placeholder="NAME (letters, digits, _)">
+          <button class="btn-move-secret" type="button">Move to keychain</button>
+        </span>`;
       warningEl.hidden = false;
+      warningEl.querySelector('.btn-move-secret')?.addEventListener('click', () => {
+        const name = warningEl.querySelector('.move-secret-name')?.value.trim();
+        if (!name || !server?.id) return;
+        vscode.postMessage({ command: 'moveSecretToKeychain', serverId: server.id, hookCommand: command, name });
+      });
     } else {
       warningEl.textContent = '';
       warningEl.hidden = true;

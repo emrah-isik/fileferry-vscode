@@ -3,6 +3,11 @@ import * as vscode from 'vscode';
 import type { CancellationToken, OutputChannel } from 'vscode';
 import { RemoteCommandRunner } from '../transferService';
 import { HookCommand, HookLocation } from '../models/ProjectConfig';
+import {
+  findSecretReferences,
+  resolveLocalCommand,
+  resolveRemoteCommand,
+} from './hookSecretResolution';
 
 // The data shape (command/location/continueOnError/timeoutMs) lives in the
 // model, since it's persisted in fileferry.json. Re-exported here so callers of
@@ -10,6 +15,14 @@ import { HookCommand, HookLocation } from '../models/ProjectConfig';
 export type { HookCommand, HookLocation };
 
 export type HookPhase = 'pre' | 'post';
+
+// Where ${secret:NAME} values come from — HookSecretManager satisfies this.
+// has() is an index lookup (no keychain read) so the preflight can check
+// existence without touching values.
+export interface HookSecretSource {
+  get(name: string): Promise<string | undefined>;
+  has(name: string): boolean;
+}
 
 export interface HookRunOptions {
   phase: HookPhase;
@@ -22,6 +35,12 @@ export interface HookRunOptions {
   isTrusted: boolean;
   output: OutputChannel;
   token?: CancellationToken;
+  // Resolves ${secret:NAME} references. A command that references a secret
+  // fails (never runs half-resolved) when this is absent or the name unknown.
+  secrets?: HookSecretSource;
+  // Called with each resolved value so the output channel can mask it (#27b
+  // step 3). Masking only covers values FileFerry itself resolved.
+  registerSecretValuesForMasking?: (values: string[]) => void;
 }
 
 const LOG_PREFIX = 'FileFerry (hooks)';
@@ -63,9 +82,26 @@ export async function runHooks(options: HookRunOptions): Promise<{ ok: boolean }
 
     output.appendLine(`${LOG_PREFIX}: running ${phase}-deploy ${hook.location} hook: ${hook.command}`);
 
-    const result = hook.location === 'remote'
-      ? await runRemoteCommand(hook, options)
-      : await runLocalCommand(hook, options);
+    // Resolve ${secret:NAME} references — the last step before the command
+    // runs. A hook whose references can't be fully resolved never runs at all.
+    // The scan is synchronous so a token-free hook dispatches immediately —
+    // the keychain is only consulted when a command actually references it.
+    const scan = findSecretReferences(hook.command);
+    let result: { ok: boolean; exitCode: number | null };
+    if (scan.names.length === 0 && scan.invalidNames.length === 0) {
+      result = hook.location === 'remote'
+        ? await runRemoteCommand(hook, options, EMPTY_SECRET_VALUES)
+        : await runLocalCommand(hook, options, EMPTY_SECRET_VALUES);
+    } else {
+      const resolution = await resolveSecretsForHook(scan, hook, options);
+      if (resolution.ok) {
+        result = hook.location === 'remote'
+          ? await runRemoteCommand(hook, options, resolution.values)
+          : await runLocalCommand(hook, options, resolution.values);
+      } else {
+        result = { ok: false, exitCode: null };
+      }
+    }
 
     if (result.ok) {
       continue;
@@ -87,12 +123,133 @@ export async function runHooks(options: HookRunOptions): Promise<{ ok: boolean }
   return { ok: true };
 }
 
+const EMPTY_SECRET_VALUES: ReadonlyMap<string, string> = new Map();
+
+// Deploy-wide secret check, run by the orchestrator BEFORE anything is
+// transferred (and before connecting). A missing or malformed ${secret:NAME}
+// reference is knowable in advance — unlike a runtime hook failure — so a
+// deploy that would end with a broken post-hook (files uploaded, migration
+// never ran) is aborted up front instead. Existence only, via has(): values
+// are still resolved per-hook at the last moment before each run.
+//
+// Hooks with continueOnError don't block — their failure is explicitly
+// tolerated — but the problem is logged so the runtime failure isn't a
+// surprise. The caller passes only hooks that will actually run (e.g. remote
+// hooks are excluded on FTP, where they are skipped anyway).
+export function preflightHookSecrets(options: {
+  preDeploy: HookCommand[];
+  postDeploy: HookCommand[];
+  secrets?: HookSecretSource;
+  output: OutputChannel;
+}): { ok: boolean } {
+  const { preDeploy, postDeploy, secrets, output } = options;
+  let ok = true;
+
+  const phases: Array<{ phase: HookPhase; hooks: HookCommand[] }> = [
+    { phase: 'pre', hooks: preDeploy },
+    { phase: 'post', hooks: postDeploy },
+  ];
+
+  for (const { phase, hooks } of phases) {
+    for (const hook of hooks) {
+      const scan = findSecretReferences(hook.command);
+
+      const problems: string[] = [];
+      if (scan.invalidNames.length > 0) {
+        problems.push(
+          `invalid secret reference(s) ${scan.invalidNames.map(name => `\${secret:${name}}`).join(', ')}`
+        );
+      }
+      const missingNames = secrets
+        ? scan.names.filter(name => !secrets.has(name))
+        : scan.names;
+      if (missingNames.length > 0) {
+        problems.push(
+          secrets
+            ? `missing secret(s) ${missingNames.join(', ')} on this machine`
+            : `secret(s) ${missingNames.join(', ')} referenced but no secret store is available`
+        );
+      }
+      if (problems.length === 0) {
+        continue;
+      }
+
+      if (hook.continueOnError) {
+        output.appendLine(
+          `${LOG_PREFIX}: warning — the ${phase}-deploy ${hook.location} hook has ${problems.join('; ')} ` +
+          `and will fail when it runs (continueOnError is set, so the deploy proceeds): ${hook.command}`
+        );
+        continue;
+      }
+
+      ok = false;
+      output.appendLine(
+        `${LOG_PREFIX}: deploy aborted before any transfer — the ${phase}-deploy ${hook.location} hook has ` +
+        `${problems.join('; ')}: ${hook.command} ` +
+        'Add missing secrets under Deployment Settings → Hooks → Secrets (they are stored in the OS keychain, not shared via git).'
+      );
+    }
+  }
+
+  return { ok };
+}
+
+// Resolves the scanned ${secret:NAME} references against the secret source.
+// Returns the values keyed by name; logs and fails (without running anything)
+// on a malformed token, a missing store, or an unknown name.
+async function resolveSecretsForHook(
+  scan: ReturnType<typeof findSecretReferences>,
+  hook: HookCommand,
+  options: HookRunOptions
+): Promise<{ ok: true; values: Map<string, string> } | { ok: false }> {
+  const { output, secrets, registerSecretValuesForMasking } = options;
+
+  if (scan.invalidNames.length > 0) {
+    output.appendLine(
+      `${LOG_PREFIX}: hook not run — invalid secret reference(s) ` +
+      `${scan.invalidNames.map(name => `\${secret:${name}}`).join(', ')} ` +
+      '(names use letters, digits and underscores, not starting with a digit).'
+    );
+    return { ok: false };
+  }
+
+  if (!secrets) {
+    output.appendLine(
+      `${LOG_PREFIX}: hook not run — the command references ${scan.names.join(', ')} but no secret store is available in this deploy.`
+    );
+    return { ok: false };
+  }
+
+  const values = new Map<string, string>();
+  const missingNames: string[] = [];
+  for (const name of scan.names) {
+    const value = await secrets.get(name);
+    if (value === undefined) {
+      missingNames.push(name);
+    } else {
+      values.set(name, value);
+    }
+  }
+
+  if (missingNames.length > 0) {
+    output.appendLine(
+      `${LOG_PREFIX}: hook not run — missing secret(s) ${missingNames.join(', ')} on this machine. ` +
+      'Add them under Deployment Settings → Hooks → Secrets (secrets are stored in the OS keychain and not shared via git).'
+    );
+    return { ok: false };
+  }
+
+  registerSecretValuesForMasking?.([...values.values()]);
+  return { ok: true, values };
+}
+
 // Runs a remote hook over the deploy's own SSH connection. Failure is the exit
 // code alone: non-zero (or null from a signal/timeout) fails; exit 0 succeeds
 // even when stderr is non-empty — that stderr is logged for visibility only.
 async function runRemoteCommand(
   hook: HookCommand,
-  options: HookRunOptions
+  options: HookRunOptions,
+  secretValues: ReadonlyMap<string, string>
 ): Promise<{ ok: boolean; exitCode: number | null }> {
   const { remote, output } = options;
 
@@ -103,8 +260,11 @@ async function runRemoteCommand(
     return { ok: true, exitCode: 0 };
   }
 
+  // Secrets are inlined into the string sent over SSH (sshd's AcceptEnv is
+  // usually too restrictive for env injection). The resolved string is passed
+  // to exec and NEVER logged — every log line uses hook.command instead.
   const result = await remote.execCommand(
-    hook.command,
+    resolveRemoteCommand(hook.command, secretValues),
     hook.timeoutMs ? { timeoutMs: hook.timeoutMs } : undefined
   );
 
@@ -124,7 +284,8 @@ async function runRemoteCommand(
 // secrets in their environment / a git-ignored .env rather than the config.
 function runLocalCommand(
   hook: HookCommand,
-  options: HookRunOptions
+  options: HookRunOptions,
+  secretValues: ReadonlyMap<string, string>
 ): Promise<{ ok: boolean; exitCode: number | null }> {
   const { workspaceRoot, output, token } = options;
 
@@ -136,10 +297,19 @@ function runLocalCommand(
     // `shell: true` would resolve to cmd.exe on Windows and break bash-isms.
     const shell: string | boolean = vscode.env.shell || true;
 
-    const child = spawn(hook.command, {
+    // Secrets ride in the environment, not the string: each ${secret:NAME}
+    // token is rewritten to the shell's own variable reference ($NAME /
+    // %NAME% / $env:NAME) and the value is injected via the env overlay, so
+    // the command string never contains it. Logs keep showing hook.command.
+    const resolved = resolveLocalCommand(hook.command, secretValues, shell);
+    const environment = secretValues.size > 0
+      ? { ...process.env, ...resolved.environmentOverlay }
+      : process.env;
+
+    const child = spawn(resolved.command, {
       cwd: workspaceRoot,
       shell,
-      env: process.env,
+      env: environment,
     });
 
     let settled = false;

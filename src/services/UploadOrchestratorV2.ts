@@ -3,7 +3,8 @@ import { TransferService, canExec } from '../transferService';
 import { SshCredentialWithSecret } from '../models/SshCredential';
 import { ResolvedUploadItem } from '../path/PathResolver';
 import { ProjectServer } from '../models/ProjectConfig';
-import { runHooks } from './HookRunner';
+import { runHooks, preflightHookSecrets, HookSecretSource } from './HookRunner';
+import { SecretMaskingOutputChannel } from './SecretMaskingOutputChannel';
 
 export interface UploadSummaryV2 {
   succeeded: ResolvedUploadItem[];
@@ -25,6 +26,9 @@ export interface HookExecutionContext {
   isTrusted: boolean;          // vscode.workspace.isTrusted — hooks never run when false
   output: OutputChannel;
   runHooks?: boolean;          // default true
+  // Resolves ${secret:NAME} in hook commands (a HookSecretManager). Optional:
+  // without it, a hook that references a secret fails instead of running.
+  secrets?: HookSecretSource;
 }
 
 type ServerWithHooks = {
@@ -55,6 +59,39 @@ export class UploadOrchestratorV2 {
     const preDeployHooks = server?.hooks?.preDeploy ?? [];
     const postDeployHooks = server?.hooks?.postDeploy ?? [];
 
+    // One masking wrapper for the whole deploy: every ${secret:} value the
+    // runner resolves is registered here, so it stays masked in later phases'
+    // output too (a post-hook printing a pre-resolved value still shows ••••).
+    const hookOutput = activeHookContext
+      ? new SecretMaskingOutputChannel(activeHookContext.output)
+      : null;
+    const registerSecretValuesForMasking = hookOutput
+      ? (values: string[]) => hookOutput.registerSecretValues(values)
+      : undefined;
+
+    // Secret preflight (#27b): a missing/malformed ${secret:NAME} reference is
+    // knowable before the deploy starts, so it aborts HERE — before connecting
+    // and before any file moves — rather than uploading everything and then
+    // failing a post-hook (files live, migration never ran). Only hooks that
+    // will actually run are checked: remote hooks are excluded on transports
+    // that can't exec (FTP skips them anyway). Dry-run and untrusted
+    // workspaces run no hooks, so they skip the check too.
+    if (activeHookContext && !activeHookContext.dryRun && activeHookContext.isTrusted) {
+      const remoteHooksWillRun = canExec(this.sftp);
+      const hooksThatWillRun = (hooks: typeof preDeployHooks) =>
+        hooks.filter(hook => hook.location === 'local' || remoteHooksWillRun);
+      const preflight = preflightHookSecrets({
+        preDeploy: hooksThatWillRun(preDeployHooks),
+        postDeploy: hooksThatWillRun(postDeployHooks),
+        secrets: activeHookContext.secrets,
+        output: hookOutput!,
+      });
+      if (!preflight.ok) {
+        result.hookAborted = true;
+        return result;
+      }
+    }
+
     // Local pre-hooks run BEFORE opening the connection (Decision #6): a build
     // can take minutes, and holding an SSH session idle through it invites
     // timeouts and socket hangs. A failure here aborts before we even connect.
@@ -68,7 +105,9 @@ export class UploadOrchestratorV2 {
           remote: null,
           dryRun: activeHookContext.dryRun,
           isTrusted: activeHookContext.isTrusted,
-          output: activeHookContext.output,
+          output: hookOutput!,
+          secrets: activeHookContext.secrets,
+          registerSecretValuesForMasking,
           token,
         });
         if (!outcome.ok) {
@@ -99,7 +138,9 @@ export class UploadOrchestratorV2 {
             remote,
             dryRun: activeHookContext.dryRun,
             isTrusted: activeHookContext.isTrusted,
-            output: activeHookContext.output,
+            output: hookOutput!,
+            secrets: activeHookContext.secrets,
+            registerSecretValuesForMasking,
             token,
           });
           if (!outcome.ok) {
@@ -170,7 +211,9 @@ export class UploadOrchestratorV2 {
           remote,
           dryRun: activeHookContext.dryRun,
           isTrusted: activeHookContext.isTrusted,
-          output: activeHookContext.output,
+          output: hookOutput!,
+          secrets: activeHookContext.secrets,
+          registerSecretValuesForMasking,
           token,
         });
       }

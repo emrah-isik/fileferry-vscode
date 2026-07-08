@@ -290,7 +290,6 @@ describe('PathResolver', () => {
 
     it.each([
       '.vscode/fileferry.json',
-      '.vscode/fileferry.local.json',
       '.vscode/fileferry-history.jsonl',
       '.vscode/fileferry-backups/2026-01-01/index.php',
     ])('resolve() excludes %s', relative => {

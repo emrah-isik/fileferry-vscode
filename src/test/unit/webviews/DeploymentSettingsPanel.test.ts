@@ -907,4 +907,224 @@ describe('DeploymentSettingsPanel message handling', () => {
       timeOffsetMs: 300,
     }));
   });
+
+  describe('hook secrets (#27b)', () => {
+    const mockHookSecretManager = {
+      listNames: jest.fn(),
+      store: jest.fn(),
+      delete: jest.fn(),
+      rename: jest.fn(),
+      has: jest.fn(),
+      get: jest.fn(),
+    };
+
+    function dependenciesWithSecrets() {
+      return { ...dependencies(), hookSecretManager: mockHookSecretManager as any };
+    }
+
+    function postedMessages(): any[] {
+      return (mockWebview.postMessage as jest.Mock).mock.calls.map(call => call[0]);
+    }
+
+    beforeEach(() => {
+      mockHookSecretManager.listNames.mockReturnValue(['API_TOKEN']);
+      mockHookSecretManager.store.mockResolvedValue(undefined);
+      mockHookSecretManager.delete.mockResolvedValue(undefined);
+      mockHookSecretManager.rename.mockResolvedValue(undefined);
+    });
+
+    it('includes the stored secret names in the init message', async () => {
+      DeploymentSettingsPanel.createOrShow(mockContext, dependenciesWithSecrets());
+      await messageHandler({ command: 'ready' });
+      expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+        command: 'init',
+        secretNames: ['API_TOKEN'],
+      }));
+    });
+
+    it('sends an empty name list when no secret manager is available (no workspace open)', async () => {
+      DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+      await messageHandler({ command: 'ready' });
+      expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+        command: 'init',
+        secretNames: [],
+      }));
+    });
+
+    it('storeSecret stores the value and posts the updated name list', async () => {
+      mockHookSecretManager.listNames.mockReturnValue(['API_TOKEN', 'DB_PASS']);
+      DeploymentSettingsPanel.createOrShow(mockContext, dependenciesWithSecrets());
+      await messageHandler({ command: 'storeSecret', name: 'DB_PASS', value: 'hunter2' });
+      expect(mockHookSecretManager.store).toHaveBeenCalledWith('DB_PASS', 'hunter2');
+      expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+        command: 'secretsUpdated',
+        secretNames: ['API_TOKEN', 'DB_PASS'],
+      }));
+    });
+
+    it('never echoes a stored value back to the webview', async () => {
+      DeploymentSettingsPanel.createOrShow(mockContext, dependenciesWithSecrets());
+      await messageHandler({ command: 'storeSecret', name: 'DB_PASS', value: 'hunter2-never-echoed' });
+      expect(JSON.stringify(postedMessages())).not.toContain('hunter2-never-echoed');
+    });
+
+    it('posts a secretError when storing fails (e.g. invalid name), and stores nothing more', async () => {
+      mockHookSecretManager.store.mockRejectedValue(new Error('Invalid secret name "BAD-NAME"'));
+      DeploymentSettingsPanel.createOrShow(mockContext, dependenciesWithSecrets());
+      await messageHandler({ command: 'storeSecret', name: 'BAD-NAME', value: 'value' });
+      expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+        command: 'secretError',
+        message: expect.stringContaining('BAD-NAME'),
+      }));
+    });
+
+    it('posts a secretError when no secret manager is available', async () => {
+      DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+      await messageHandler({ command: 'storeSecret', name: 'API_TOKEN', value: 'value' });
+      expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+        command: 'secretError',
+      }));
+    });
+
+    it('deleteSecret asks for confirmation and deletes on confirm', async () => {
+      (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue('Delete');
+      DeploymentSettingsPanel.createOrShow(mockContext, dependenciesWithSecrets());
+      await messageHandler({ command: 'deleteSecret', name: 'API_TOKEN' });
+      expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+        expect.stringContaining('API_TOKEN'), 'Delete', 'Cancel'
+      );
+      expect(mockHookSecretManager.delete).toHaveBeenCalledWith('API_TOKEN');
+      expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+        command: 'secretsUpdated',
+      }));
+    });
+
+    it('deleteSecret does nothing when the user cancels', async () => {
+      (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue('Cancel');
+      DeploymentSettingsPanel.createOrShow(mockContext, dependenciesWithSecrets());
+      await messageHandler({ command: 'deleteSecret', name: 'API_TOKEN' });
+      expect(mockHookSecretManager.delete).not.toHaveBeenCalled();
+    });
+
+    it('renameSecret renames and posts the updated name list', async () => {
+      mockHookSecretManager.listNames.mockReturnValue(['NEW_NAME']);
+      DeploymentSettingsPanel.createOrShow(mockContext, dependenciesWithSecrets());
+      await messageHandler({ command: 'renameSecret', name: 'OLD_NAME', newName: 'NEW_NAME' });
+      expect(mockHookSecretManager.rename).toHaveBeenCalledWith('OLD_NAME', 'NEW_NAME');
+      expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+        command: 'secretsUpdated',
+        secretNames: ['NEW_NAME'],
+      }));
+    });
+
+    it('renameSecret posts a secretError when the rename is rejected', async () => {
+      mockHookSecretManager.rename.mockRejectedValue(new Error('Secret "NEW_NAME" already exists.'));
+      DeploymentSettingsPanel.createOrShow(mockContext, dependenciesWithSecrets());
+      await messageHandler({ command: 'renameSecret', name: 'OLD_NAME', newName: 'NEW_NAME' });
+      expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+        command: 'secretError',
+        message: expect.stringContaining('already exists'),
+      }));
+    });
+
+    describe('moveSecretToKeychain (one-click fix on the detectSecret warning)', () => {
+      const flaggedCommand = 'mysql -u root -phunter22secret mydb';
+
+      function serverWithHooks(hooks: any) {
+        (mockConfigManager.getServerById as jest.Mock).mockResolvedValue({
+          name: 'Production',
+          server: { ...serverFixture, hooks },
+        });
+      }
+
+      it('stores the extracted literal — not the whole command — under the given name', async () => {
+        serverWithHooks({ preDeploy: [{ command: flaggedCommand, location: 'remote' }], postDeploy: [] });
+        DeploymentSettingsPanel.createOrShow(mockContext, dependenciesWithSecrets());
+        await messageHandler({ command: 'moveSecretToKeychain', serverId: 'srv-1', hookCommand: flaggedCommand, name: 'DB_PASS' });
+        expect(mockHookSecretManager.store).toHaveBeenCalledWith('DB_PASS', 'hunter22secret');
+      });
+
+      it('rewrites the flagged command to a ${secret:NAME} reference and persists it', async () => {
+        serverWithHooks({ preDeploy: [{ command: flaggedCommand, location: 'remote' }], postDeploy: [] });
+        DeploymentSettingsPanel.createOrShow(mockContext, dependenciesWithSecrets());
+        await messageHandler({ command: 'moveSecretToKeychain', serverId: 'srv-1', hookCommand: flaggedCommand, name: 'DB_PASS' });
+        expect(mockConfigManager.setServerHooks).toHaveBeenCalledWith('Production', {
+          preDeploy: [{ command: 'mysql -u root -p${secret:DB_PASS} mydb', location: 'remote' }],
+          postDeploy: [],
+        });
+      });
+
+      it('leaves other hooks untouched and posts configUpdated plus secretsUpdated', async () => {
+        serverWithHooks({
+          preDeploy: [{ command: flaggedCommand, location: 'remote' }],
+          postDeploy: [{ command: 'npm run notify', location: 'local' }],
+        });
+        DeploymentSettingsPanel.createOrShow(mockContext, dependenciesWithSecrets());
+        await messageHandler({ command: 'moveSecretToKeychain', serverId: 'srv-1', hookCommand: flaggedCommand, name: 'DB_PASS' });
+        const savedHooks = (mockConfigManager.setServerHooks as jest.Mock).mock.calls[0][1];
+        expect(savedHooks.postDeploy).toEqual([{ command: 'npm run notify', location: 'local' }]);
+        const commands = postedMessages().map(message => message.command);
+        expect(commands).toContain('configUpdated');
+        expect(commands).toContain('secretsUpdated');
+      });
+
+      it('does not re-post a hookSecretWarning when nothing flagged remains', async () => {
+        serverWithHooks({ preDeploy: [{ command: flaggedCommand, location: 'remote' }], postDeploy: [] });
+        DeploymentSettingsPanel.createOrShow(mockContext, dependenciesWithSecrets());
+        await messageHandler({ command: 'moveSecretToKeychain', serverId: 'srv-1', hookCommand: flaggedCommand, name: 'DB_PASS' });
+        expect(postedMessages().find(message => message.command === 'hookSecretWarning')).toBeUndefined();
+      });
+
+      it('re-posts a hookSecretWarning for other commands that are still flagged', async () => {
+        const otherFlagged = 'deploy --password=stillhere99';
+        serverWithHooks({
+          preDeploy: [{ command: flaggedCommand, location: 'remote' }],
+          postDeploy: [{ command: otherFlagged, location: 'local' }],
+        });
+        DeploymentSettingsPanel.createOrShow(mockContext, dependenciesWithSecrets());
+        await messageHandler({ command: 'moveSecretToKeychain', serverId: 'srv-1', hookCommand: flaggedCommand, name: 'DB_PASS' });
+        const warning = postedMessages().find(message => message.command === 'hookSecretWarning');
+        expect(warning).toBeDefined();
+        expect(warning.commands).toEqual([otherFlagged]);
+      });
+
+      it('posts a secretError and rewrites nothing when storing fails (e.g. invalid name)', async () => {
+        mockHookSecretManager.store.mockRejectedValue(new Error('Invalid secret name "BAD NAME"'));
+        serverWithHooks({ preDeploy: [{ command: flaggedCommand, location: 'remote' }], postDeploy: [] });
+        DeploymentSettingsPanel.createOrShow(mockContext, dependenciesWithSecrets());
+        await messageHandler({ command: 'moveSecretToKeychain', serverId: 'srv-1', hookCommand: flaggedCommand, name: 'BAD NAME' });
+        expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({ command: 'secretError' }));
+        expect(mockConfigManager.setServerHooks).not.toHaveBeenCalled();
+      });
+
+      it('posts a secretError and stores nothing when the command has no detectable secret', async () => {
+        const benign = 'npm run build';
+        serverWithHooks({ preDeploy: [{ command: benign, location: 'local' }], postDeploy: [] });
+        DeploymentSettingsPanel.createOrShow(mockContext, dependenciesWithSecrets());
+        await messageHandler({ command: 'moveSecretToKeychain', serverId: 'srv-1', hookCommand: benign, name: 'API_TOKEN' });
+        expect(mockHookSecretManager.store).not.toHaveBeenCalled();
+        expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({ command: 'secretError' }));
+      });
+
+      it('does nothing when the server id is unknown', async () => {
+        (mockConfigManager.getServerById as jest.Mock).mockResolvedValue(undefined);
+        DeploymentSettingsPanel.createOrShow(mockContext, dependenciesWithSecrets());
+        await messageHandler({ command: 'moveSecretToKeychain', serverId: 'gone', hookCommand: flaggedCommand, name: 'DB_PASS' });
+        expect(mockHookSecretManager.store).not.toHaveBeenCalled();
+        expect(mockConfigManager.setServerHooks).not.toHaveBeenCalled();
+      });
+    });
+
+    it('saveHooks persists a ${secret:NAME} reference verbatim — never a value', async () => {
+      DeploymentSettingsPanel.createOrShow(mockContext, dependenciesWithSecrets());
+      const hooks = {
+        preDeploy: [{ command: 'deploy --token ${secret:API_TOKEN}', location: 'local' }],
+        postDeploy: [],
+      };
+      await messageHandler({ command: 'saveHooks', serverId: 'srv-1', hooks });
+      expect(mockConfigManager.setServerHooks).toHaveBeenCalledWith('Production', expect.objectContaining({
+        preDeploy: [expect.objectContaining({ command: 'deploy --token ${secret:API_TOKEN}' })],
+      }));
+    });
+  });
 });

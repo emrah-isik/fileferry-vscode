@@ -13,6 +13,7 @@ import { DryRunReporter } from '../services/DryRunReporter';
 import { UploadHistoryService } from '../services/UploadHistoryService';
 import { summaryToHistoryEntries } from '../services/summaryToHistoryEntries';
 import { UploadConfirmation } from '../uploadConfirmation';
+import { HookSecretManager } from '../storage/HookSecretManager';
 
 interface Dependencies {
   credentialManager: CredentialManager;
@@ -107,8 +108,8 @@ export async function uploadToServers(
       continue;
     }
 
-    // Effective hooks (committed + fileferry.local.json) for the confirmation
-    // listing and for execution by this server's orchestrator pass.
+    // Committed hooks for the confirmation listing and for execution by this
+    // server's orchestrator pass.
     server.hooks = await dependencies.configManager.getServerHooks(serverName);
 
     const pathResolver = new PathResolver();
@@ -230,6 +231,7 @@ export async function uploadToServers(
                 dryRun: !!config.dryRun,
                 isTrusted: vscode.workspace.isTrusted,
                 output: dependencies.output,
+                secrets: new HookSecretManager(dependencies.context, workspaceRoot),
               }
             );
             return { serverName: plan.serverName, summary };

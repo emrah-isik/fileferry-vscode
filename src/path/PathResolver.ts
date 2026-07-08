@@ -22,7 +22,6 @@ interface ServerConfig {
 // deploy them. `fileferry-backups` is a directory prefix.
 const FILEFERRY_ARTIFACTS: readonly string[] = [
   '.vscode/fileferry.json',
-  '.vscode/fileferry.local.json',
   '.vscode/fileferry-history.jsonl',
   '.vscode/fileferry-backups',
 ];

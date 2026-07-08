@@ -148,11 +148,15 @@ Each hook:
 
 **No secrets in `fileferry.json`** — it's committed to git. Keep secrets out of the command string:
 
-- **Environment variables (recommended).** Local hooks inherit your shell environment, so write `mysql -p"$DB_PASS" …` and keep `DB_PASS` in your environment or a git-ignored `.env`. The committed file holds only the literal `$DB_PASS`; it's expanded at run time.
-- **`fileferry.local.json` (git-ignored escape hatch).** For a command you don't want committed at all, put the server's `hooks` in `.vscode/fileferry.local.json` instead. FileFerry reads it and **merges its hooks over** the committed config for that server, and adds the file to `.gitignore` on first write so it's never committed. The committed `fileferry.json` stays clean for everyone else.
-- **Remote-hook caveat.** SSH usually rejects client-set environment variables (`AcceptEnv` is restrictive), so `$VAR` expansion is unreliable for **remote** hooks. Prefer keeping remote secrets in the *server's* own environment / a remote `.env` so FileFerry never handles the value.
+- **Keychain secrets — `${secret:NAME}` (recommended).** Store the value once in the **Secrets** section of the Hooks tab (Deployment Settings); it goes into your OS keychain (macOS Keychain / Windows Credential Manager / Linux libsecret), and the command references it as `${secret:NAME}` — e.g. `mysql -p${secret:DB_PASS} …`. The committed file only ever holds the reference. Resolution happens at the moment the hook runs, never earlier: dialogs, logs, and dry-run all show the unresolved `${secret:NAME}`. Names are environment-variable-shaped (letters, digits, underscores; not starting with a digit).
+  - **Per-project and machine-local.** Secrets are scoped to the workspace and stored on your machine only — a teammate cloning the repo re-enters the values on theirs (same as SSH credentials). The Hooks tab shows which referenced secrets are missing on this machine.
+  - **Missing secrets abort the deploy up front.** Before anything is transferred, FileFerry checks every hook that will run (pre *and* post) for missing or malformed `${secret:…}` references and aborts the whole deploy if one is found — so a post-deploy `migrate`/`reload` can't be silently skipped after the files already went up. Hooks marked *continue on error* don't block the deploy; their problem is logged as a warning and they fail at run time as usual.
+  - **Local hooks** get the value injected as an **environment variable**: `${secret:DB_PASS}` becomes the shell's own reference (`$DB_PASS`, `%DB_PASS%` on cmd, `$env:DB_PASS` on PowerShell) with the value in the process environment — it never enters the command string.
+  - **If a command looks like it embeds a raw secret**, the save-time warning offers a one-click **Move to keychain**: it stores the flagged literal and rewrites the command to `${secret:NAME}` for you.
+- **Environment variables — `$ENV_VAR`.** Local hooks inherit your shell environment, so write `mysql -p"$DB_PASS" …` and keep `DB_PASS` in your environment or a git-ignored `.env`. The committed file holds only the literal `$DB_PASS`; it's expanded at run time. Use this when you already manage the value out-of-band.
+- **Remote-hook caveat.** SSH usually rejects client-set environment variables (`AcceptEnv` is restrictive), so for **remote** hooks FileFerry resolves `${secret:NAME}` by inlining the value into the command at exec time — which makes it **briefly visible in the server's process list** (`ps`), exactly like typing `mysql -psecret` in a remote shell. The resolved command is never logged. Prefer keeping remote secrets in the *server's* own environment / a remote `.env` so FileFerry never handles the value; `$VAR` in a remote command expands against the *server's* environment, which is exactly what you want there.
 
-FileFerry masks values it resolved itself in the output channel, but it can't catch a secret a command prints on its own — so the rules above matter.
+FileFerry masks values it resolved itself (`••••` in the output channel), but it can't catch a secret a command prints on its own — so the rules above matter.
 
 **Build artifacts won't deploy via a git-changed upload.** A local `npm run build` in `preDeploy` does **not** add files to an *Upload Changed Files* deploy. The changed set is resolved before the hook runs, and it's read from git state — which is `.gitignore`-respecting, so build output in `dist/` (usually git-ignored) never appears in it regardless. To deploy generated files, use **Sync to Remote** (walks the filesystem tree at transfer time) or the **Watch** feature (an explicit glob allowlist that uploads git-ignored files).
 
@@ -261,7 +265,6 @@ These files live alongside `fileferry.json` in `.vscode/`:
 | File | Purpose | Commit? |
 | --- | --- | --- |
 | `fileferry.json` | This file — config and server definitions | yes |
-| `fileferry.local.json` | Per-server `hooks` overrides you don't want committed (e.g. secret-bearing commands). Merged over `fileferry.json` at deploy time. | no — auto-`.gitignore`d on first write |
 | `fileferry-history.jsonl` | Per-project upload log (one JSON entry per line) | no — auto-`.gitignore`d on first write |
 | `fileferry-backups/` | Pre-overwrite backups when `backupBeforeOverwrite` is on | no — auto-`.gitignore`d on first write |
 
@@ -270,7 +273,6 @@ time it writes them** (creating `.gitignore` if needed — it works even before 
 shouldn't need to add them by hand, but for reference the entries are:
 
 ```gitignore
-.vscode/fileferry.local.json
 .vscode/fileferry-history.jsonl
 .vscode/fileferry-backups/
 ```

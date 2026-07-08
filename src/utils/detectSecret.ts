@@ -3,8 +3,8 @@
 // This is DELIBERATELY advisory: it has false positives and false negatives and
 // must never block a save. Its only job is to turn a silent footgun (a raw
 // secret committed to fileferry.json) into a visible warning at authoring time,
-// nudging the user toward $ENV_VAR / ${secret:…} references or the git-ignored
-// fileferry.local.json. It is NOT a security boundary.
+// nudging the user toward ${secret:…} keychain references (one click via "Move
+// to keychain") or $ENV_VAR. It is NOT a security boundary.
 
 // A value that is purely an environment-variable or keychain reference is the
 // SAFE path — never flag it. Matches $NAME, ${NAME}, ${secret:NAME}, and the
@@ -19,9 +19,20 @@ function isLiteralValue(value: string | undefined): value is string {
   return !!value && value.length > 0 && !isVariableReference(value);
 }
 
-export function detectSecret(command: string): boolean {
+// \S+ captures happily swallow a closing quote (`Bearer abc"` → `abc"`). The
+// stored/rewritten literal must be the bare value, so strip surrounding quotes.
+function stripSurroundingQuotes(value: string): string {
+  return value.replace(/^["']+|["']+$/g, '');
+}
+
+// The literal secret-looking substring behind a detectSecret hit — what the
+// one-click "Move to keychain" fix (#27b) stores and replaces with a
+// ${secret:NAME} reference. Returns the first hit, or null when the command
+// looks clean. Same heuristics and caveats as detectSecret (which is just
+// `findSecretLiteral(command) !== null`).
+export function findSecretLiteral(command: string): string | null {
   if (!command || !command.trim()) {
-    return false;
+    return null;
   }
 
   // 1. mysql/curl-style password flag with the value attached: -psecret.
@@ -30,35 +41,37 @@ export function detectSecret(command: string): boolean {
   //    all capture 1-4 trailing flag letters, not a secret.
   const attachedPassword = command.match(/(?:^|\s)-p(\S+)/);
   if (attachedPassword && attachedPassword[1].length >= 5 && isLiteralValue(attachedPassword[1])) {
-    return true;
+    return stripSurroundingQuotes(attachedPassword[1]);
   }
 
   // 2. --password= / --password <value> / --pass= (long-form password flags).
   const longPassword = command.match(/--pass(?:word)?[=\s]+(\S+)/i);
   if (longPassword && isLiteralValue(longPassword[1])) {
-    return true;
+    return stripSurroundingQuotes(longPassword[1]);
   }
 
   // 3. token=<value> / token:<value> (query-string or env-style assignment).
   const tokenAssignment = command.match(/\btoken[=:]\s*(\S+)/i);
   if (tokenAssignment && isLiteralValue(tokenAssignment[1])) {
-    return true;
+    return stripSurroundingQuotes(tokenAssignment[1]);
   }
 
   // 4. HTTP bearer header.
   const bearer = command.match(/Authorization:\s*Bearer\s+(\S+)/i);
   if (bearer && isLiteralValue(bearer[1])) {
-    return true;
+    return stripSurroundingQuotes(bearer[1]);
   }
 
   // 5. AWS access key id.
-  if (/\bAKIA[0-9A-Z]{16}\b/.test(command)) {
-    return true;
+  const awsAccessKey = command.match(/\bAKIA[0-9A-Z]{16}\b/);
+  if (awsAccessKey) {
+    return awsAccessKey[0];
   }
 
   // 6. A standalone high-entropy blob — long, mixed upper/lower/digit. Requiring
   //    an uppercase letter deliberately excludes lowercase-hex git SHAs, which
-  //    are common in deploy commands and aren't secrets.
+  //    are common in deploy commands and aren't secrets. Returned without its
+  //    surrounding quotes, so a rewrite keeps the quoting intact.
   for (const word of command.split(/\s+/)) {
     const stripped = word.replace(/^["']|["']$/g, '');
     if (isVariableReference(stripped)) {
@@ -70,9 +83,13 @@ export function detectSecret(command: string): boolean {
       /[a-z]/.test(stripped) &&
       /[0-9]/.test(stripped)
     ) {
-      return true;
+      return stripped;
     }
   }
 
-  return false;
+  return null;
+}
+
+export function detectSecret(command: string): boolean {
+  return findSecretLiteral(command) !== null;
 }

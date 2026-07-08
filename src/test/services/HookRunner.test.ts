@@ -4,7 +4,8 @@ jest.mock('child_process');
 
 import * as child_process from 'child_process';
 import * as vscode from 'vscode';
-import { runHooks, HookCommand, HookRunOptions } from '../../services/HookRunner';
+import { runHooks, preflightHookSecrets, HookCommand, HookRunOptions } from '../../services/HookRunner';
+import { SecretMaskingOutputChannel } from '../../services/SecretMaskingOutputChannel';
 import { RemoteCommandRunner, RemoteCommandResult } from '../../transferService';
 
 const mockSpawn = child_process.spawn as unknown as jest.Mock;
@@ -326,6 +327,339 @@ describe('runHooks', () => {
       const result = await runHooks(baseOptions({ hooks: [], output: output as unknown as HookRunOptions['output'] }));
       expect(result.ok).toBe(true);
       expect(output.appendLine).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('${secret:} resolution', () => {
+    // A secret source seeded like a real HookSecretManager would be.
+    function makeSecrets(fixtures: Record<string, string>) {
+      return {
+        get: jest.fn(async (name: string) => fixtures[name]),
+        has: jest.fn((name: string) => name in fixtures),
+      };
+    }
+
+    // Secret resolution is async, so tests can't emit 'close' synchronously
+    // after calling runHooks — instead every spawned child closes itself on
+    // the next tick, whenever the spawn actually happens.
+    function makeAutoClosingSpawn(exitCode = 0): void {
+      mockSpawn.mockImplementation(() => {
+        const child = makeChild();
+        process.nextTick(() => child.emit('close', exitCode));
+        return child;
+      });
+    }
+
+    describe('local hooks', () => {
+      it('injects the value as an environment variable and keeps it out of the command string', async () => {
+        (vscode.env as { shell?: string }).shell = '/bin/bash';
+        makeAutoClosingSpawn();
+        const output = makeOutput();
+        const secrets = makeSecrets({ API_TOKEN: 'tok-secret-123' });
+        const hooks: HookCommand[] = [{
+          command: 'curl -H "Authorization: Bearer ${secret:API_TOKEN}" https://api.example.com',
+          location: 'local',
+        }];
+
+        const result = await runHooks(baseOptions({ hooks, secrets, output: output as unknown as HookRunOptions['output'] }));
+
+        expect(result.ok).toBe(true);
+        const [spawnedCommand, spawnOptions] = mockSpawn.mock.calls[0];
+        expect(spawnedCommand).toBe('curl -H "Authorization: Bearer $API_TOKEN" https://api.example.com');
+        expect(spawnedCommand).not.toContain('tok-secret-123');
+        expect(spawnOptions.env).toEqual(expect.objectContaining({ API_TOKEN: 'tok-secret-123' }));
+        // The overlay merges over process.env, it does not replace it.
+        expect(spawnOptions.env.PATH).toBe(process.env.PATH);
+      });
+
+      it('never writes the resolved value to the output channel — logs show the unresolved token', async () => {
+        (vscode.env as { shell?: string }).shell = '/bin/bash';
+        makeAutoClosingSpawn();
+        const output = makeOutput();
+        const secrets = makeSecrets({ API_TOKEN: 'tok-secret-123' });
+        const hooks: HookCommand[] = [{ command: 'deploy ${secret:API_TOKEN}', location: 'local' }];
+
+        await runHooks(baseOptions({ hooks, secrets, output: output as unknown as HookRunOptions['output'] }));
+
+        const text = output.lines.join('\n');
+        expect(text).toContain('${secret:API_TOKEN}');
+        expect(text).not.toContain('tok-secret-123');
+      });
+
+      it('does not touch the spawn environment for a command without tokens', async () => {
+        makeAutoClosingSpawn();
+        const secrets = makeSecrets({ API_TOKEN: 'tok-secret-123' });
+        const hooks: HookCommand[] = [{ command: 'npm run build', location: 'local' }];
+
+        await runHooks(baseOptions({ hooks, secrets }));
+
+        expect(mockSpawn.mock.calls[0][0]).toBe('npm run build');
+        expect(mockSpawn.mock.calls[0][1].env).toBe(process.env);
+        expect(secrets.get).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('remote hooks', () => {
+      it('inlines the value into the command sent over SSH but never logs the resolved string', async () => {
+        const remote = makeRemote({ stdout: '', stderr: '', exitCode: 0 });
+        const output = makeOutput();
+        const secrets = makeSecrets({ DB_PASS: 'hunter2' });
+        const hooks: HookCommand[] = [{
+          command: 'mysqldump -u root -p${secret:DB_PASS} app',
+          location: 'remote',
+        }];
+
+        const result = await runHooks(baseOptions({ hooks, remote, secrets, output: output as unknown as HookRunOptions['output'] }));
+
+        expect(result.ok).toBe(true);
+        expect(remote.execCommand).toHaveBeenCalledWith('mysqldump -u root -phunter2 app', undefined);
+        const text = output.lines.join('\n');
+        expect(text).toContain('${secret:DB_PASS}');
+        expect(text).not.toContain('hunter2');
+      });
+    });
+
+    describe('failure modes', () => {
+      it('fails the hook without running it when a referenced secret is not stored, naming the secret', async () => {
+        const output = makeOutput();
+        const secrets = makeSecrets({});
+        const hooks: HookCommand[] = [{ command: 'deploy ${secret:MISSING_TOKEN}', location: 'local' }];
+
+        const result = await runHooks(baseOptions({ hooks, secrets, output: output as unknown as HookRunOptions['output'] }));
+
+        expect(result.ok).toBe(false);
+        expect(mockSpawn).not.toHaveBeenCalled();
+        const text = output.lines.join('\n');
+        expect(text).toContain('MISSING_TOKEN');
+        expect(text).toMatch(/secrets/i);
+      });
+
+      it('fails a remote hook the same way — the half-resolved command never reaches the server', async () => {
+        const remote = makeRemote({ stdout: '', stderr: '', exitCode: 0 });
+        const secrets = makeSecrets({});
+        const hooks: HookCommand[] = [{ command: 'deploy ${secret:MISSING_TOKEN}', location: 'remote' }];
+
+        const result = await runHooks(baseOptions({ hooks, remote, secrets }));
+
+        expect(result.ok).toBe(false);
+        expect(remote.execCommand).not.toHaveBeenCalled();
+      });
+
+      it('respects continueOnError for a missing secret', async () => {
+        makeAutoClosingSpawn();
+        const secrets = makeSecrets({});
+        const hooks: HookCommand[] = [
+          { command: 'deploy ${secret:MISSING_TOKEN}', location: 'local', continueOnError: true },
+          { command: 'runs-anyway', location: 'local' },
+        ];
+
+        const result = await runHooks(baseOptions({ hooks, secrets }));
+
+        expect(result.ok).toBe(true);
+        expect(mockSpawn).toHaveBeenCalledTimes(1);
+        expect(mockSpawn).toHaveBeenCalledWith('runs-anyway', expect.anything());
+      });
+
+      it('fails when a command references a secret but no secret store was provided', async () => {
+        const output = makeOutput();
+        const hooks: HookCommand[] = [{ command: 'deploy ${secret:API_TOKEN}', location: 'local' }];
+
+        const result = await runHooks(baseOptions({ hooks, output: output as unknown as HookRunOptions['output'] }));
+
+        expect(result.ok).toBe(false);
+        expect(mockSpawn).not.toHaveBeenCalled();
+        expect(output.lines.join('\n')).toContain('API_TOKEN');
+      });
+
+      it('fails on a malformed secret token instead of running it literally', async () => {
+        const output = makeOutput();
+        const secrets = makeSecrets({});
+        const hooks: HookCommand[] = [{ command: 'deploy ${secret:BAD-NAME}', location: 'local' }];
+
+        const result = await runHooks(baseOptions({ hooks, secrets, output: output as unknown as HookRunOptions['output'] }));
+
+        expect(result.ok).toBe(false);
+        expect(mockSpawn).not.toHaveBeenCalled();
+        expect(output.lines.join('\n')).toContain('BAD-NAME');
+      });
+    });
+
+    describe('masking hook', () => {
+      it('reports each resolved value so the output channel can mask it', async () => {
+        (vscode.env as { shell?: string }).shell = '/bin/bash';
+        makeAutoClosingSpawn();
+        const registerSecretValuesForMasking = jest.fn();
+        const secrets = makeSecrets({ API_TOKEN: 'tok-secret-123', DB_PASS: 'hunter2' });
+        const hooks: HookCommand[] = [{
+          command: 'deploy ${secret:API_TOKEN} ${secret:DB_PASS}',
+          location: 'local',
+        }];
+
+        await runHooks(baseOptions({ hooks, secrets, registerSecretValuesForMasking }));
+
+        expect(registerSecretValuesForMasking).toHaveBeenCalledWith(['tok-secret-123', 'hunter2']);
+      });
+
+      // End-to-end through a real masking channel: even when the hook itself
+      // prints the resolved value, the output channel shows ••••.
+      it('masks a resolved value that the hook prints to stdout', async () => {
+        (vscode.env as { shell?: string }).shell = '/bin/bash';
+        mockSpawn.mockImplementation(() => {
+          const child = makeChild();
+          process.nextTick(() => {
+            child.stdout.emit('data', Buffer.from('the token is tok-secret-123\n'));
+            child.emit('close', 0);
+          });
+          return child;
+        });
+        const output = makeOutput();
+        const maskingChannel = new SecretMaskingOutputChannel(output as any);
+        const secrets = makeSecrets({ API_TOKEN: 'tok-secret-123' });
+        const hooks: HookCommand[] = [{ command: 'print-token ${secret:API_TOKEN}', location: 'local' }];
+
+        await runHooks(baseOptions({
+          hooks,
+          secrets,
+          output: maskingChannel as unknown as HookRunOptions['output'],
+          registerSecretValuesForMasking: values => maskingChannel.registerSecretValues(values),
+        }));
+
+        const text = output.lines.join('\n');
+        expect(text).toContain('the token is ••••');
+        expect(text).not.toContain('tok-secret-123');
+      });
+    });
+
+    describe('preflightHookSecrets (deploy-wide check before any transfer)', () => {
+      function makeSecretsSource(storedNames: string[]) {
+        return {
+          get: jest.fn(async () => { throw new Error('preflight must not read values'); }),
+          has: jest.fn((name: string) => storedNames.includes(name)),
+        };
+      }
+
+      it('passes for hooks without secret tokens, logging nothing', () => {
+        const output = makeOutput();
+        const result = preflightHookSecrets({
+          preDeploy: [{ command: 'npm run build', location: 'local' }],
+          postDeploy: [{ command: 'systemctl reload nginx', location: 'remote' }],
+          secrets: makeSecretsSource([]),
+          output: output as unknown as HookRunOptions['output'],
+        });
+        expect(result.ok).toBe(true);
+        expect(output.appendLine).not.toHaveBeenCalled();
+      });
+
+      it('passes when every referenced secret exists — checking existence only, never reading values', () => {
+        const secrets = makeSecretsSource(['API_TOKEN', 'DB_PASS']);
+        const result = preflightHookSecrets({
+          preDeploy: [{ command: 'build ${secret:API_TOKEN}', location: 'local' }],
+          postDeploy: [{ command: 'migrate ${secret:DB_PASS}', location: 'remote' }],
+          secrets,
+          output: makeOutput() as unknown as HookRunOptions['output'],
+        });
+        expect(result.ok).toBe(true);
+        expect(secrets.has).toHaveBeenCalledWith('API_TOKEN');
+        expect(secrets.has).toHaveBeenCalledWith('DB_PASS');
+        expect(secrets.get).not.toHaveBeenCalled();
+      });
+
+      it('fails when a pre-deploy hook references a missing secret, naming it', () => {
+        const output = makeOutput();
+        const result = preflightHookSecrets({
+          preDeploy: [{ command: 'build ${secret:MISSING_TOKEN}', location: 'local' }],
+          postDeploy: [],
+          secrets: makeSecretsSource([]),
+          output: output as unknown as HookRunOptions['output'],
+        });
+        expect(result.ok).toBe(false);
+        const text = output.lines.join('\n');
+        expect(text).toContain('MISSING_TOKEN');
+        expect(text).toMatch(/before any transfer/i);
+        expect(text).toMatch(/secrets/i);
+      });
+
+      // The reason preflight exists: a POST-deploy hook with a missing secret
+      // must abort the deploy BEFORE files are uploaded, not fail after — a
+      // missing secret is knowable in advance, unlike a runtime hook failure.
+      it('fails for a missing secret in a post-deploy hook', () => {
+        const result = preflightHookSecrets({
+          preDeploy: [],
+          postDeploy: [{ command: 'migrate ${secret:MISSING_TOKEN}', location: 'remote' }],
+          secrets: makeSecretsSource([]),
+          output: makeOutput() as unknown as HookRunOptions['output'],
+        });
+        expect(result.ok).toBe(false);
+      });
+
+      it('fails on a malformed secret token', () => {
+        const output = makeOutput();
+        const result = preflightHookSecrets({
+          preDeploy: [{ command: 'deploy ${secret:BAD-NAME}', location: 'local' }],
+          postDeploy: [],
+          secrets: makeSecretsSource([]),
+          output: output as unknown as HookRunOptions['output'],
+        });
+        expect(result.ok).toBe(false);
+        expect(output.lines.join('\n')).toContain('BAD-NAME');
+      });
+
+      it('fails when a command references a secret but no secret store is available', () => {
+        const result = preflightHookSecrets({
+          preDeploy: [{ command: 'deploy ${secret:API_TOKEN}', location: 'local' }],
+          postDeploy: [],
+          output: makeOutput() as unknown as HookRunOptions['output'],
+        });
+        expect(result.ok).toBe(false);
+      });
+
+      // continueOnError means "this hook's failure is tolerated" — so its
+      // missing secret must not block the deploy; it fails at run time as
+      // usual. Preflight still surfaces a warning so the user isn't surprised.
+      it('does not block for a continueOnError hook, but logs a warning', () => {
+        const output = makeOutput();
+        const result = preflightHookSecrets({
+          preDeploy: [{ command: 'notify ${secret:MISSING_TOKEN}', location: 'local', continueOnError: true }],
+          postDeploy: [],
+          secrets: makeSecretsSource([]),
+          output: output as unknown as HookRunOptions['output'],
+        });
+        expect(result.ok).toBe(true);
+        const text = output.lines.join('\n');
+        expect(text).toContain('MISSING_TOKEN');
+        expect(text).toMatch(/continueOnError|continue on error/i);
+      });
+
+      it('reports every problem hook, not just the first', () => {
+        const output = makeOutput();
+        const result = preflightHookSecrets({
+          preDeploy: [{ command: 'build ${secret:FIRST_MISSING}', location: 'local' }],
+          postDeploy: [{ command: 'migrate ${secret:SECOND_MISSING}', location: 'remote' }],
+          secrets: makeSecretsSource([]),
+          output: output as unknown as HookRunOptions['output'],
+        });
+        expect(result.ok).toBe(false);
+        const text = output.lines.join('\n');
+        expect(text).toContain('FIRST_MISSING');
+        expect(text).toContain('SECOND_MISSING');
+      });
+    });
+
+    describe('dry run', () => {
+      it('does not read the keychain and logs the unresolved token', async () => {
+        const output = makeOutput();
+        const secrets = makeSecrets({ API_TOKEN: 'tok-secret-123' });
+        const hooks: HookCommand[] = [{ command: 'deploy ${secret:API_TOKEN}', location: 'local' }];
+
+        const result = await runHooks(baseOptions({
+          hooks, secrets, dryRun: true, output: output as unknown as HookRunOptions['output'],
+        }));
+
+        expect(result.ok).toBe(true);
+        expect(secrets.get).not.toHaveBeenCalled();
+        expect(mockSpawn).not.toHaveBeenCalled();
+        expect(output.lines.join('\n')).toContain('${secret:API_TOKEN}');
+      });
     });
   });
 });

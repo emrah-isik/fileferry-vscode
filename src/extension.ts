@@ -3,6 +3,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { CredentialManager } from './storage/CredentialManager';
 import { ProjectConfigManager } from './storage/ProjectConfigManager';
+import { HookSecretManager } from './storage/HookSecretManager';
 import { migrateIfNeeded } from './storage/ConfigMigration';
 import { makeUploadSelectedHandler } from './commands/uploadSelectedHandler';
 import { makeUploadToServersHandler } from './commands/uploadToServersHandler';
@@ -38,6 +39,13 @@ import { uploadChangedFilesSelection } from './commands/uploadChangedFilesSelect
 import { uploadChangedFilesOnlyNewer } from './commands/uploadChangedFilesOnlyNewer';
 
 let output: vscode.OutputChannel;
+
+// Per-project keychain store for ${secret:NAME} hook secrets; undefined when
+// no workspace folder is open (the settings panel reports that on use).
+function makeHookSecretManager(context: vscode.ExtensionContext): HookSecretManager | undefined {
+  const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  return workspaceRoot ? new HookSecretManager(context, workspaceRoot) : undefined;
+}
 
 function withErrorHandling<Args extends unknown[]>(
   label: string,
@@ -150,7 +158,12 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand(
       'fileferry.openSettings',
       withErrorHandling('openSettings', async () =>
-        DeploymentSettingsPanel.createOrShow(context, { credentialManager, configManager, credentialsChanged: credentialsChangedEmitter.event })
+        DeploymentSettingsPanel.createOrShow(context, {
+          credentialManager,
+          configManager,
+          credentialsChanged: credentialsChangedEmitter.event,
+          hookSecretManager: makeHookSecretManager(context),
+        })
       )
     ),
 
@@ -336,7 +349,12 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand(
       'fileferry.servers.editServer',
       withErrorHandling('editServer', async () =>
-        DeploymentSettingsPanel.createOrShow(context, { credentialManager, configManager, credentialsChanged: credentialsChangedEmitter.event })
+        DeploymentSettingsPanel.createOrShow(context, {
+          credentialManager,
+          configManager,
+          credentialsChanged: credentialsChangedEmitter.event,
+          hookSecretManager: makeHookSecretManager(context),
+        })
       )
     ),
 

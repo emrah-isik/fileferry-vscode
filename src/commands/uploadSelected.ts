@@ -12,6 +12,7 @@ import { ProjectConfigManager } from '../storage/ProjectConfigManager';
 import { DryRunReporter } from '../services/DryRunReporter';
 import { UploadHistoryService } from '../services/UploadHistoryService';
 import { summaryToHistoryEntries } from '../services/summaryToHistoryEntries';
+import { HookSecretManager } from '../storage/HookSecretManager';
 
 interface Dependencies {
   credentialManager: CredentialManager;
@@ -67,8 +68,7 @@ export async function uploadSelected(
     return;
   }
 
-  // Use the EFFECTIVE hooks (committed + fileferry.local.json override) for both
-  // the confirmation listing and execution, so local-only hooks run and are shown.
+  // Committed hooks for both the confirmation listing and execution.
   server.hooks = await dependencies.configManager.getServerHooks(serverName);
 
   const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
@@ -211,6 +211,7 @@ export async function uploadSelected(
         dryRun: !!config.dryRun,
         isTrusted: vscode.workspace.isTrusted,
         output: dependencies.output,
+        secrets: new HookSecretManager(dependencies.context, workspaceRoot),
       });
 
       // A failed pre-deploy hook aborts the deploy before anything is transferred.
