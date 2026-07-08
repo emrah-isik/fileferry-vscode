@@ -48,15 +48,29 @@ FileFerry shows a confirmation before every deploy. Upload to multiple servers a
 
 - **Multi-select upload** — Source Control right-click or the FileFerry **Changed Files** view; select any number of files and deploy in one action
 - **Upload all changed files** — `Ctrl+Alt+U` deploys everything git considers changed, no selection required
+- **Upload only what's newer** — a smart-sync variant that skips any file whose remote copy is the same age or newer, so re-running a deploy only pushes what actually moved forward (the `$(sync)` button on the Source Control title bar, and a history-icon button in the **Changed Files** view that adapts to your selection)
 - **Upload from commit** — pick one or more recent commits and deploy every file they touched (working-tree version)
 - **Multi-server push** — deploy to dev, staging, and prod in one action
 - **Folder upload** — right-click a folder in Explorer to upload its contents recursively
 - **Upload on save** — auto-deploy on file save, toggled from the status bar
+- **Watch & auto-upload** — opt-in file-system watcher for build outputs and other generated files that never fire an editor save; matches an explicit glob allowlist and uploads even when git-ignored (configure under **Project Settings**)
 - **Delete deployment** — git-deleted files appear in Source Control; deploying removes them from the server
 - **Dry run mode** — preview exactly what would be uploaded without touching the server
 - **Atomic upload** — files land as a temp file and are renamed on completion, no partial states
 - **Backup before overwrite** — optionally download the remote version before replacing it
 - **File date guard** — warns before overwriting a remote file newer than your local copy
+
+---
+
+## Sync your whole tree to the server
+
+Beyond deploying individual changes, **FileFerry: Sync to Remote** mirrors your entire mapped local tree to the server in one action. It walks both trees and reconciles them: uploads new and locally-newer files, skips anything the remote already holds at the same age or newer, and — only when you opt in per run — deletes remote files that no longer exist locally.
+
+- **Sync to Remote** — full-tree one-way mirror (local → remote), from the Command Palette or the status-bar menu
+- **Sync Folder to Remote** — right-click any folder (or several) in the Explorer to mirror just that subtree
+- **Delete extras is off by default** and wrapped in defense-in-depth: a dry-run-first preview of the full plan, a modal confirmation naming the exact delete count, deletes restricted to the mapped remote root (or the folders you right-clicked), and exclude-aware detection so `excludedPaths` / `.fileferryignore` files are never pruned
+- **Back up before deletes** — an on-by-default project setting downloads each to-be-deleted file to `.vscode/fileferry-backups/` first
+- `.git` and `node_modules` are always skipped; synced transfers appear in Upload History under a **Sync** source
 
 ---
 
@@ -87,7 +101,7 @@ Manage servers and credentials through a form — no JSON editing required.
 - **Remote time offset detection** — automatically corrects clock skew when comparing timestamps
 - **Excluded paths** — glob patterns to skip files that should never be deployed
 - **Clone server** — duplicate an existing server config as a starting point
-- **Project settings** — per-project toggles for upload-on-save, file date guard, backup before overwrite, and dry run, separate from server config
+- **Project settings** — per-project toggles for upload-on-save, file date guard, backup before overwrite, dry run, watch & auto-upload, and back up before sync deletes, separate from server config
 
 ---
 
@@ -125,7 +139,7 @@ This file is created and managed by FileFerry — you do not need to edit it man
 
 ## Upload history
 
-Every deploy is logged. Filter by server, result, or file path.
+Every deploy is logged. Each entry records how it was triggered — **Manual**, **On Save**, **Multi-Server**, **Watch**, or **Sync** — shown in a **Source** column. Filter by server, result, source, or file path.
 
 ![Upload History](https://raw.githubusercontent.com/emrah-isik/fileferry-vscode/main/resources/readme/fileferry_upload_history.png)
 
@@ -133,7 +147,7 @@ Every deploy is logged. Filter by server, result, or file path.
 
 ## Status bar
 
-The active server is always visible. Click to switch servers, toggle upload on save, enable dry run, or open upload history.
+The active server is always visible. Click to switch servers, toggle upload on save, enable dry run, sync the whole tree to the remote, or open upload history.
 
 ![Status bar](https://raw.githubusercontent.com/emrah-isik/fileferry-vscode/main/resources/readme/fileferry_status_bar_item.png)
 ![Status bar menu](https://raw.githubusercontent.com/emrah-isik/fileferry-vscode/main/resources/readme/fileferry_status_bar_command_list.png)

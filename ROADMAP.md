@@ -1,16 +1,36 @@
 # FileFerry Roadmap
 
-## Current — v0.7
+## Current — v0.10
 
-- Everything in v0.6, plus:
-- File and directory permission control (set octal mode on uploaded files and created directories)
-- Remote time offset — clock skew compensation so file date guard works correctly against servers with unsynchronised clocks
-- Dry run mode — preview exactly what would be uploaded or deleted without transferring any files
-- Upload history panel — persistent, filterable log of all deploy operations per project
+- Everything in v0.9, plus:
+- Sync to Remote — mirror your entire mapped local tree to the server in one action; uploads new and locally-newer files, with opt-in "delete extras" to prune remote files that no longer exist locally
+- Sync Folder to Remote — the same mirror scoped to one or more right-clicked Explorer folders
+- Delete-extras safety — off by default, with a dry-run preview, a modal confirmation naming the exact delete count, deletes restricted to the mapped remote root, exclude-aware pruning, and an opt-in backup of each deleted file
 
 ---
 
 ## Previous Releases
+
+### v0.9
+
+- Upload only newer (smart sync) — skips any file whose remote copy is the same age or newer, so re-running a deploy only pushes what moved forward
+- Watch & auto-upload — opt-in file-system watcher for build outputs and other generated files that never fire an editor save
+- Upload History source tracking — a Source column and filter (Manual / On Save / Multi-Server / Watch / Sync)
+
+### v0.8
+
+- Changed Files view — FileFerry-owned tree of git-changed files with native keyboard multi-select upload (`Alt+U`)
+- Upload All Changed Files — `Ctrl+Alt+U` deploys everything git considers changed; no selection required
+- Upload Files from Commit — pick one or more recent commits and deploy the working-tree version of every file they touched
+- `~/.ssh/config` support — reference a `Host` alias and FileFerry resolves HostName, Port, User, and IdentityFile at connect time
+- Documentation, `fileferry.json` schema reference, and marketplace polish
+
+### v0.7
+
+- File and directory permission control (set octal mode on uploaded files and created directories)
+- Remote time offset — clock skew compensation so file date guard works correctly against servers with unsynchronised clocks
+- Dry run mode — preview exactly what would be uploaded or deleted without transferring any files
+- Upload history panel — persistent, filterable log of all deploy operations per project
 
 ### v0.6
 
@@ -62,30 +82,20 @@
 
 ## Upcoming
 
-### v0.8 — Stable Release
-
-- Documentation, marketplace screenshots, demo GIFs
-- Performance audit
-- `fileferry.json` schema documentation
-- **Upload All Changed Files** — `Ctrl+Alt+U` deploys everything git considers changed to the default server; SCM title bar button; no selection required
-- **Upload Files from Commit** — pick one or more recent commits from a multi-select QuickPick; uploads the working-tree version of every file those commits touched
-
-### v0.9 — Sync & Performance
-
-- Bidirectional sync (local→remote, remote→local, conflict resolution)
-- Concurrent file uploads (parallel connections)
-- File system watcher (auto-upload on any file change, not just save)
-
-### v0.10 — Automation
+### v0.11 — Automation
 
 - Pre/post deploy hooks (local shell or remote SSH command)
 - Batch deploy from branch diff (all files changed between two branches)
 
-### v0.11 — SSH Power Features
+### v0.12 — SSH Power Features
 
-- SSH connection hopping (jump hosts)
-- Full `~/.ssh/config` support (ProxyCommand, wildcard Host blocks)
+- SSH connection hopping (jump hosts), including `ProxyCommand` / `ProxyJump` from `~/.ssh/config`
 - Open SSH terminal to active server
+
+### Later
+
+- Writable Remote Files panel — edit-in-place and create files/folders directly in the Remote File Browser
+- Additional sync directions — remote→local and bidirectional sync (v0.10 shipped the one-way local→remote mirror)
 
 ---
 
