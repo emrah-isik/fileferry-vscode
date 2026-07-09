@@ -35,7 +35,12 @@ function isFileFerryArtifact(relativeLocal: string): boolean {
 
 export class PathResolver {
   resolve(localPath: string, workspaceRoot: string, serverConfig: ServerConfig): ResolvedUploadItem {
-    const relativeLocal = path.relative(workspaceRoot, localPath).replace(/\\/g, '/');
+    // Normalise to '/' so the mapping match, the exclusion matcher, and the
+    // remote-path builder below all see the separator they assume. Key off
+    // path.sep rather than rewriting every backslash: on POSIX a backslash is
+    // a legal filename character, and `weird\name.txt` must not turn into a
+    // `weird/` directory on the server.
+    const relativeLocal = path.relative(workspaceRoot, localPath).split(path.sep).join('/');
 
     // FileFerry's own files are never deployable — checked before (and
     // independent of) user exclusions and ignoreExclusions.

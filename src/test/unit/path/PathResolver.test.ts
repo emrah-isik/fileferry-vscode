@@ -279,6 +279,21 @@ describe('PathResolver', () => {
   });
 
   // FileFerry's own config/history/backup files must never be deployed —
+  // A backslash is a legal character in a POSIX filename. Separator
+  // normalisation must key off path.sep, not rewrite every backslash, or a
+  // file called `weird\name.txt` silently becomes a `weird/` directory on the
+  // server. (Windows coverage lives in PathResolver.windows.test.ts.)
+  describe('POSIX filenames containing a backslash', () => {
+    it('treats a backslash as part of the name, not a separator', () => {
+      const result = resolver.resolve('/workspace/weird\\name.txt', workspaceRoot, {
+        rootPath: '/var/www',
+        mappings: [{ localPath: '/', remotePath: '' }],
+        excludedPaths: [],
+      });
+      expect(result.remotePath).toBe('/var/www/weird\\name.txt');
+    });
+  });
+
   // publishing your deployment config/history to the server leaks it, and on
   // FTP the missing remote .vscode dir 553s. Always excluded, unconditionally.
   describe('FileFerry artifact auto-exclusion', () => {
