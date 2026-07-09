@@ -1,3 +1,4 @@
+import * as path from 'path';
 import { PathResolver } from '../../../path/PathResolver';
 
 const resolver = new PathResolver();
@@ -216,7 +217,7 @@ describe('PathResolver', () => {
         mappings: [{ localPath: '/', remotePath: '' }],
         excludedPaths: [],
       });
-      expect(result).toBe('/workspace/src/app.php');
+      expect(result).toBe(path.join(workspaceRoot, 'src/app.php'));
     });
 
     it('uses the most-specific matching mapping', () => {
@@ -228,7 +229,7 @@ describe('PathResolver', () => {
         ],
         excludedPaths: [],
       });
-      expect(result).toBe('/workspace/public/index.php');
+      expect(result).toBe(path.join(workspaceRoot, 'public/index.php'));
     });
 
     it('handles rootPathOverride', () => {
@@ -238,7 +239,7 @@ describe('PathResolver', () => {
         mappings: [{ localPath: '/', remotePath: '' }],
         excludedPaths: [],
       });
-      expect(result).toBe('/workspace/index.php');
+      expect(result).toBe(path.join(workspaceRoot, 'index.php'));
     });
 
     it('handles mapping with non-empty remotePath', () => {
@@ -247,7 +248,7 @@ describe('PathResolver', () => {
         mappings: [{ localPath: '/', remotePath: 'html' }],
         excludedPaths: [],
       });
-      expect(result).toBe('/workspace/src/app.php');
+      expect(result).toBe(path.join(workspaceRoot, 'src/app.php'));
     });
 
     it('returns null when remote path does not match rootPath', () => {
@@ -274,7 +275,7 @@ describe('PathResolver', () => {
         mappings: [{ localPath: '/', remotePath: '' }],
         excludedPaths: [],
       });
-      expect(result).toBe('/workspace/index.php');
+      expect(result).toBe(path.join(workspaceRoot, 'index.php'));
     });
   });
 
@@ -283,7 +284,11 @@ describe('PathResolver', () => {
   // normalisation must key off path.sep, not rewrite every backslash, or a
   // file called `weird\name.txt` silently becomes a `weird/` directory on the
   // server. (Windows coverage lives in PathResolver.windows.test.ts.)
-  describe('POSIX filenames containing a backslash', () => {
+  //
+  // Skipped on Windows, where a backslash genuinely IS a separator and the
+  // premise doesn't hold.
+  const describePosix = process.platform === 'win32' ? describe.skip : describe;
+  describePosix('POSIX filenames containing a backslash', () => {
     it('treats a backslash as part of the name, not a separator', () => {
       const result = resolver.resolve('/workspace/weird\\name.txt', workspaceRoot, {
         rootPath: '/var/www',
