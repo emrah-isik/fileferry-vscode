@@ -74,6 +74,27 @@ Beyond deploying individual changes, **FileFerry: Sync to Remote** mirrors your 
 
 ---
 
+## Run commands before and after a deploy
+
+Give a server **deploy hooks** and FileFerry runs them around a deliberate deploy — build assets before upload, then reload a service or run migrations after.
+
+- **Local or remote** — a local hook runs in your shell at the workspace root; a remote hook runs over the deploy's own SSH connection (SFTP only — on FTP it's skipped with a warning)
+- **Safe by default** — hooks never run in an untrusted workspace, and the deploy confirmation names every command before anything executes. They only fire on deliberate deploys; upload-on-save and the watcher never run them
+- **Predictable failure** — a failed pre-deploy hook aborts the deploy before anything is transferred; a failed post-deploy hook is reported without rolling back what already uploaded. Each hook can opt into **continue on error** and a **timeout**
+- **Secrets stay out of git** — store a value once in the **Secrets** section and reference it as `${secret:NAME}`
+
+### Keychain-backed secrets
+
+Type a token once in the Hooks tab and FileFerry puts it in your **OS keychain**; the committed `fileferry.json` holds only a `${secret:NAME}` reference, so it stays safe to commit.
+
+- Secrets are **per-project and machine-local** — a teammate cloning the repo re-enters them, and the Hooks tab flags any referenced secret that isn't set on this machine
+- Resolution happens the moment a hook runs — dialogs, logs, and dry-run always show the unresolved `${secret:NAME}`, and values FileFerry resolved are masked as `••••` in the output
+- Local hooks receive the value as an **environment variable**, so it never enters the command string
+- A deploy **aborts before transferring anything** if a hook that would run references a missing secret — so a post-deploy migration can't be silently skipped after your files are already live
+- Pasted a raw secret by mistake? The inline warning offers a one-click **Move to keychain** that stores it and rewrites the command for you
+
+---
+
 ## Browse and manage remote files
 
 A dedicated sidebar panel lets you browse, download, compare, and delete files directly on the server.
@@ -81,7 +102,7 @@ A dedicated sidebar panel lets you browse, download, compare, and delete files d
 ![Remote Files panel](https://raw.githubusercontent.com/emrah-isik/fileferry-vscode/main/resources/readme/fileferry_remote_files_panel.png)
 
 - **Remote File Browser** — expandable directory tree with persistent connection and idle timeout
-- **Compare with Remote** — side-by-side diff of local vs server version (`Alt+P`)
+- **Compare with Remote** — side-by-side diff of local vs server version (`Alt+P`). Identical files, and files differing only in line endings, are reported directly instead of opening an empty diff
 - **Compare with Local** — right-click a remote file to diff against the local counterpart
 - **Download to Workspace** — right-click a remote file to download it to the mapped local path
 - **Delete from Server** — right-click to delete with confirmation

@@ -1,15 +1,21 @@
 # FileFerry Roadmap
 
-## Current — v0.10
+## Current — v0.11
 
-- Everything in v0.9, plus:
-- Sync to Remote — mirror your entire mapped local tree to the server in one action; uploads new and locally-newer files, with opt-in "delete extras" to prune remote files that no longer exist locally
-- Sync Folder to Remote — the same mirror scoped to one or more right-clicked Explorer folders
-- Delete-extras safety — off by default, with a dry-run preview, a modal confirmation naming the exact delete count, deletes restricted to the mapped remote root, exclude-aware pruning, and an opt-in backup of each deleted file
+- Everything in v0.10, plus:
+- Deploy hooks — run local shell or remote SSH commands before and after a deliberate deploy, with per-hook continue-on-error and timeouts; hooks are gated behind Workspace Trust, and every command that will run is named in the deploy confirmation
+- Keychain-backed hook secrets — store a secret once in your OS keychain and reference it in a command as `${secret:NAME}`; the committed `fileferry.json` only ever holds the reference, and a deploy aborts up front when a referenced secret is missing
+- Compare with Remote reports identical files — and files that differ only in line endings — instead of opening an empty diff
 
 ---
 
 ## Previous Releases
+
+### v0.10
+
+- Sync to Remote — mirror your entire mapped local tree to the server in one action; uploads new and locally-newer files, with opt-in "delete extras" to prune remote files that no longer exist locally
+- Sync Folder to Remote — the same mirror scoped to one or more right-clicked Explorer folders
+- Delete-extras safety — off by default, with a dry-run preview, a modal confirmation naming the exact delete count, deletes restricted to the mapped remote root, exclude-aware pruning, and an opt-in backup of each deleted file
 
 ### v0.9
 
@@ -82,11 +88,6 @@
 
 ## Upcoming
 
-### v0.11 — Automation
-
-- Pre/post deploy hooks (local shell or remote SSH command)
-- Batch deploy from branch diff (all files changed between two branches)
-
 ### v0.12 — SSH Power Features
 
 - SSH connection hopping (jump hosts), including `ProxyCommand` / `ProxyJump` from `~/.ssh/config`
@@ -94,6 +95,7 @@
 
 ### Later
 
+- Batch deploy from branch diff (all files changed between two branches)
 - Writable Remote Files panel — edit-in-place and create files/folders directly in the Remote File Browser
 - Additional sync directions — remote→local and bidirectional sync (v0.10 shipped the one-way local→remote mirror)
 
