@@ -56,6 +56,12 @@ describe('diffRemoteWithLocal', () => {
     mockConnection.downloadFile.mockResolvedValue(Buffer.from('remote content'));
     mockFs.mkdir.mockResolvedValue(undefined);
     mockFs.writeFile.mockResolvedValue(undefined);
+    // Default: local vs remote (temp) files differ, so the diff opens. The temp
+    // path contains ".remote."; the resolved local path does not.
+    (mockFs.readFile as jest.Mock).mockImplementation((filePath: any) =>
+      Promise.resolve(Buffer.from(String(filePath).includes('remote') ? 'REMOTE CONTENT' : 'LOCAL CONTENT'))
+    );
+    (vscode.window.showInformationMessage as jest.Mock).mockResolvedValue(undefined);
 
     mockConfigManager.getConfig.mockResolvedValue(configFixture);
     mockConfigManager.getServerById.mockResolvedValue({ name: 'Production', server: serverFixture });
@@ -86,6 +92,34 @@ describe('diffRemoteWithLocal', () => {
       expect.objectContaining({ fsPath: '/workspace/src/app.php' }), // local file URI
       expect.stringContaining('app.php'),
     );
+  });
+
+  it('reports "identical" and skips the diff when contents match byte-for-byte', async () => {
+    (mockFs.readFile as jest.Mock).mockResolvedValue(Buffer.from('SAME CONTENT'));
+    const entry: RemoteEntry = {
+      name: 'app.php', type: '-', size: 1024, modifyTime: 1710000000000,
+      remotePath: '/var/www/html/src/app.php',
+    };
+
+    await diffRemoteWithLocal(entry, mockConnection as any, mockConfigManager as any);
+
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(expect.stringMatching(/identical/i));
+    expect(vscode.commands.executeCommand).not.toHaveBeenCalled();
+  });
+
+  it('reports "line endings" and skips the diff when only EOLs differ', async () => {
+    (mockFs.readFile as jest.Mock).mockImplementation((filePath: any) =>
+      Promise.resolve(Buffer.from(String(filePath).includes('remote') ? 'a\r\nb' : 'a\nb'))
+    );
+    const entry: RemoteEntry = {
+      name: 'app.php', type: '-', size: 1024, modifyTime: 1710000000000,
+      remotePath: '/var/www/html/src/app.php',
+    };
+
+    await diffRemoteWithLocal(entry, mockConnection as any, mockConfigManager as any);
+
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(expect.stringMatching(/line endings/i));
+    expect(vscode.commands.executeCommand).not.toHaveBeenCalled();
   });
 
   it('shows error when local file cannot be resolved', async () => {

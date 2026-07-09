@@ -7,6 +7,7 @@ import { RemoteEntry } from '../remoteBrowser/RemoteFileItem';
 import { RemoteBrowserConnection } from '../remoteBrowser/RemoteBrowserConnection';
 import { PathResolver } from '../path/PathResolver';
 import { ProjectConfigManager } from '../storage/ProjectConfigManager';
+import { compareFileContents } from '../utils/compareFileContents';
 
 const TEMP_DIR = path.join(os.tmpdir(), 'fileferry-diff');
 
@@ -61,6 +62,24 @@ export async function diffRemoteWithLocal(
       const tempPath = getTempPath(entry.remotePath);
       await fs.mkdir(TEMP_DIR, { recursive: true });
       await fs.writeFile(tempPath, content);
+
+      // Tell the user when there's nothing to see, rather than opening an
+      // empty-looking diff (identical, or line-endings-only).
+      const [localBuffer, remoteBuffer] = await Promise.all([
+        fs.readFile(localPath),
+        fs.readFile(tempPath),
+      ]);
+      const comparison = compareFileContents(localBuffer, remoteBuffer);
+      if (comparison === 'identical') {
+        vscode.window.showInformationMessage(`FileFerry: "${entry.name}" is identical to the local file.`);
+        return;
+      }
+      if (comparison === 'eol-only') {
+        vscode.window.showInformationMessage(
+          `FileFerry: "${entry.name}" matches the local file except for line endings (a deploy would still overwrite it).`
+        );
+        return;
+      }
 
       await vscode.commands.executeCommand(
         'vscode.diff',

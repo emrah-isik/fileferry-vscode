@@ -1,12 +1,14 @@
 import * as vscode from 'vscode';
 import * as os from 'os';
 import * as path from 'path';
+import * as fs from 'fs/promises';
 import { PathResolver } from '../path/PathResolver';
 import { DiffService } from '../diffService';
 import { createTransferService } from '../transferServiceFactory';
 import { CredentialManager } from '../storage/CredentialManager';
 import { ProjectConfigManager } from '../storage/ProjectConfigManager';
 import { ServerConfig } from '../types';
+import { compareFileContents } from '../utils/compareFileContents';
 
 interface Dependencies {
   credentialManager: CredentialManager;
@@ -94,6 +96,25 @@ export async function showRemoteDiff(
         );
       } catch (err: unknown) {
         vscode.window.showErrorMessage(`FileFerry: ${(err as Error).message}`);
+        return;
+      }
+
+      // Classify before opening a diff: identical / EOL-only files open an
+      // empty-looking diff that reads as "no difference" — surface that
+      // explicitly and skip the diff instead.
+      const [localBuffer, remoteBuffer] = await Promise.all([
+        fs.readFile(localPath),
+        fs.readFile(tempPath),
+      ]);
+      const comparison = compareFileContents(localBuffer, remoteBuffer);
+      if (comparison === 'identical') {
+        vscode.window.showInformationMessage(`FileFerry: "${fileName}" is identical on "${serverName}".`);
+        return;
+      }
+      if (comparison === 'eol-only') {
+        vscode.window.showInformationMessage(
+          `FileFerry: "${fileName}" matches "${serverName}" except for line endings (a deploy would still overwrite it).`
+        );
         return;
       }
 

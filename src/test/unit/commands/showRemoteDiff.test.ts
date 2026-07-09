@@ -3,7 +3,11 @@ import * as vscode from 'vscode';
 // --- Module mocks (hoisted) ---
 jest.mock('../../../path/PathResolver');
 jest.mock('../../../diffService');
+jest.mock('fs/promises', () => ({
+  readFile: jest.fn(),
+}));
 
+import * as fs from 'fs/promises';
 import { PathResolver } from '../../../path/PathResolver';
 import { DiffService } from '../../../diffService';
 import { showRemoteDiff } from '../../../commands/showRemoteDiff';
@@ -12,6 +16,7 @@ import type { ProjectConfigManager } from '../../../storage/ProjectConfigManager
 
 const mockResolve = jest.fn();
 const mockDownloadRemoteFile = jest.fn();
+const mockReadFile = fs.readFile as jest.Mock;
 
 (PathResolver as jest.Mock).mockImplementation(() => ({ resolve: mockResolve }));
 (DiffService as jest.Mock).mockImplementation(() => ({ downloadRemoteFile: mockDownloadRemoteFile }));
@@ -69,6 +74,11 @@ describe('showRemoteDiff command', () => {
     jest.clearAllMocks();
     mockResolve.mockReturnValue({ localPath: '/workspace/src/index.php', remotePath: '/var/www/src/index.php' });
     mockDownloadRemoteFile.mockResolvedValue('/tmp/fileferry/index.remote.a1b2c3d4.php');
+    // Default: local and remote differ, so the diff opens (existing behavior).
+    mockReadFile.mockImplementation((filePath: string) =>
+      Promise.resolve(Buffer.from(filePath.includes('remote') ? 'REMOTE CONTENT' : 'LOCAL CONTENT'))
+    );
+    (vscode.window.showInformationMessage as jest.Mock).mockResolvedValue(undefined);
     (mockConfigManager.getConfig as jest.Mock).mockResolvedValue(configFixture);
     (mockConfigManager.getServerById as jest.Mock).mockResolvedValue({ name: 'Production', server: serverFixture });
     (vscode.workspace as any).workspaceFolders = [{ uri: vscode.Uri.file('/workspace') }];
@@ -181,5 +191,31 @@ describe('showRemoteDiff command', () => {
       expect.stringContaining('No such file')
     );
     expect(vscode.commands.executeCommand).not.toHaveBeenCalled();
+  });
+
+  it('reports "identical" and skips the diff when contents match byte-for-byte', async () => {
+    mockReadFile.mockResolvedValue(Buffer.from('SAME CONTENT'));
+    await showRemoteDiff(resource, deps());
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      expect.stringMatching(/identical.*Production/i)
+    );
+    expect(vscode.commands.executeCommand).not.toHaveBeenCalled();
+  });
+
+  it('reports "line endings" and skips the diff when only EOLs differ', async () => {
+    mockReadFile.mockImplementation((filePath: string) =>
+      Promise.resolve(Buffer.from(filePath.includes('remote') ? 'a\r\nb\r\nc' : 'a\nb\nc'))
+    );
+    await showRemoteDiff(resource, deps());
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      expect.stringMatching(/line endings/i)
+    );
+    expect(vscode.commands.executeCommand).not.toHaveBeenCalled();
+  });
+
+  it('opens the diff when contents genuinely differ', async () => {
+    await showRemoteDiff(resource, deps());
+    expect(vscode.commands.executeCommand).toHaveBeenCalledWith('vscode.diff', expect.anything(), expect.anything(), expect.anything());
+    expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
   });
 });
