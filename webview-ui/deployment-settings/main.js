@@ -104,7 +104,6 @@ window.addEventListener('message', ({ data: msg }) => {
     case 'secretsUpdated':
       state.secretNames = msg.secretNames || [];
       renderSecretsSection();
-      refreshInsertSecretSelects();
       refreshHookSecretIndicators();
       break;
 
@@ -569,30 +568,66 @@ function wireRemoveButtons() {
 
 // Renders one editable row: command input + local/remote select + continue-on-error
 // checkbox + remove button. Remote is disabled on FTP (no shell exec over FTP).
+// Inline SVG so the icon is self-contained (no asset, no CSP change; VS Code's
+// $(icon) codicons don't work in webview HTML).
+const ICON_TRASH = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+  <path d="M2.5 4h11M6 4V2.6a.6.6 0 0 1 .6-.6h2.8a.6.6 0 0 1 .6.6V4M4.5 4v9a1 1 0 0 0 1 1h5a1 1 0 0 0 1-1V4M6.7 6.8v4.4M9.3 6.8v4.4"
+    stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`;
+
+const ICON_KEY = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+  <circle cx="5.5" cy="5.5" r="3.2" stroke="currentColor" stroke-width="1.2"/>
+  <path d="M7.9 7.9 13.5 13.5M11.3 11.3l1.4-1.4M12.7 12.7l1.3-1.3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+</svg>`;
+
+// Unique radio-group name per row so the local/remote segments don't
+// cross-select between rows. Only uniqueness matters; the counter is reset
+// nowhere (a fresh render just mints higher ids for its fresh DOM).
+let hookRowIdCounter = 0;
+
 function hookRowHtml(hook, isFtp) {
   const command = escapeHtml(hook?.command ?? '');
   const location = hook?.location === 'remote' ? 'remote' : 'local';
   const continueOnError = !!hook?.continueOnError;
   const remoteDisabled = isFtp ? 'disabled' : '';
   const remoteTitle = isFtp ? 'title="Remote hooks require SFTP"' : '';
+  const group = `hook-loc-${hookRowIdCounter++}`;
   return `
     <div class="hook-row">
-      <input class="hook-command" type="text" value="${command}" placeholder="e.g. npm run build">
-      <select class="hook-insert-secret" title="Insert a \${secret:NAME} reference at the cursor">
-        ${insertSecretOptionsHtml()}
-      </select>
-      <select class="hook-location" ${remoteTitle}>
-        <option value="local" ${location === 'local' ? 'selected' : ''}>local</option>
-        <option value="remote" ${location === 'remote' ? 'selected' : ''} ${remoteDisabled}>remote</option>
-      </select>
-      <label class="hook-coe" title="Continue the deploy even if this hook fails">
-        <input class="hook-continue" type="checkbox" ${continueOnError ? 'checked' : ''}> continue on error
-      </label>
-      <button class="btn-remove-hook" type="button" title="Remove">×</button>
+      <div class="hook-row-main">
+        <input class="hook-command" type="text" value="${command}" placeholder="e.g. npm run build">
+        <button class="btn-insert-secret icon-btn" type="button" data-tooltip="Insert a \${secret:NAME} reference" aria-label="Insert secret">${ICON_KEY}</button>
+        <button class="btn-remove-hook icon-btn" type="button" data-tooltip="Remove this hook" aria-label="Remove hook">${ICON_TRASH}</button>
+      </div>
+      <div class="hook-row-meta">
+        <div class="segmented hook-location" role="group" aria-label="Where this hook runs">
+          <label><input type="radio" name="${group}" class="hook-loc-radio" value="local" ${location === 'local' ? 'checked' : ''}> local</label>
+          <label ${remoteTitle}><input type="radio" name="${group}" class="hook-loc-radio" value="remote" ${location === 'remote' ? 'checked' : ''} ${remoteDisabled}> remote</label>
+        </div>
+        <label class="hook-coe" title="Continue the deploy even if this hook fails">
+          <input class="hook-continue" type="checkbox" ${continueOnError ? 'checked' : ''}> continue on error
+        </label>
+      </div>
       <div class="hook-secret-missing" hidden></div>
       <div class="hook-warning" hidden></div>
     </div>
   `;
+}
+
+function hookSectionLabel(label, count) {
+  return count > 0 ? `${label} (${count})` : label;
+}
+
+function updateHookSectionCount(bodyId, summaryId, label) {
+  const body = document.getElementById(bodyId);
+  const summary = document.getElementById(summaryId);
+  if (!body || !summary) return;
+  summary.textContent = hookSectionLabel(label, body.querySelectorAll('.hook-row').length);
+}
+
+function refreshHookSectionCounts() {
+  updateHookSectionCount('pre-hooks-body', 'pre-hooks-summary', 'Pre-deploy');
+  updateHookSectionCount('post-hooks-body', 'post-hooks-summary', 'Post-deploy');
 }
 
 // ${secret:NAME} tokens in a command string — names only (mirrors the
@@ -610,20 +645,18 @@ function secretTokenNames(command) {
 // Every ${secret:NAME} referenced anywhere: saved hooks of ALL servers
 // (secrets are project-scoped, not per-server) plus the live, possibly
 // unsaved command inputs on this tab.
+// Secret names referenced by the hook commands currently in the tab (the live
+// DOM), so deleting a hook row immediately drops its "missing" secret entry.
+// The live inputs already reflect the selected server's saved hooks (the tab
+// renders them) plus any unsaved edits; other servers' refs aren't shown here,
+// which is fine — the table still lists every STORED secret regardless.
 function referencedSecretNames() {
   const names = [];
-  const collect = (command) => {
-    for (const name of secretTokenNames(command)) {
+  document.querySelectorAll('#hooks-tab .hook-command').forEach(input => {
+    for (const name of secretTokenNames(input.value)) {
       if (!names.includes(name)) names.push(name);
     }
-  };
-  for (const server of Object.values(state.config?.servers || {})) {
-    const hooks = server.hooks || {};
-    for (const hook of [...(hooks.preDeploy || []), ...(hooks.postDeploy || [])]) {
-      collect(hook.command);
-    }
-  }
-  document.querySelectorAll('#hooks-tab .hook-command').forEach(input => collect(input.value));
+  });
   return names;
 }
 
@@ -631,30 +664,38 @@ function renderHooksTab(server) {
   const el = document.getElementById('hooks-tab');
   if (!el || !server) return;
 
+  closeSecretMenu(); // a stale popup would point at a soon-to-be-removed input
+
   const isNew = !server.id;
   const isFtp = isFtpType(server.type);
   const hooks = server.hooks || {};
   const preDeploy = hooks.preDeploy || [];
   const postDeploy = hooks.postDeploy || [];
 
-  el.innerHTML = `
-    <p class="hint">Commands run automatically before and after a deliberate deploy to this server. They only run in a <strong>trusted workspace</strong> and are shown in the deploy confirmation before running.</p>
-    <p class="hint">Don't paste secrets into commands — <code>fileferry.json</code> is committed to git. Store them under <strong>Secrets</strong> and reference them as <code>\${secret:NAME}</code>; <code>$ENV_VAR</code> references also work if you manage the value yourself. For <em>remote</em> hooks, prefer the server's own environment: an inlined secret is briefly visible in the server's process list.</p>
+  const preOpen = state.preDeployOpen !== false ? 'open' : '';
+  const postOpen = state.postDeployOpen !== false ? 'open' : '';
 
-    <details id="secrets-details" class="secrets-details">
+  el.innerHTML = `
+    <p class="hint">Commands run before/after a deliberate deploy. Trusted workspaces only; shown in the deploy confirmation. Keep secrets out of commands — use <code>\${secret:NAME}</code> from the keychain below.</p>
+
+    <details id="secrets-details" class="hook-details secrets-details">
       <summary id="secrets-summary">Secrets</summary>
-      <p class="hint">Named secrets for this project, stored in your <strong>OS keychain</strong> — never in <code>fileferry.json</code>. Values are write-only and machine-local: a teammate cloning the repo re-enters them on their machine.</p>
+      <p class="hint">Project secrets stored in your <strong>OS keychain</strong>, referenced as <code>\${secret:NAME}</code>. Never written to <code>fileferry.json</code>; machine-local, so a teammate re-enters them.</p>
       <div id="secrets-error" class="field-error"></div>
       <div id="secrets-section"></div>
     </details>
 
-    <div class="section-title">Pre-deploy</div>
-    <div id="pre-hooks-body">${preDeploy.map(h => hookRowHtml(h, isFtp)).join('')}</div>
-    <button id="btn-add-pre-hook" class="btn-secondary" type="button">+ Add pre-deploy hook</button>
+    <details id="pre-hooks-details" class="hook-details" ${preOpen}>
+      <summary id="pre-hooks-summary">${hookSectionLabel('Pre-deploy', preDeploy.length)}</summary>
+      <div id="pre-hooks-body">${preDeploy.map(h => hookRowHtml(h, isFtp)).join('')}</div>
+      <button id="btn-add-pre-hook" class="btn-secondary" type="button">+ Add pre-deploy hook</button>
+    </details>
 
-    <div class="section-title" style="margin-top:24px">Post-deploy</div>
-    <div id="post-hooks-body">${postDeploy.map(h => hookRowHtml(h, isFtp)).join('')}</div>
-    <button id="btn-add-post-hook" class="btn-secondary" type="button">+ Add post-deploy hook</button>
+    <details id="post-hooks-details" class="hook-details" ${postOpen}>
+      <summary id="post-hooks-summary">${hookSectionLabel('Post-deploy', postDeploy.length)}</summary>
+      <div id="post-hooks-body">${postDeploy.map(h => hookRowHtml(h, isFtp)).join('')}</div>
+      <button id="btn-add-post-hook" class="btn-secondary" type="button">+ Add post-deploy hook</button>
+    </details>
 
     <div class="form-actions">
       ${isNew
@@ -672,15 +713,22 @@ function renderHooksTab(server) {
     }
     state.secretsSectionOpen = event.target.open;
   });
+  document.getElementById('pre-hooks-details')?.addEventListener('toggle', (event) => {
+    state.preDeployOpen = event.target.open;
+  });
+  document.getElementById('post-hooks-details')?.addEventListener('toggle', (event) => {
+    state.postDeployOpen = event.target.open;
+  });
 
-  const addRow = (bodyId) => {
+  const addRow = (bodyId, summaryId, label) => {
     const body = document.getElementById(bodyId);
     if (!body) return;
     body.insertAdjacentHTML('beforeend', hookRowHtml(null, isFtp));
     wireHookRows();
+    updateHookSectionCount(bodyId, summaryId, label);
   };
-  document.getElementById('btn-add-pre-hook')?.addEventListener('click', () => addRow('pre-hooks-body'));
-  document.getElementById('btn-add-post-hook')?.addEventListener('click', () => addRow('post-hooks-body'));
+  document.getElementById('btn-add-pre-hook')?.addEventListener('click', () => addRow('pre-hooks-body', 'pre-hooks-summary', 'Pre-deploy'));
+  document.getElementById('btn-add-post-hook')?.addEventListener('click', () => addRow('post-hooks-body', 'post-hooks-summary', 'Post-deploy'));
 
   wireHookRows();
   renderSecretsSection();
@@ -701,6 +749,7 @@ function wireHookRows() {
     btn.replaceWith(clone);
     clone.addEventListener('click', () => {
       clone.closest('.hook-row')?.remove();
+      refreshHookSectionCounts();
       refreshHookSecretIndicators();
       renderSecretsSection();
     });
@@ -717,52 +766,107 @@ function wireHookRows() {
     });
   });
 
-  wireInsertSecretSelects();
+  wireInsertSecretButtons();
 }
 
 // ─── Hook secrets (#27b) ─────────────────────────────────────────────────────
 
-function insertSecretOptionsHtml() {
-  const options = state.secretNames
-    .map(name => `<option value="${escapeHtml(name)}">\${secret:${escapeHtml(name)}}</option>`)
-    .join('');
-  return `<option value="">Insert secret…</option>${options}<option value="__new__">+ New secret…</option>`;
+// The insert-secret key button opens a popup listing the stored secrets plus a
+// "New secret…" entry. One floating menu at a time, positioned under its button
+// and appended to the body (so a hooks-tab re-render doesn't strand it — we
+// close it explicitly on re-render).
+let activeSecretMenu = null;
+let secretMenuButton = null;
+let secretMenuTargetInput = null;
+
+function closeSecretMenu() {
+  if (!activeSecretMenu) return;
+  activeSecretMenu.remove();
+  activeSecretMenu = null;
+  secretMenuButton = null;
+  secretMenuTargetInput = null;
+  document.removeEventListener('click', onSecretMenuOutside, true);
+  document.removeEventListener('keydown', onSecretMenuKey, true);
 }
 
-function wireInsertSecretSelects() {
-  document.querySelectorAll('#hooks-tab .hook-insert-secret').forEach(select => {
-    const clone = select.cloneNode(true);
-    select.replaceWith(clone);
-    clone.addEventListener('change', () => {
-      const chosen = clone.value;
-      clone.value = '';
-      if (!chosen) return;
-      if (chosen === '__new__') {
-        const details = document.getElementById('secrets-details');
-        if (details) details.open = true; // user-initiated: the toggle listener records it
-        const nameInput = document.getElementById('new-secret-name');
-        nameInput?.scrollIntoView({ block: 'center' });
-        nameInput?.focus();
-        return;
-      }
-      const commandInput = clone.closest('.hook-row')?.querySelector('.hook-command');
-      if (!commandInput) return;
-      const token = '${secret:' + chosen + '}';
-      const start = commandInput.selectionStart ?? commandInput.value.length;
-      const end = commandInput.selectionEnd ?? commandInput.value.length;
-      commandInput.value = commandInput.value.slice(0, start) + token + commandInput.value.slice(end);
-      commandInput.focus();
-      commandInput.setSelectionRange(start + token.length, start + token.length);
-      refreshHookSecretIndicators();
-      renderSecretsSection();
+function onSecretMenuOutside(event) {
+  if (!activeSecretMenu) return;
+  if (activeSecretMenu.contains(event.target) || event.target.closest('.btn-insert-secret')) return;
+  closeSecretMenu();
+}
+
+function onSecretMenuKey(event) {
+  if (event.key === 'Escape') closeSecretMenu();
+}
+
+function insertSecretToken(commandInput, name) {
+  const token = '${secret:' + name + '}';
+  const start = commandInput.selectionStart ?? commandInput.value.length;
+  const end = commandInput.selectionEnd ?? commandInput.value.length;
+  commandInput.value = commandInput.value.slice(0, start) + token + commandInput.value.slice(end);
+  commandInput.focus();
+  commandInput.setSelectionRange(start + token.length, start + token.length);
+  refreshHookSecretIndicators();
+  renderSecretsSection();
+}
+
+function openSecretMenu(button) {
+  const commandInput = button.closest('.hook-row')?.querySelector('.hook-command');
+  if (!commandInput) return;
+  closeSecretMenu();
+  secretMenuButton = button;
+  secretMenuTargetInput = commandInput;
+
+  const items = state.secretNames.length > 0
+    ? state.secretNames.map(name =>
+        `<button type="button" class="secret-menu-item" data-name="${escapeHtml(name)}">\${secret:${escapeHtml(name)}}</button>`).join('')
+    : '<div class="secret-menu-empty">No secrets stored yet</div>';
+
+  const menu = document.createElement('div');
+  menu.className = 'secret-menu';
+  menu.innerHTML = `${items}<div class="secret-menu-sep"></div><button type="button" class="secret-menu-item secret-menu-new">+ New secret…</button>`;
+  document.body.appendChild(menu);
+
+  const rect = button.getBoundingClientRect();
+  menu.style.top = `${rect.bottom + 4}px`;
+  menu.style.left = `${Math.max(8, rect.right - menu.offsetWidth)}px`;
+
+  menu.querySelector('.secret-menu-new')?.addEventListener('click', () => {
+    closeSecretMenu();
+    const details = document.getElementById('secrets-details');
+    if (details) details.open = true; // user-initiated: the toggle listener records it
+    const nameInput = document.getElementById('new-secret-name');
+    nameInput?.scrollIntoView({ block: 'center' });
+    nameInput?.focus();
+  });
+  menu.querySelectorAll('.secret-menu-item[data-name]').forEach(item => {
+    item.addEventListener('click', () => {
+      const target = secretMenuTargetInput;
+      closeSecretMenu();
+      if (target) insertSecretToken(target, item.dataset.name);
     });
   });
+
+  activeSecretMenu = menu;
+  // Attach the dismissers on the next tick so the opening click doesn't close it.
+  setTimeout(() => {
+    document.addEventListener('click', onSecretMenuOutside, true);
+    document.addEventListener('keydown', onSecretMenuKey, true);
+  }, 0);
 }
 
-function refreshInsertSecretSelects() {
-  document.querySelectorAll('#hooks-tab .hook-insert-secret').forEach(select => {
-    select.innerHTML = insertSecretOptionsHtml();
-    select.value = '';
+function wireInsertSecretButtons() {
+  document.querySelectorAll('#hooks-tab .btn-insert-secret').forEach(btn => {
+    const clone = btn.cloneNode(true);
+    btn.replaceWith(clone);
+    clone.addEventListener('click', (event) => {
+      event.stopPropagation();
+      if (activeSecretMenu && secretMenuButton === clone) {
+        closeSecretMenu();
+      } else {
+        openSecretMenu(clone);
+      }
+    });
   });
 }
 
@@ -929,6 +1033,9 @@ function wireSecretRows() {
     if (!name || !valueInput?.value) return;
     clearError();
     vscode.postMessage({ command: 'storeSecret', name, value: valueInput.value });
+    // Clear both fields — the secretsUpdated re-render carries live input values
+    // across, so clearing here leaves a clean add-row after the secret lands.
+    nameInput.value = '';
     valueInput.value = '';
   });
 }
@@ -941,7 +1048,7 @@ function collectHookList(bodyId) {
   return Array.from(body.querySelectorAll('.hook-row'))
     .map(row => {
       const command = row.querySelector('.hook-command').value.trim();
-      const location = row.querySelector('.hook-location').value === 'remote' ? 'remote' : 'local';
+      const location = row.querySelector('.hook-loc-radio:checked')?.value === 'remote' ? 'remote' : 'local';
       const continueOnError = row.querySelector('.hook-continue').checked;
       const hook = { command, location };
       if (continueOnError) hook.continueOnError = true;
