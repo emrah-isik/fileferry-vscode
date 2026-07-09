@@ -2,6 +2,14 @@
 
 All notable changes to FileFerry will be documented in this file.
 
+## [0.11.1] - 2026-07-09
+
+### Fixed
+
+- **Release notes now appear on the extension listing.** `CHANGELOG.md` was excluded from the published package, so the **Changelog** tab was empty. It's now included, making the full release history — including v0.11.0's deploy hooks and keychain-backed hook secrets — readable directly on the Marketplace and Open VSX. No functional change to the extension itself.
+
+---
+
 ## [0.11.0] - 2026-07-09
 
 ### Added
