@@ -2,6 +2,14 @@
 
 All notable changes to FileFerry will be documented in this file.
 
+## [0.11.2] - 2026-07-09
+
+### Fixed
+
+- **Windows: deploys failed with "No mapping found", and `excludedPaths` were silently ignored.** `path.relative()` returns backslash-separated paths on Windows, but the mapping matcher, the exclusion glob matcher, and the remote-path builder all assume forward slashes. Three things broke as a result: a perfectly valid mapping never matched, so the deploy aborted with *"No mapping found"*; every configured exclusion matched nothing, so files you meant to keep off the server (`dist/`, `node_modules/`, and the like) could be uploaded; and backslashes leaked into the remote paths themselves. The relative path is now normalised once, before any of those checks run. Thanks to [@shanto](https://github.com/shanto) for reporting and fixing this.
+
+---
+
 ## [0.11.1] - 2026-07-09
 
 ### Fixed
