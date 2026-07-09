@@ -480,7 +480,7 @@
     "@types/vscode": "^1.85.0",
     "@typescript-eslint/eslint-plugin": "^8.57.2",
     "@typescript-eslint/parser": "^8.57.2",
-    "@vscode/vsce": "^3.7.1",
+    "@vscode/vsce": "^3.9.2",
     "eslint": "^10.1.0",
     "jest": "^30.3.0",
     "ts-jest": "^29.4.6",
