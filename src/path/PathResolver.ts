@@ -35,7 +35,7 @@ function isFileFerryArtifact(relativeLocal: string): boolean {
 
 export class PathResolver {
   resolve(localPath: string, workspaceRoot: string, serverConfig: ServerConfig): ResolvedUploadItem {
-    const relativeLocal = path.relative(workspaceRoot, localPath);
+    const relativeLocal = path.relative(workspaceRoot, localPath).replace(/\\/g, '/');
 
     // FileFerry's own files are never deployable — checked before (and
     // independent of) user exclusions and ignoreExclusions.
