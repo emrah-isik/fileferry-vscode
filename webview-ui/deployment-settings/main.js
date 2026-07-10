@@ -15,6 +15,7 @@ let state = {
   editingNew: false,      // true when creating a new (unsaved) server
   secretNames: [],        // hook secret NAMEs stored in the OS keychain (values never reach the webview)
   secretsSectionOpen: null, // user's explicit open/collapse choice; null = auto (open when a secret is missing)
+  pendingSecretSave: null,  // NAME awaiting a secretsUpdated ack, so we can confirm the save on its row
 };
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────
@@ -105,9 +106,16 @@ window.addEventListener('message', ({ data: msg }) => {
       state.secretNames = msg.secretNames || [];
       renderSecretsSection();
       refreshHookSecretIndicators();
+      // Updating an already-stored secret leaves the row looking identical, so
+      // without this the save has no visible effect at all.
+      if (state.pendingSecretSave) {
+        flashSecretSaved(state.pendingSecretSave);
+        state.pendingSecretSave = null;
+      }
       break;
 
     case 'secretError': {
+      state.pendingSecretSave = null;
       const secretsErrorEl = document.getElementById('secrets-error');
       if (secretsErrorEl) secretsErrorEl.textContent = msg.message || 'Secret operation failed.';
       break;
@@ -580,6 +588,19 @@ const ICON_KEY = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" ar
   <path d="M7.9 7.9 13.5 13.5M11.3 11.3l1.4-1.4M12.7 12.7l1.3-1.3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
 </svg>`;
 
+// Floppy disk — the conventional "save" affordance (VS Code's own save codicon).
+// Body with the clipped corner, shutter at the top, label panel at the bottom.
+const ICON_SAVE = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+  <path d="M2.8 3.8a1 1 0 0 1 1-1h6.4l3 3v6.4a1 1 0 0 1-1 1H3.8a1 1 0 0 1-1-1V3.8Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
+  <path d="M5.4 2.8v3.1h4.2V2.8" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
+  <path d="M4.9 13.2V9.3h6.2v3.9" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
+</svg>`;
+
+const ICON_PENCIL = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+  <path d="M11.4 2.6a1.4 1.4 0 0 1 2 2L5.6 12.4l-2.7.7.7-2.7 7.8-7.8Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
+  <path d="M10.2 3.8l2 2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+</svg>`;
+
 // Unique radio-group name per row so the local/remote segments don't
 // cross-select between rows. Only uniqueness matters; the counter is reset
 // nowhere (a fresh render just mints higher ids for its fresh DOM).
@@ -902,9 +923,13 @@ function secretRowHtml(name, isStored) {
       <code class="secret-name">${escapedName}</code>
       ${status}
       <input class="secret-value" type="password" autocomplete="off" placeholder="${isStored ? 'enter new value to replace' : 'enter value'}">
-      <button class="btn-store-secret" type="button">${isStored ? 'Update' : 'Set value'}</button>
-      ${isStored ? '<button class="btn-rename-secret" type="button">Rename</button>' : ''}
-      ${isStored ? '<button class="btn-delete-secret" type="button" title="Delete from keychain">Delete</button>' : ''}
+      <span class="secret-actions">
+        <button class="btn-store-secret icon-btn" type="button"
+          data-tooltip="${isStored ? 'Update value in keychain' : 'Set value'}"
+          aria-label="${isStored ? 'Update value in keychain' : 'Set value'}">${ICON_SAVE}</button>
+        ${isStored ? `<button class="btn-rename-secret icon-btn" type="button" data-tooltip="Rename secret" aria-label="Rename secret">${ICON_PENCIL}</button>` : ''}
+        ${isStored ? `<button class="btn-delete-secret icon-btn" type="button" data-tooltip="Delete from keychain" aria-label="Delete from keychain">${ICON_TRASH}</button>` : ''}
+      </span>
     </div>
   `;
 }
@@ -954,6 +979,35 @@ function renderSecretsSection() {
   wireSecretRows();
 }
 
+// Briefly swap a row's status for a "Saved" confirmation, then restore it.
+// Names are validated as [A-Za-z_][A-Za-z0-9_]* before ever reaching here, so
+// they're safe to interpolate into the attribute selector.
+function flashSecretSaved(name) {
+  const row = document.querySelector(`.secret-row[data-name="${name}"]`);
+  const status = row?.querySelector('.secret-status');
+  if (!status) return;
+
+  const previousText = status.textContent;
+  const previousClass = status.className;
+
+  // "✓ Saved" is shorter than "✓ in OS keychain", and the value input would
+  // absorb the freed space and visibly widen. Pin the cell to the width it
+  // already has for the duration of the flash — no reserved gap, no reflow.
+  status.style.width = `${status.getBoundingClientRect().width}px`;
+  status.textContent = '✓ Saved';
+  status.className = 'secret-status saved';
+
+  setTimeout(() => {
+    // Only restore if this element is still on the page and still ours — a
+    // re-render (e.g. typing in a hook command) may have replaced it already.
+    if (status.isConnected && status.classList.contains('saved')) {
+      status.textContent = previousText;
+      status.className = previousClass;
+      status.style.width = '';
+    }
+  }, 1800);
+}
+
 function updateSecretsSummary(missingCount) {
   const summary = document.getElementById('secrets-summary');
   if (!summary) return;
@@ -989,6 +1043,7 @@ function wireSecretRows() {
     row.querySelector('.btn-store-secret')?.addEventListener('click', () => {
       if (!valueInput.value) return;
       clearError();
+      state.pendingSecretSave = name;
       vscode.postMessage({ command: 'storeSecret', name, value: valueInput.value });
       valueInput.value = '';
     });
@@ -1032,6 +1087,7 @@ function wireSecretRows() {
     const name = nameInput?.value.trim();
     if (!name || !valueInput?.value) return;
     clearError();
+    state.pendingSecretSave = name;
     vscode.postMessage({ command: 'storeSecret', name, value: valueInput.value });
     // Clear both fields — the secretsUpdated re-render carries live input values
     // across, so clearing here leaves a clean add-row after the secret lands.

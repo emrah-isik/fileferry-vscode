@@ -469,7 +469,8 @@ button.btn-danger:hover:not(:disabled) {
   background: var(--vscode-toolbar-hoverBackground);
 }
 
-.btn-remove-hook:hover {
+.btn-remove-hook:hover,
+.btn-delete-secret:hover {
   color: var(--vscode-errorForeground, #f14c4c);
 }
 
@@ -603,23 +604,34 @@ button.btn-danger:hover:not(:disabled) {
   margin-bottom: 8px;
 }
 
-.secret-row {
-  display: flex;
-  flex-wrap: wrap;
+/* One shared grid for every row, so name / status / value / actions line up as
+   columns. `max-content` sizes the status column to the widest label actually
+   present — no arbitrary reserved width, and no row-by-row drift. */
+#secrets-body {
+  display: grid;
+  grid-template-columns: minmax(140px, 220px) max-content 1fr auto;
+  column-gap: 8px;
+  row-gap: 6px;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
+}
+
+/* The empty-state hint isn't a row; let it span the whole grid. */
+#secrets-body > .hint {
+  grid-column: 1 / -1;
+}
+
+/* Rows contribute their children directly to the grid above. */
+.secret-row {
+  display: contents;
 }
 
 .secret-row .secret-name,
 .secret-row .secret-rename-input {
-  flex: 0 1 180px;
-  min-width: 120px;
+  min-width: 0;
   overflow-wrap: anywhere;
 }
 
 .secret-row .secret-status {
-  flex: 0 0 auto;
   font-size: 0.85em;
   white-space: nowrap;
 }
@@ -632,8 +644,25 @@ button.btn-danger:hover:not(:disabled) {
   color: var(--vscode-inputValidation-warningForeground, #f0ad4e);
 }
 
+/* Transient confirmation after a save — an updated secret's row is otherwise
+   visually identical before and after. Colour only: bolding would change the
+   glyph widths and nudge the row. */
+.secret-row .secret-status.saved {
+  color: var(--vscode-testing-iconPassed, #4caf50);
+}
+
 .secret-row .secret-value {
-  flex: 1 1 160px;
+  min-width: 0;
+}
+
+/* Actions live in one grid cell, left-aligned within it. The cell is as wide as
+   the widest row (save + rename + delete), so a "missing" row showing only the
+   save icon lines up under the save icons above rather than under the trash.
+   Tooltip + hover styling is inherited from the shared .icon-btn rules above. */
+.secret-actions {
+  display: flex;
+  justify-content: flex-start;
+  gap: 2px;
 }
 
 .secret-add-row {
