@@ -1,3 +1,4 @@
+import * as path from 'path';
 import { ScmResourceResolver } from '../../../scm/ScmResourceResolver';
 import * as vscode from 'vscode';
 import * as fs from 'fs';
@@ -88,8 +89,8 @@ describe('ScmResourceResolver', () => {
       const result = resolver.resolve(resource, [resource]);
 
       expect(result.toUpload).toEqual([
-        '/workspace/src/app.php',
-        '/workspace/src/sub/helper.php',
+        path.join('/workspace', 'src/app.php'),
+        path.join('/workspace', 'src/sub/helper.php'),
       ]);
       expect(result.toDelete).toEqual([]);
     });
@@ -122,8 +123,8 @@ describe('ScmResourceResolver', () => {
       const result = resolver.resolve(file, [file, folder]);
 
       expect(result.toUpload).toEqual([
-        '/workspace/index.php',
-        '/workspace/css/style.css',
+        '/workspace/index.php',                       // plain file: pushed as-is
+        path.join('/workspace', 'css/style.css'),      // folder-expanded: via path.join
       ]);
     });
 
@@ -137,8 +138,8 @@ describe('ScmResourceResolver', () => {
       const resource = makeResource('/workspace/docs');
       const result = resolver.resolve(resource, [resource]);
 
-      expect(result.toUpload).not.toContain('/workspace/docs');
-      expect(result.toUpload).toEqual(['/workspace/docs/file.txt']);
+      expect(result.toUpload).not.toContain(path.normalize('/workspace/docs'));
+      expect(result.toUpload).toEqual([path.join('/workspace', 'docs/file.txt')]);
     });
   });
 });

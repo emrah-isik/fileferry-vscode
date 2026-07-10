@@ -1,3 +1,4 @@
+import * as path from 'path';
 import { ProjectBindingManager } from '../../../storage/ProjectBindingManager';
 import { ProjectBinding } from '../../../models/ProjectBinding';
 
@@ -49,7 +50,7 @@ describe('ProjectBindingManager', () => {
 
   it('writes fileferry.json to the correct workspace path', async () => {
     await manager.saveBinding(bindingFixture);
-    expect(mockWriteFile.mock.calls[0][0]).toContain('.vscode/fileferry.json');
+    expect(mockWriteFile.mock.calls[0][0]).toContain(path.join('.vscode', 'fileferry.json'));
   });
 
   it('creates .vscode directory if it does not exist', async () => {

@@ -1,3 +1,4 @@
+import * as path from 'path';
 import * as vscode from 'vscode';
 import * as fs from 'fs/promises';
 import { downloadToWorkspace } from '../../../commands/downloadToWorkspace';
@@ -76,9 +77,9 @@ describe('downloadToWorkspace', () => {
     );
 
     expect(mockConnection.downloadFile).toHaveBeenCalledWith('/var/www/html/src/app.php');
-    expect(mockFs.writeFile).toHaveBeenCalledWith('/workspace/src/app.php', expect.any(Buffer));
+    expect(mockFs.writeFile).toHaveBeenCalledWith(path.join('/workspace', 'src/app.php'), expect.any(Buffer));
     expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
-      expect.stringContaining('src/app.php')
+      expect.stringContaining(path.join('src', 'app.php'))
     );
   });
 
@@ -148,7 +149,7 @@ describe('downloadToWorkspace', () => {
       mockConfigManager as any,
     );
 
-    expect(mockFs.mkdir).toHaveBeenCalledWith('/workspace/deep/nested', { recursive: true });
+    expect(mockFs.mkdir).toHaveBeenCalledWith(path.join('/workspace', 'deep/nested'), { recursive: true });
   });
 
   it('uses server rootPath for path resolution', async () => {
@@ -177,6 +178,6 @@ describe('downloadToWorkspace', () => {
       mockConfigManager as any,
     );
 
-    expect(mockFs.writeFile).toHaveBeenCalledWith('/workspace/index.php', expect.any(Buffer));
+    expect(mockFs.writeFile).toHaveBeenCalledWith(path.join('/workspace', 'index.php'), expect.any(Buffer));
   });
 });

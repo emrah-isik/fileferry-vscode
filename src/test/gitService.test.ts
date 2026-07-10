@@ -1,3 +1,4 @@
+import * as path from 'path';
 import { GitService } from '../gitService';
 
 jest.mock('vscode', () => ({
@@ -472,7 +473,7 @@ describe('GitService.getFilesChangedInCommit', () => {
     });
 
     const files = await service.getFilesChangedInCommit(workspaceRoot, 'abc');
-    expect(files[0].absolutePath).toBe('/home/user/project/src/app.ts');
+    expect(files[0].absolutePath).toBe(path.resolve('/home/user/project', 'src/app.ts'));
     expect(files[0].workspaceRoot).toBe(workspaceRoot);
   });
 
@@ -612,7 +613,7 @@ describe('GitService.getFilesChangedInCommit — workspace nested in repo', () =
     const files = await service.getFilesChangedInCommit(workspaceRoot, 'abc');
     expect(files).toHaveLength(1);
     // Must point at the real on-disk file, not a doubled "web/web" path.
-    expect(files[0].absolutePath).toBe('/home/user/monorepo/web/src/app.ts');
+    expect(files[0].absolutePath).toBe(path.resolve('/home/user/monorepo', 'web/src/app.ts'));
     expect(files[0].relativePath).toBe('src/app.ts');
     expect(files[0].workspaceRoot).toBe(workspaceRoot);
   });

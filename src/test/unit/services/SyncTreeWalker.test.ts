@@ -1,3 +1,4 @@
+import * as path from 'path';
 import * as fs from 'fs';
 import { walkRemoteTree, walkLocalTree } from '../../../services/SyncTreeWalker';
 import type { FileEntry } from '../../../transferService';
@@ -96,10 +97,10 @@ describe('walkLocalTree', () => {
   it('returns absolute paths of every regular file under the root', () => {
     (fs.existsSync as jest.Mock).mockReturnValue(true);
     (fs.readdirSync as jest.Mock).mockImplementation((dir: string) => {
-      if (dir === '/workspace/public') {
+      if (path.normalize(dir) === path.normalize('/workspace/public')) {
         return [dirent('index.php', 'file'), dirent('css', 'dir')];
       }
-      if (dir === '/workspace/public/css') {
+      if (path.normalize(dir) === path.normalize('/workspace/public/css')) {
         return [dirent('app.css', 'file')];
       }
       return [];
@@ -108,8 +109,8 @@ describe('walkLocalTree', () => {
     const files = walkLocalTree('/workspace/public');
 
     expect(files).toEqual([
-      '/workspace/public/index.php',
-      '/workspace/public/css/app.css',
+      path.join('/workspace', 'public/index.php'),
+      path.join('/workspace', 'public/css/app.css'),
     ]);
   });
 
@@ -123,7 +124,7 @@ describe('walkLocalTree', () => {
   it('never descends into ignored directory names', () => {
     (fs.existsSync as jest.Mock).mockReturnValue(true);
     (fs.readdirSync as jest.Mock).mockImplementation((dir: string) => {
-      if (dir === '/workspace') {
+      if (path.normalize(dir) === path.normalize('/workspace')) {
         return [dirent('app.js', 'file'), dirent('.git', 'dir'), dirent('node_modules', 'dir')];
       }
       return [dirent('should-not-be-seen', 'file')];
@@ -131,7 +132,7 @@ describe('walkLocalTree', () => {
 
     const files = walkLocalTree('/workspace', new Set(['.git', 'node_modules']));
 
-    expect(files).toEqual(['/workspace/app.js']);
+    expect(files).toEqual([path.join('/workspace', 'app.js')]);
     expect(fs.readdirSync).not.toHaveBeenCalledWith('/workspace/.git', expect.anything());
     expect(fs.readdirSync).not.toHaveBeenCalledWith('/workspace/node_modules', expect.anything());
   });

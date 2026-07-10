@@ -65,7 +65,7 @@ describe('HostKeyManager', () => {
   describe('trust', () => {
     it('saves a new host key to known_hosts', async () => {
       await manager.trust('example.com', 22, 'ssh-ed25519', 'AAAA1234');
-      expect(fs.mkdir).toHaveBeenCalledWith(STORAGE_DIR, { recursive: true });
+      expect(fs.mkdir).toHaveBeenCalledWith(path.normalize(STORAGE_DIR), { recursive: true });
       expect(fs.writeFile).toHaveBeenCalledWith(
         path.join(STORAGE_DIR, 'known_hosts.json'),
         expect.any(String),

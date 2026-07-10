@@ -1,3 +1,4 @@
+import * as path from 'path';
 import { resolveAgentSocket } from '../../../ssh/agentResolver';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -33,10 +34,10 @@ describe('resolveAgentSocket', () => {
 
   it('discovers 1Password agent socket when SSH_AUTH_SOCK is not set', () => {
     (fs.existsSync as jest.Mock).mockImplementation((p: string) =>
-      p === '/home/testuser/.1password/agent.sock'
+      p === path.join('/home/testuser', '.1password/agent.sock')
     );
     const result = resolveAgentSocket();
-    expect(result).toBe('/home/testuser/.1password/agent.sock');
+    expect(result).toBe(path.join('/home/testuser', '.1password/agent.sock'));
   });
 
   it('returns pageant on Windows when no socket found', () => {

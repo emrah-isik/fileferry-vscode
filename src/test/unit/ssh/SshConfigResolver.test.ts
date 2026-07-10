@@ -1,3 +1,4 @@
+import * as path from 'path';
 import { resolveHostAlias, applySshConfig, describeResolution } from '../../../ssh/SshConfigResolver';
 import type { ServerConfig } from '../../../types';
 
@@ -31,7 +32,7 @@ describe('resolveHostAlias', () => {
       hostName: '203.0.113.10',
       port: 2222,
       user: 'deploy',
-      identityFile: '/home/dev/.ssh/prod_ed25519',
+      identityFile: path.join('/home/dev', '.ssh/prod_ed25519'),
     });
   });
 
@@ -142,7 +143,7 @@ describe('describeResolution', () => {
     expect(r.status).toBe('matched');
     expect(r.lines[0]).toBe('Resolved "prod" from ~/.ssh/config'); // headline carries no target/key
     expect(r.lines).toContain('Target: deploy@203.0.113.10:2222');
-    expect(r.lines).toContain('Key: /home/dev/.ssh/prod_ed25519');
+    expect(r.lines).toContain(`Key: ${path.join('/home/dev', '.ssh/prod_ed25519')}`);
   });
 
   it('omits the key line when the auth method is not a key (e.g. password)', () => {
