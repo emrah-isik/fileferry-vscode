@@ -35,12 +35,27 @@ function isFileFerryArtifact(relativeLocal: string): boolean {
 
 export class PathResolver {
   resolve(localPath: string, workspaceRoot: string, serverConfig: ServerConfig): ResolvedUploadItem {
+    const relativeToWorkspace = path.relative(workspaceRoot, localPath);
+
+    // A file outside the workspace would build a remote path that escapes the
+    // server's rootPath (e.g. `/var/www/../etc/passwd`). Checked first, and
+    // independent of `ignoreExclusions` — force-upload must never override it.
+    // Two shapes of escape: a `../` prefix, and (on Windows, across drives) an
+    // absolute path, because path.relative can't express that as `../`.
+    if (
+      path.isAbsolute(relativeToWorkspace) ||
+      relativeToWorkspace === '..' ||
+      relativeToWorkspace.startsWith('..' + path.sep)
+    ) {
+      throw new Error(`File is outside the workspace: ${localPath}`);
+    }
+
     // Normalise to '/' so the mapping match, the exclusion matcher, and the
     // remote-path builder below all see the separator they assume. Key off
     // path.sep rather than rewriting every backslash: on POSIX a backslash is
     // a legal filename character, and `weird\name.txt` must not turn into a
     // `weird/` directory on the server.
-    const relativeLocal = path.relative(workspaceRoot, localPath).split(path.sep).join('/');
+    const relativeLocal = relativeToWorkspace.split(path.sep).join('/');
 
     // FileFerry's own files are never deployable — checked before (and
     // independent of) user exclusions and ignoreExclusions.

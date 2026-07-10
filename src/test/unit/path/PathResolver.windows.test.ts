@@ -40,6 +40,19 @@ describe('PathResolver with Windows path separators', () => {
     })).toThrow(/excluded/);
   });
 
+  // On Windows, path.relative() across drives returns an ABSOLUTE path rather
+  // than a '../…' escape, so a startsWith('..') check alone would miss it.
+  // See issue #3.
+  it('throws for a file on a different drive (relative path comes back absolute)', () => {
+    expect(() => resolver.resolve('D:\\other\\secrets.txt', workspaceRoot, baseConfig))
+      .toThrow(/outside the workspace/i);
+  });
+
+  it('throws for a parent-relative escape on the same drive', () => {
+    expect(() => resolver.resolve('C:\\workspace\\..\\windows\\hosts', workspaceRoot, baseConfig))
+      .toThrow(/outside the workspace/i);
+  });
+
   it('still auto-excludes FileFerry artifacts', () => {
     expect(() => resolver.resolve('C:\\workspace\\.vscode\\fileferry.json', workspaceRoot, {
       ...baseConfig,

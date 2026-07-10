@@ -280,6 +280,52 @@ describe('PathResolver', () => {
   });
 
   // FileFerry's own config/history/backup files must never be deployed —
+  // A file outside the workspace makes path.relative() return '../…', which
+  // would join into a traversing remote path (/var/www/../etc/passwd) that
+  // escapes the server's configured rootPath. Reachable via the
+  // activeTextEditor fallback in uploadSelected. See issue #3.
+  describe('files outside the workspace root', () => {
+    const baseConfig = {
+      rootPath: '/var/www',
+      mappings: [{ localPath: '/', remotePath: '' }],
+      excludedPaths: [],
+    };
+
+    it('throws rather than building a traversing remote path', () => {
+      expect(() => resolver.resolve('/etc/passwd', workspaceRoot, baseConfig))
+        .toThrow(/outside the workspace/i);
+    });
+
+    it('throws for a parent-relative escape too', () => {
+      expect(() => resolver.resolve('/workspace/../etc/hosts', workspaceRoot, baseConfig))
+        .toThrow(/outside the workspace/i);
+    });
+
+    // The message must NOT start with "File is excluded:" — uploadSelected keys
+    // on that prefix to offer "Upload Anyway" with ignoreExclusions, which must
+    // never be able to override this guard.
+    it('does not use the "File is excluded:" prefix that force-upload keys on', () => {
+      expect(() => resolver.resolve('/etc/passwd', workspaceRoot, baseConfig))
+        .toThrow(expect.not.stringMatching(/^File is excluded:/) as unknown as string);
+    });
+
+    it('still throws when ignoreExclusions is set (force-upload cannot bypass it)', () => {
+      expect(() => resolver.resolve('/etc/passwd', workspaceRoot, { ...baseConfig, ignoreExclusions: true }))
+        .toThrow(/outside the workspace/i);
+    });
+
+    it('resolveAll propagates the throw rather than silently dropping the file', () => {
+      expect(() => resolver.resolveAll(['/workspace/app.php', '/etc/passwd'], workspaceRoot, baseConfig))
+        .toThrow(/outside the workspace/i);
+    });
+
+    // A file whose NAME merely starts with '..' is inside the workspace.
+    it('does not reject an in-workspace file whose name begins with ".."', () => {
+      const result = resolver.resolve('/workspace/..hidden.php', workspaceRoot, baseConfig);
+      expect(result.remotePath).toBe('/var/www/..hidden.php');
+    });
+  });
+
   // A backslash is a legal character in a POSIX filename. Separator
   // normalisation must key off path.sep, not rewrite every backslash, or a
   // file called `weird\name.txt` silently becomes a `weird/` directory on the
