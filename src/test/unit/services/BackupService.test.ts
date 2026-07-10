@@ -67,7 +67,7 @@ describe('BackupService.backup', () => {
     // The mkdir call should contain the remote path structure under .vscode/fileferry-backups
     const mkdirCalls = (fsPromises.mkdir as jest.Mock).mock.calls;
     const backupDir = mkdirCalls.find((call: any[]) =>
-      call[0].includes('.vscode/fileferry-backups') && call[0].includes('src')
+      call[0].includes(path.join('.vscode', 'fileferry-backups')) && call[0].includes('src')
     );
     expect(backupDir).toBeDefined();
   });
@@ -94,7 +94,7 @@ describe('BackupService.backup', () => {
     await service.backup(items, credential, 'Production', '/workspace');
 
     const writePath = (fsPromises.writeFile as jest.Mock).mock.calls[0][0] as string;
-    expect(writePath).toMatch(/\.vscode\/fileferry-backups/);
+    expect(writePath).toContain(path.join('.vscode', 'fileferry-backups'));
     expect(writePath).toMatch(/Production/);
     // ISO timestamp pattern: YYYY-MM-DDTHH-MM-SS
     expect(writePath).toMatch(/\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}/);

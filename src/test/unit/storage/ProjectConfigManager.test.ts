@@ -1,3 +1,4 @@
+import * as path from 'path';
 import { ProjectConfigManager } from '../../../storage/ProjectConfigManager';
 import { ProjectConfig, ProjectServer } from '../../../models/ProjectConfig';
 
@@ -81,7 +82,7 @@ describe('ProjectConfigManager — read/write', () => {
 
   it('writes fileferry.json to the correct workspace path', async () => {
     await manager.saveConfig(configFixture);
-    expect(mockWriteFile.mock.calls[0][0]).toContain('.vscode/fileferry.json');
+    expect(mockWriteFile.mock.calls[0][0]).toContain(path.join('.vscode', 'fileferry.json'));
   });
 
   it('creates .vscode directory if it does not exist', async () => {
@@ -556,7 +557,7 @@ describe('ProjectConfigManager — setServerHooks', () => {
     await manager.setServerHooks('production', { preDeploy: committedHooks });
     const writePath = mockWriteFile.mock.calls[0][0] as string;
     const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string);
-    expect(writePath).toContain('.vscode/fileferry.json');
+    expect(writePath).toContain(path.join('.vscode', 'fileferry.json'));
     expect(written.servers['production'].hooks).toEqual({ preDeploy: committedHooks });
   });
 

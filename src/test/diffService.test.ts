@@ -1,3 +1,4 @@
+import * as path from 'path';
 import { DiffService } from '../diffService';
 import { ServerConfig } from '../types';
 
@@ -52,7 +53,7 @@ describe('DiffService', () => {
 
     it('returns a temp path inside the configured temp directory', async () => {
       const result = await service.downloadRemoteFile(server, {}, '/var/www/index.php');
-      expect(result).toContain(tempDir);
+      expect(result).toContain(path.normalize(tempDir));
     });
 
     it('returns the same path for the same remote file (stable/deterministic)', async () => {

@@ -1,3 +1,4 @@
+import * as path from 'path';
 import * as vscode from 'vscode';
 import * as fs from 'fs/promises';
 import { diffRemoteWithLocal } from '../../../commands/diffRemoteWithLocal';
@@ -89,7 +90,7 @@ describe('diffRemoteWithLocal', () => {
     expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
       'vscode.diff',
       expect.anything(), // temp file URI
-      expect.objectContaining({ fsPath: '/workspace/src/app.php' }), // local file URI
+      expect.objectContaining({ fsPath: path.join('/workspace', 'src/app.php') }), // local file URI
       expect.stringContaining('app.php'),
     );
   });
@@ -190,7 +191,7 @@ describe('diffRemoteWithLocal', () => {
     expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
       'vscode.diff',
       expect.anything(),
-      expect.objectContaining({ fsPath: '/workspace/index.php' }),
+      expect.objectContaining({ fsPath: path.join('/workspace', 'index.php') }),
       expect.stringContaining('index.php'),
     );
   });

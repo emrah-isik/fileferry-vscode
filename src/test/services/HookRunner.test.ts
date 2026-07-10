@@ -369,7 +369,7 @@ describe('runHooks', () => {
         expect(spawnedCommand).not.toContain('tok-secret-123');
         expect(spawnOptions.env).toEqual(expect.objectContaining({ API_TOKEN: 'tok-secret-123' }));
         // The overlay merges over process.env, it does not replace it.
-        expect(spawnOptions.env.PATH).toBe(process.env.PATH);
+        expect(Object.keys(spawnOptions.env)).toEqual(expect.arrayContaining(Object.keys(process.env)));
       });
 
       it('never writes the resolved value to the output channel — logs show the unresolved token', async () => {

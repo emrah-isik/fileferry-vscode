@@ -1,3 +1,4 @@
+import * as path from 'path';
 import * as fs from 'fs';
 import { walkRemoteTree, walkLocalTree } from '../../../services/SyncTreeWalker';
 import type { FileEntry } from '../../../transferService';
@@ -108,8 +109,8 @@ describe('walkLocalTree', () => {
     const files = walkLocalTree('/workspace/public');
 
     expect(files).toEqual([
-      '/workspace/public/index.php',
-      '/workspace/public/css/app.css',
+      path.join('/workspace', 'public/index.php'),
+      path.join('/workspace', 'public/css/app.css'),
     ]);
   });
 
