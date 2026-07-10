@@ -28,7 +28,7 @@ describe('DryRunReporter', () => {
     };
     reporter.report([plan]);
     expect(lines.some(l => l.includes('UPLOAD') && l.includes(path.join('src', 'index.ts')) && l.includes('/var/www/app/index.ts'))).toBe(true);
-    expect(lines.some(l => l.includes('UPLOAD') && l.includes('src/utils/helper.ts'))).toBe(true);
+    expect(lines.some(l => l.includes('UPLOAD') && l.includes(path.join('src', 'utils/helper.ts')))).toBe(true);
   });
 
   it('writes delete entries', () => {

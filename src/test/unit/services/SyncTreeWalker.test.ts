@@ -97,10 +97,10 @@ describe('walkLocalTree', () => {
   it('returns absolute paths of every regular file under the root', () => {
     (fs.existsSync as jest.Mock).mockReturnValue(true);
     (fs.readdirSync as jest.Mock).mockImplementation((dir: string) => {
-      if (dir === '/workspace/public') {
+      if (dir === path.join('/workspace', 'public')) {
         return [dirent('index.php', 'file'), dirent('css', 'dir')];
       }
-      if (dir === '/workspace/public/css') {
+      if (dir === path.join('/workspace', 'public/css')) {
         return [dirent('app.css', 'file')];
       }
       return [];
@@ -124,7 +124,7 @@ describe('walkLocalTree', () => {
   it('never descends into ignored directory names', () => {
     (fs.existsSync as jest.Mock).mockReturnValue(true);
     (fs.readdirSync as jest.Mock).mockImplementation((dir: string) => {
-      if (dir === '/workspace') {
+      if (dir === path.normalize('/workspace')) {
         return [dirent('app.js', 'file'), dirent('.git', 'dir'), dirent('node_modules', 'dir')];
       }
       return [dirent('should-not-be-seen', 'file')];
