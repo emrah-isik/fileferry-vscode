@@ -2,6 +2,20 @@
 
 All notable changes to FileFerry will be documented in this file.
 
+## [0.11.3] - 2026-07-10
+
+### Fixed
+
+- **A file outside your workspace could be deployed outside the server's root path.** FileFerry never checked that the file you were uploading actually lived inside the workspace folder. When it didn't — most easily by opening a file from elsewhere on disk and hitting the upload keybinding with nothing selected in Source Control — the remote path was built by walking upwards out of the configured `rootPath` (`/var/www/../etc/hosts`), which the server then resolves outside the directory you meant to deploy to. Such files are now rejected with a clear message, before any connection is opened. The check runs ahead of the exclusion rules and cannot be overridden by **Upload Anyway**, and it also covers the Windows case of a file on a different drive.
+
+### Changed
+
+- **The Hooks tab has been reworked.** Each hook is now a two-tier row: the command owns its own full-width line with its actions beside it, while `local`/`remote`, *continue on error*, and the secret picker move to a quieter second line, so the command no longer competes with four other controls for space. **Pre-deploy** and **Post-deploy** are collapsible sections with a count in the header, matching **Secrets**. Inserting a `${secret:NAME}` reference is now a key button that opens a picker of your stored secrets, and removing a hook is a trash icon.
+- **The Secrets list is easier to work with.** Its per-row actions are now icons (save, rename, delete) with tooltips, the rows line up in proper columns regardless of how long each status label is, and saving a value into an already-stored secret shows a brief **Saved** confirmation — previously nothing visibly happened. Adding a secret now clears both fields, and deleting a hook immediately drops any *not set on this machine* entry it was the last to reference.
+- **The active tab in Deployment Settings is now visibly marked.** It previously relied on a theme colour that many themes leave undefined, in which case no underline was drawn at all.
+
+---
+
 ## [0.11.2] - 2026-07-09
 
 ### Fixed
