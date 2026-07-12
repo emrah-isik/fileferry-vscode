@@ -49,7 +49,7 @@ const mockConfirmSyncDeletions = jest.fn().mockResolvedValue(true);
 }));
 (createTransferService as jest.Mock).mockReturnValue({ connect: mockConnect, disconnect: mockDisconnect });
 (UploadOrchestratorV2 as jest.Mock).mockImplementation(() => ({ upload: mockUpload }));
-(BackupService as jest.Mock).mockImplementation(() => ({ backup: mockBackup, cleanup: mockCleanup }));
+(BackupService as unknown as jest.Mock).mockImplementation(() => ({ backup: mockBackup, cleanup: mockCleanup }));
 (DryRunReporter as jest.Mock).mockImplementation(() => ({ report: mockDryRunReport }));
 (UploadHistoryService as jest.Mock).mockImplementation(() => ({
   log: mockHistoryLog,

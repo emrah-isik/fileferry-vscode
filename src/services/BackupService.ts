@@ -12,6 +12,43 @@ export class BackupService {
   // cleanup() is local-only and ignores it, but backup() connects to the remote.
   constructor(private readonly sftp: TransferService) {}
 
+  // For write paths that already hold a live connection AND the remote bytes
+  // (remote-edit saves, feature 32a): writes them into the standard backup
+  // layout without opening the second connection backup() would.
+  static async writeBackup(
+    remotePath: string,
+    content: Buffer,
+    serverName: string,
+    workspaceRoot: string
+  ): Promise<void> {
+    // Keep machine-local backups out of source control (best-effort).
+    try {
+      await ensureGitignored(workspaceRoot, '.vscode/fileferry-backups/');
+    } catch { /* ignore */ }
+
+    const backupRoot = BackupService.createBackupRoot(workspaceRoot, serverName);
+    await BackupService.writeIntoBackupRoot(backupRoot, remotePath, content);
+  }
+
+  private static createBackupRoot(workspaceRoot: string, serverName: string): string {
+    const timestamp = new Date().toISOString().replace(/:/g, '-').replace(/\.\d+Z$/, '');
+    return path.join(workspaceRoot, BACKUP_DIR, `${timestamp}-${serverName}`);
+  }
+
+  private static async writeIntoBackupRoot(
+    backupRoot: string,
+    remotePath: string,
+    content: Buffer
+  ): Promise<void> {
+    // Mirror remote path structure under backup folder
+    const relativePath = remotePath.startsWith('/')
+      ? remotePath.slice(1)
+      : remotePath;
+    const backupPath = path.join(backupRoot, relativePath);
+    await fsPromises.mkdir(path.dirname(backupPath), { recursive: true });
+    await fsPromises.writeFile(backupPath, content);
+  }
+
   async backup(
     items: ResolvedUploadItem[],
     credential: SshCredentialWithSecret,
@@ -33,8 +70,7 @@ export class BackupService {
     });
 
     try {
-      const timestamp = new Date().toISOString().replace(/:/g, '-').replace(/\.\d+Z$/, '');
-      const backupRoot = path.join(workspaceRoot, BACKUP_DIR, `${timestamp}-${serverName}`);
+      const backupRoot = BackupService.createBackupRoot(workspaceRoot, serverName);
 
       for (const item of items) {
         const remoteStat = await this.sftp.stat(item.remotePath);
@@ -43,13 +79,7 @@ export class BackupService {
         }
 
         const content = await this.sftp.get(item.remotePath);
-        // Mirror remote path structure under backup folder
-        const relativePath = item.remotePath.startsWith('/')
-          ? item.remotePath.slice(1)
-          : item.remotePath;
-        const backupPath = path.join(backupRoot, relativePath);
-        await fsPromises.mkdir(path.dirname(backupPath), { recursive: true });
-        await fsPromises.writeFile(backupPath, content);
+        await BackupService.writeIntoBackupRoot(backupRoot, item.remotePath, content);
       }
     } finally {
       await this.sftp.disconnect();

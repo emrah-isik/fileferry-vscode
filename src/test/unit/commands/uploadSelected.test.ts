@@ -44,7 +44,7 @@ mockSummaryToHistoryEntries.mockReturnValue([{ id: 'h-1' }]);
 const sentinelTransfer = { connect: jest.fn(), disconnect: jest.fn() };
 (createTransferService as jest.Mock).mockReturnValue(sentinelTransfer);
 (FileDateGuard as jest.Mock).mockImplementation(() => ({ check: mockDateGuardCheck, partitionByNewerLocal: mockPartition }));
-(BackupService as jest.Mock).mockImplementation(() => ({ backup: mockBackup, cleanup: mockCleanup }));
+(BackupService as unknown as jest.Mock).mockImplementation(() => ({ backup: mockBackup, cleanup: mockCleanup }));
 (DryRunReporter as jest.Mock).mockImplementation(() => ({ report: mockDryRunReport }));
 (UploadHistoryService as jest.Mock).mockImplementation(() => ({ log: mockHistoryLog, enforceRetention: mockHistoryEnforceRetention }));
 

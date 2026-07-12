@@ -13,6 +13,8 @@ const mockSftp = {
   disconnect: jest.fn(),
   listDirectoryDetailed: jest.fn(),
   get: jest.fn(),
+  uploadFile: jest.fn(),
+  stat: jest.fn(),
   deleteFile: jest.fn(),
   deleteDirectory: jest.fn(),
   statType: jest.fn(),
@@ -195,6 +197,78 @@ describe('RemoteBrowserConnection', () => {
       expect(mockSftp.connect).toHaveBeenCalled();
       expect(mockSftp.get).toHaveBeenCalledWith('/var/log/app.log');
       expect(result).toEqual(fakeBuffer);
+    });
+  });
+
+  describe('getCurrentServerId', () => {
+    it('returns null before connecting', () => {
+      expect(connection.getCurrentServerId()).toBeNull();
+    });
+
+    it('returns the connected server id after ensureConnected', async () => {
+      await connection.ensureConnected();
+      expect(connection.getCurrentServerId()).toBe('server-1');
+    });
+
+    it('returns null again after disconnect', async () => {
+      await connection.ensureConnected();
+      mockSftp.connected = true;
+
+      await connection.disconnect();
+      expect(connection.getCurrentServerId()).toBeNull();
+    });
+  });
+
+  describe('uploadFile', () => {
+    it('ensures connection and delegates to sftp uploadFile', async () => {
+      mockSftp.uploadFile.mockResolvedValue(undefined);
+
+      await connection.uploadFile('/tmp/fileferry-browse/app.remote.abc123.log', '/var/log/app.log');
+      expect(mockSftp.connect).toHaveBeenCalled();
+      expect(mockSftp.uploadFile).toHaveBeenCalledWith(
+        '/tmp/fileferry-browse/app.remote.abc123.log',
+        '/var/log/app.log'
+      );
+    });
+
+    it('resets the idle timer', async () => {
+      mockSftp.uploadFile.mockResolvedValue(undefined);
+      mockSftp.listDirectoryDetailed.mockResolvedValue([]);
+
+      await connection.listDirectory('/var/log');
+      mockSftp.connected = true;
+      mockSftp.disconnect.mockClear();
+
+      jest.advanceTimersByTime(4 * 60 * 1000);
+      await connection.uploadFile('/tmp/edit.txt', '/var/log/app.log');
+      mockSftp.disconnect.mockClear();
+
+      // 4 minutes after the upload — timer was reset, still connected
+      jest.advanceTimersByTime(4 * 60 * 1000);
+      expect(mockSftp.disconnect).not.toHaveBeenCalled();
+
+      // 5 minutes after the upload — idle timeout fires
+      jest.advanceTimersByTime(1 * 60 * 1000);
+      expect(mockSftp.disconnect).toHaveBeenCalled();
+    });
+  });
+
+  describe('statRemote', () => {
+    it('ensures connection and delegates to sftp stat', async () => {
+      const mtime = new Date('2026-07-12T10:00:00Z');
+      mockSftp.stat.mockResolvedValue({ mtime });
+
+      const result = await connection.statRemote('/var/log/app.log');
+      expect(mockSftp.connect).toHaveBeenCalled();
+      expect(mockSftp.stat).toHaveBeenCalledWith('/var/log/app.log');
+      expect(result).toEqual({ mtime });
+    });
+
+    it('passes through null when the remote file does not exist', async () => {
+      mockSftp.stat.mockResolvedValue(null);
+
+      const result = await connection.statRemote('/var/log/gone.log');
+      expect(result).toBeNull();
     });
   });
 

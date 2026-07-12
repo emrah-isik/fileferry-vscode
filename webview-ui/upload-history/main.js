@@ -18,6 +18,7 @@ const TRIGGER_LABELS = {
   'multi-server': 'Multi-Server',
   watch: 'Watch',
   sync: 'Sync',
+  'remote-edit': 'Remote Edit',
 };
 
 function triggerLabel(trigger) {
@@ -77,6 +78,7 @@ function render() {
           <option value="multi-server">Multi-Server</option>
           <option value="watch">Watch</option>
           <option value="sync">Sync</option>
+          <option value="remote-edit">Remote Edit</option>
         </select>
         <input type="text" id="filter-search" placeholder="Search file path..." />
       </div>

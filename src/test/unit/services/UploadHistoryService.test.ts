@@ -149,6 +149,19 @@ describe('UploadHistoryService', () => {
       const result = await service.getFiltered({});
       expect(result).toHaveLength(3);
     });
+
+    // Feature 32a: saves in an editor opened from the Remote Files panel are
+    // logged with their own trigger so the Source column and filter can tell
+    // them apart from deliberate deploys.
+    it('accepts and filters by the remote-edit trigger', async () => {
+      await service.log([
+        entry({ id: 'e-4', localPath: '/tmp/fileferry-browse/app.remote.abc123.php', trigger: 'remote-edit' }),
+      ]);
+
+      const result = await service.getFiltered({ trigger: 'remote-edit' });
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('e-4');
+    });
   });
 
   describe('clear()', () => {

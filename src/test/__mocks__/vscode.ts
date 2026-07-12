@@ -13,6 +13,7 @@ const vscode = {
     isTrusted: true,
     workspaceFolders: [{ uri: { fsPath: '/tmp/workspace' } }],
     onDidSaveTextDocument: jest.fn().mockReturnValue({ dispose: jest.fn() }),
+    onDidCloseTextDocument: jest.fn().mockReturnValue({ dispose: jest.fn() }),
     createFileSystemWatcher: jest.fn().mockReturnValue({
       onDidCreate: jest.fn().mockReturnValue({ dispose: jest.fn() }),
       onDidChange: jest.fn().mockReturnValue({ dispose: jest.fn() }),
