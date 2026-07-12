@@ -178,6 +178,22 @@ export class RemoteBrowserConnection {
     return this.sftp.get(remotePath);
   }
 
+  async uploadFile(localPath: string, remotePath: string): Promise<void> {
+    await this.ensureConnected();
+    this.resetIdleTimer();
+    await this.sftp.uploadFile(localPath, remotePath);
+  }
+
+  async statRemote(remotePath: string): Promise<{ mtime: Date } | null> {
+    await this.ensureConnected();
+    this.resetIdleTimer();
+    return this.sftp.stat(remotePath);
+  }
+
+  getCurrentServerId(): string | null {
+    return this.currentServerId;
+  }
+
   async deleteRemoteFile(remotePath: string): Promise<void> {
     await this.ensureConnected();
     this.resetIdleTimer();

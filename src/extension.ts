@@ -24,6 +24,8 @@ import { ServerConfig } from './types';
 import { RemoteBrowserProvider } from './remoteBrowser/RemoteBrowserProvider';
 import { ServersProvider } from './remoteBrowser/ServersProvider';
 import { openRemoteFile } from './commands/openRemoteFile';
+import { RemoteEditSessionRegistry } from './services/RemoteEditSessionRegistry';
+import { RemoteEditSaveListener } from './services/RemoteEditSaveListener';
 import { copyRemotePath } from './commands/copyRemotePath';
 import { downloadToWorkspace } from './commands/downloadToWorkspace';
 import { diffRemoteWithLocal } from './commands/diffRemoteWithLocal';
@@ -311,6 +313,14 @@ export function activate(context: vscode.ExtensionContext): void {
     context.globalStorageUri.fsPath
   );
   const browserProvider = new RemoteBrowserProvider(browserConnection);
+  const remoteEditSessionRegistry = new RemoteEditSessionRegistry();
+  const remoteEditSaveListener = new RemoteEditSaveListener({
+    registry: remoteEditSessionRegistry,
+    connection: browserConnection,
+    configManager,
+    output,
+  });
+  context.subscriptions.push(remoteEditSaveListener.register());
 
   const browserTreeView = vscode.window.createTreeView('fileferry.remoteBrowser', {
     treeDataProvider: browserProvider,
@@ -394,7 +404,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
     vscode.commands.registerCommand(
       'fileferry.remoteBrowser.openFile',
-      (entry) => openRemoteFile(entry, browserConnection)
+      (entry) => openRemoteFile(entry, browserConnection, remoteEditSessionRegistry)
     ),
 
     vscode.commands.registerCommand(

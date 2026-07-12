@@ -250,3 +250,41 @@ describe('BackupService.cleanup', () => {
     jest.restoreAllMocks();
   });
 });
+
+// Feature 32a: remote-edit saves already hold a live connection AND the remote
+// bytes — writeBackup writes them into the standard backup layout without
+// opening a second connection the way backup() does.
+describe('BackupService.writeBackup (static)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (fsPromises.mkdir as jest.Mock).mockResolvedValue(undefined);
+    (fsPromises.writeFile as jest.Mock).mockResolvedValue(undefined);
+  });
+
+  it('writes the content mirroring the remote path under a timestamped server folder', async () => {
+    const content = Buffer.from('<?php echo "current remote";');
+
+    await BackupService.writeBackup('/var/www/src/index.php', content, 'Production', '/workspace');
+
+    const writtenPath = (fsPromises.writeFile as jest.Mock).mock.calls[0][0] as string;
+    const writtenContent = (fsPromises.writeFile as jest.Mock).mock.calls[0][1];
+    expect(writtenPath.startsWith(path.join('/workspace', '.vscode', 'fileferry-backups'))).toBe(true);
+    expect(writtenPath.endsWith(path.join('var', 'www', 'src', 'index.php'))).toBe(true);
+    expect(writtenPath).toMatch(/\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-Production/);
+    expect(writtenContent).toBe(content);
+  });
+
+  it('creates the parent directories first', async () => {
+    await BackupService.writeBackup('/var/www/index.php', Buffer.from('x'), 'Production', '/workspace');
+
+    const writtenPath = (fsPromises.writeFile as jest.Mock).mock.calls[0][0] as string;
+    expect(fsPromises.mkdir).toHaveBeenCalledWith(path.dirname(writtenPath), { recursive: true });
+  });
+
+  it('opens no connection', async () => {
+    await BackupService.writeBackup('/var/www/index.php', Buffer.from('x'), 'Production', '/workspace');
+
+    expect(mockSftp.connect).not.toHaveBeenCalled();
+    expect(mockSftp.get).not.toHaveBeenCalled();
+  });
+});
