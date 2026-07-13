@@ -97,11 +97,13 @@ Type a token once in the Hooks tab and FileFerry puts it in your **OS keychain**
 
 ## Browse and manage remote files
 
-A dedicated sidebar panel lets you browse, download, compare, and delete files directly on the server.
+A dedicated sidebar panel lets you browse, edit, create, download, compare, and delete files directly on the server.
 
 ![Remote Files panel](https://raw.githubusercontent.com/emrah-isik/fileferry-vscode/main/resources/readme/fileferry_remote_files_panel.png)
 
 - **Remote File Browser** — expandable directory tree with persistent connection and idle timeout
+- **Edit in place** — open a remote file, edit, save: it uploads straight back to the server it came from. If the file changed on the server in the meantime, a warning offers Overwrite or a side-by-side diff before anything is lost
+- **New File / New Folder** — right-click a folder (or use the panel menu's "in Current Path" variants) to create entries on the server; a new file opens immediately, ready to type into and save back
 - **Compare with Remote** — side-by-side diff of local vs server version (`Alt+P`). Identical files, and files differing only in line endings, are reported directly instead of opening an empty diff
 - **Compare with Local** — right-click a remote file to diff against the local counterpart
 - **Download to Workspace** — right-click a remote file to download it to the mapped local path

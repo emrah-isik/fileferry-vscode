@@ -1,15 +1,20 @@
 # FileFerry Roadmap
 
-## Current — v0.11
+## Current — v0.12
 
-- Everything in v0.10, plus:
-- Deploy hooks — run local shell or remote SSH commands before and after a deliberate deploy, with per-hook continue-on-error and timeouts; hooks are gated behind Workspace Trust, and every command that will run is named in the deploy confirmation
-- Keychain-backed hook secrets — store a secret once in your OS keychain and reference it in a command as `${secret:NAME}`; the committed `fileferry.json` only ever holds the reference, and a deploy aborts up front when a referenced secret is missing
-- Compare with Remote reports identical files — and files that differ only in line endings — instead of opening an empty diff
+- Everything in v0.11, plus:
+- Edit remote files in place — files opened from the Remote Files panel upload back to the server on save, with conflict detection that warns (Overwrite / Show Diff) when the file changed on the server since you opened it; honours dry run and backup-before-overwrite, and shows up in Upload History under a Remote Edit source
+- Create files and folders in the Remote Files panel — from a folder's context menu or the panel menu's "in Current Path" variants; new files open immediately, ready to edit and save back; file collisions prompt to overwrite, folder collisions abort rather than silently merge
 
 ---
 
 ## Previous Releases
+
+### v0.11
+
+- Deploy hooks — run local shell or remote SSH commands before and after a deliberate deploy, with per-hook continue-on-error and timeouts; hooks are gated behind Workspace Trust, and every command that will run is named in the deploy confirmation
+- Keychain-backed hook secrets — store a secret once in your OS keychain and reference it in a command as `${secret:NAME}`; the committed `fileferry.json` only ever holds the reference, and a deploy aborts up front when a referenced secret is missing
+- Compare with Remote reports identical files — and files that differ only in line endings — instead of opening an empty diff
 
 ### v0.10
 
@@ -88,15 +93,15 @@
 
 ## Upcoming
 
-### v0.12 — SSH Power Features
+### v0.13 — SSH Power Features
 
 - SSH connection hopping (jump hosts), including `ProxyCommand` / `ProxyJump` from `~/.ssh/config`
 - Open SSH terminal to active server
 
 ### Later
 
+- More Remote Files panel management — rename, move, duplicate, upload-here, permissions
 - Batch deploy from branch diff (all files changed between two branches)
-- Writable Remote Files panel — edit-in-place and create files/folders directly in the Remote File Browser
 - Additional sync directions — remote→local and bidirectional sync (v0.10 shipped the one-way local→remote mirror)
 
 ---

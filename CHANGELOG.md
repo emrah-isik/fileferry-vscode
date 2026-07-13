@@ -2,6 +2,15 @@
 
 All notable changes to FileFerry will be documented in this file.
 
+## [0.12.0] - 2026-07-13
+
+### Added
+
+- **Edit remote files in place — save uploads straight back to the server.** Opening a file from the Remote Files panel now gives you a genuinely editable copy: make your changes, hit save, and FileFerry uploads it back to the server it came from — no manual download-edit-upload round-trip. Every save is guarded: if the file changed on the server since you opened it, a modal warns you before anything is overwritten, offering **Overwrite** or **Show Diff** (the server's version side by side with your edits) — while a file that was merely *touched* (same content, newer timestamp) uploads without nagging. When FileFerry cannot verify whether the remote changed, it asks instead of assuming. Saves honour **Dry Run** and **Backup Before Overwrite**, appear in Upload History under a new **Remote Edit** source with a matching filter, and never fire deploy hooks — a remote-edit save is a single-file write, not a deploy. If the panel's default server was switched while you were editing, the save is blocked with a warning instead of landing on the wrong server, and your edits remain safe in the local copy. Works over SFTP and FTP alike (FTP reports timestamps at second granularity, so conflict detection there is slightly coarser).
+- **Create files and folders directly in the Remote Files panel.** Right-click any folder for **New File…** / **New Folder…**, or use the panel menu's **New File in Current Path…** / **New Folder in Current Path…** to create at the path the panel is currently showing. A new file is created empty on the server and opens immediately in an editor already wired to the save-uploads-back flow, so create → type → save lands on the server in one motion — and is logged to Upload History under a new **Remote Create** source. Creating a file over an existing one asks **Overwrite / Cancel**; a folder name that already exists aborts with an error rather than silently merging. Names are validated as you type (no slashes or backslashes, no `.` / `..`), both commands honour **Dry Run** — the plan is logged and nothing is sent — and creates never fire deploy hooks.
+
+---
+
 ## [0.11.3] - 2026-07-10
 
 ### Fixed
