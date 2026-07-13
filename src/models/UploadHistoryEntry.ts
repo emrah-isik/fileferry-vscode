@@ -8,7 +8,7 @@ export interface UploadHistoryEntry {
   action: 'upload' | 'delete';
   result: 'success' | 'failed' | 'cancelled';
   error?: string;
-  trigger: 'manual' | 'multi-server' | 'save' | 'watch' | 'sync' | 'remote-edit';
+  trigger: 'manual' | 'multi-server' | 'save' | 'watch' | 'sync' | 'remote-edit' | 'remote-create';
 }
 
 export interface HistoryFilter {

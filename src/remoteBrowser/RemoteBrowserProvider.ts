@@ -6,6 +6,11 @@ import { FileEntry } from '../transferService';
 
 export class RemoteBrowserProvider implements vscode.TreeDataProvider<RemoteFileItem> {
   private userNavigatedPath: string | null = null;
+  // The path the panel's ROOT currently shows — the last successful root
+  // listing. Null before the first listing and after a failed one, so callers
+  // (the "…in Current Path" create commands) can tell "not connected yet"
+  // apart from a real location.
+  private currentPath: string | null = null;
 
   private readonly _onDidChangeTreeData = new vscode.EventEmitter<RemoteFileItem | undefined | void>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
@@ -41,12 +46,22 @@ export class RemoteBrowserProvider implements vscode.TreeDataProvider<RemoteFile
       }
 
       const entries = await this.connection.listDirectory(targetPath);
-      if (!element) { this._onDidChangePath.fire(targetPath); }
+      if (!element) {
+        this.currentPath = targetPath;
+        this._onDidChangePath.fire(targetPath);
+      }
       return await this.toTreeItems(entries, targetPath);
     } catch (err: unknown) {
-      if (!element) { this._onDidChangePath.fire(''); }
+      if (!element) {
+        this.currentPath = null;
+        this._onDidChangePath.fire('');
+      }
       return [this.createErrorItem(err)];
     }
+  }
+
+  getCurrentPath(): string | null {
+    return this.currentPath;
   }
 
   refresh(): void {

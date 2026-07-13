@@ -50,6 +50,8 @@ describe('FtpService', () => {
       expect(typeof svc.resolveRemotePath).toBe('function');
       expect(typeof svc.statType).toBe('function');
       expect(typeof svc.stat).toBe('function');
+      expect(typeof svc.mkdir).toBe('function');
+      expect(typeof svc.exists).toBe('function');
       expect(typeof svc.deleteFile).toBe('function');
       expect(typeof svc.deleteDirectory).toBe('function');
       expect(typeof svc.disconnect).toBe('function');
@@ -346,6 +348,68 @@ describe('FtpService', () => {
       mockClient.list.mockResolvedValueOnce([]);
       const result = await service.statType('/remote/nonexistent');
       expect(result).toBe(null);
+    });
+  });
+
+  describe('mkdir', () => {
+    it('throws when not connected', async () => {
+      await expect(service.mkdir('/remote/newdir')).rejects.toThrow('Not connected');
+      expect(mockClient.ensureDir).not.toHaveBeenCalled();
+    });
+
+    it('creates the directory via ensureDir', async () => {
+      await service.connect(
+        { host: 'ftp.example.com', port: 21, username: 'user', type: 'ftp' },
+        { password: 'pass' }
+      );
+      await service.mkdir('/remote/newdir');
+      expect(mockClient.ensureDir).toHaveBeenCalledWith('/remote/newdir');
+    });
+
+    it('propagates the underlying error', async () => {
+      await service.connect(
+        { host: 'ftp.example.com', port: 21, username: 'user', type: 'ftp' },
+        { password: 'pass' }
+      );
+      mockClient.ensureDir.mockRejectedValueOnce(new Error('550 Permission denied'));
+      await expect(service.mkdir('/remote/newdir')).rejects.toThrow('550 Permission denied');
+    });
+  });
+
+  describe('exists', () => {
+    it('throws when not connected', async () => {
+      await expect(service.exists('/remote/thing')).rejects.toThrow('Not connected');
+    });
+
+    it('returns true for an existing directory (cd succeeds)', async () => {
+      await service.connect(
+        { host: 'ftp.example.com', port: 21, username: 'user', type: 'ftp' },
+        { password: 'pass' }
+      );
+      mockClient.cd.mockResolvedValueOnce(undefined);
+      await expect(service.exists('/remote/dir')).resolves.toBe(true);
+    });
+
+    it('returns true for an existing file (found in the parent listing)', async () => {
+      await service.connect(
+        { host: 'ftp.example.com', port: 21, username: 'user', type: 'ftp' },
+        { password: 'pass' }
+      );
+      mockClient.cd.mockRejectedValueOnce(new Error('not a directory'));
+      mockClient.list.mockResolvedValueOnce([
+        { name: 'file.txt', type: 1, size: 100, modifiedAt: new Date(), isDirectory: false, isFile: true, isSymbolicLink: false },
+      ]);
+      await expect(service.exists('/remote/dir/file.txt')).resolves.toBe(true);
+    });
+
+    it('returns false when the path does not exist', async () => {
+      await service.connect(
+        { host: 'ftp.example.com', port: 21, username: 'user', type: 'ftp' },
+        { password: 'pass' }
+      );
+      mockClient.cd.mockRejectedValueOnce(new Error('not a directory'));
+      mockClient.list.mockResolvedValueOnce([]);
+      await expect(service.exists('/remote/missing')).resolves.toBe(false);
     });
   });
 

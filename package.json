@@ -98,6 +98,22 @@
         "title": "Delete from Server"
       },
       {
+        "command": "fileferry.remoteBrowser.createFile",
+        "title": "New File…"
+      },
+      {
+        "command": "fileferry.remoteBrowser.createFolder",
+        "title": "New Folder…"
+      },
+      {
+        "command": "fileferry.remoteBrowser.createFileInCurrentPath",
+        "title": "FileFerry: New File in Current Path…"
+      },
+      {
+        "command": "fileferry.remoteBrowser.createFolderInCurrentPath",
+        "title": "FileFerry: New Folder in Current Path…"
+      },
+      {
         "command": "fileferry.servers.setDefault",
         "title": "FileFerry: Set as Default Server"
       },
@@ -263,6 +279,16 @@
           "group": "navigation"
         },
         {
+          "command": "fileferry.remoteBrowser.createFileInCurrentPath",
+          "when": "view == fileferry.remoteBrowser",
+          "group": "1_create@1"
+        },
+        {
+          "command": "fileferry.remoteBrowser.createFolderInCurrentPath",
+          "when": "view == fileferry.remoteBrowser",
+          "group": "1_create@2"
+        },
+        {
           "command": "fileferry.openSettings",
           "when": "view == fileferry.serversView",
           "group": "navigation"
@@ -303,6 +329,16 @@
           "command": "fileferry.remoteBrowser.refresh",
           "when": "view == fileferry.remoteBrowser && viewItem == remoteDirectory",
           "group": "inline"
+        },
+        {
+          "command": "fileferry.remoteBrowser.createFile",
+          "when": "view == fileferry.remoteBrowser && viewItem == remoteDirectory",
+          "group": "1_modification@1"
+        },
+        {
+          "command": "fileferry.remoteBrowser.createFolder",
+          "when": "view == fileferry.remoteBrowser && viewItem == remoteDirectory",
+          "group": "1_modification@2"
         },
         {
           "command": "fileferry.remoteBrowser.downloadToWorkspace",
@@ -383,6 +419,14 @@
         },
         {
           "command": "fileferry.remoteBrowser.delete",
+          "when": "false"
+        },
+        {
+          "command": "fileferry.remoteBrowser.createFile",
+          "when": "false"
+        },
+        {
+          "command": "fileferry.remoteBrowser.createFolder",
           "when": "false"
         },
         {

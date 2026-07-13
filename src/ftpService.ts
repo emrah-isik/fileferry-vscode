@@ -187,6 +187,23 @@ export class FtpService implements TransferService {
     }
   }
 
+  async mkdir(remotePath: string, _recursive?: boolean): Promise<void> {
+    if (!this.client) {
+      throw new Error('Not connected. Call connect() before mkdir.');
+    }
+    // basic-ftp has no plain MKD wrapper; ensureDir ALWAYS creates missing
+    // parents (so `recursive` cannot be honoured as "fail on missing parent")
+    // AND leaves the client's working directory changed to the created
+    // directory. Both are acceptable only because every FileFerry remote path
+    // is absolute and callers pre-check collisions with exists(); pinned by
+    // the createEntriesContract integration tests.
+    await this.client.ensureDir(remotePath);
+  }
+
+  async exists(remotePath: string): Promise<boolean> {
+    return (await this.statType(remotePath)) !== null;
+  }
+
   async deleteFile(remotePath: string): Promise<void> {
     if (!this.client) {
       throw new Error('Not connected. Call connect() before deleting files.');

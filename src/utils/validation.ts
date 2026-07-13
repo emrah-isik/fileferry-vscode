@@ -124,6 +124,25 @@ export function validateProjectServer(
   return errors;
 }
 
+// Name validation for entries created from the Remote Files panel (feature
+// 32b, decision L3). Returns an error message, or null when the name is valid
+// — the shape vscode.window.showInputBox expects from validateInput.
+// Backslash rejection is deliberate: legal POSIX, but almost always a
+// Windows-habit mistake, and inconsistently handled across FTP servers.
+export function validateRemoteEntryName(rawName: string): string | null {
+  const name = rawName.trim();
+  if (!name) {
+    return 'Enter a name.';
+  }
+  if (name.includes('/') || name.includes('\\')) {
+    return 'Names cannot contain slashes or backslashes.';
+  }
+  if (name === '.' || name === '..') {
+    return `"${name}" is not a valid name.`;
+  }
+  return null;
+}
+
 export function validateMappings(
   mappings: Array<{ localPath: string; remotePath: string }>,
   excludedPaths: string[]

@@ -190,6 +190,21 @@ export class RemoteBrowserConnection {
     return this.sftp.stat(remotePath);
   }
 
+  // Deliberately non-recursive intent: the caller pre-checks the parent, so a
+  // missing parent should surface as an error. On FTP the transport cannot
+  // enforce this (see the caveat at FtpService.mkdir).
+  async createDirectory(remotePath: string): Promise<void> {
+    await this.ensureConnected();
+    this.resetIdleTimer();
+    await this.sftp.mkdir(remotePath);
+  }
+
+  async exists(remotePath: string): Promise<boolean> {
+    await this.ensureConnected();
+    this.resetIdleTimer();
+    return this.sftp.exists(remotePath);
+  }
+
   getCurrentServerId(): string | null {
     return this.currentServerId;
   }

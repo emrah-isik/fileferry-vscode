@@ -13,6 +13,8 @@ describe('TransferService interface', () => {
     expect(typeof service.resolveRemotePath).toBe('function');
     expect(typeof service.statType).toBe('function');
     expect(typeof service.stat).toBe('function');
+    expect(typeof service.mkdir).toBe('function');
+    expect(typeof service.exists).toBe('function');
     expect(typeof service.deleteFile).toBe('function');
     expect(typeof service.deleteDirectory).toBe('function');
     expect(typeof service.disconnect).toBe('function');
