@@ -285,6 +285,51 @@ describe('RemoteBrowserProvider', () => {
     });
   });
 
+  describe('getCurrentPath (feature 32b — view-title create commands)', () => {
+    it('returns null before anything has been listed', () => {
+      expect(provider.getCurrentPath()).toBeNull();
+    });
+
+    it('returns the browsed path after a root listing', async () => {
+      mockConnection.listDirectory.mockResolvedValue([]);
+
+      await provider.getChildren();
+      expect(provider.getCurrentPath()).toBe('/var/www');
+    });
+
+    it('returns the navigated path after navigateTo + listing', async () => {
+      mockConnection.listDirectory.mockResolvedValue([]);
+
+      provider.navigateTo('/var/log');
+      await provider.getChildren();
+      expect(provider.getCurrentPath()).toBe('/var/log');
+    });
+
+    it('is not changed by child directory expansion', async () => {
+      mockConnection.listDirectory.mockResolvedValue([]);
+      await provider.getChildren();
+
+      const dirEntry: RemoteEntry = {
+        name: 'logs',
+        type: 'd',
+        size: 4096,
+        modifyTime: 1710000000000,
+        remotePath: '/var/www/logs',
+      };
+      await provider.getChildren(new RemoteFileItem(dirEntry));
+      expect(provider.getCurrentPath()).toBe('/var/www');
+    });
+
+    it('returns null again after a failed root listing', async () => {
+      mockConnection.listDirectory.mockResolvedValue([]);
+      await provider.getChildren();
+
+      mockConnection.listDirectory.mockRejectedValue(new Error('Connection refused'));
+      await provider.getChildren();
+      expect(provider.getCurrentPath()).toBeNull();
+    });
+  });
+
   describe('dynamic root path', () => {
     it('resolves root path after connecting on initial load', async () => {
       // Simulate: getRootPath returns '/' before ensureConnected, '/var/www' after

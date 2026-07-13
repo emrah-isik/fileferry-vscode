@@ -30,6 +30,8 @@ import { copyRemotePath } from './commands/copyRemotePath';
 import { downloadToWorkspace } from './commands/downloadToWorkspace';
 import { diffRemoteWithLocal } from './commands/diffRemoteWithLocal';
 import { deleteRemoteItem } from './commands/deleteRemoteItem';
+import { createRemoteFile } from './commands/createRemoteFile';
+import { createRemoteFolder } from './commands/createRemoteFolder';
 import { UploadOnSaveService } from './services/UploadOnSaveService';
 import { FileWatcherService } from './services/FileWatcherService';
 import { DeploymentServer } from './models/DeploymentServer';
@@ -429,6 +431,62 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand(
       'fileferry.remoteBrowser.delete',
       (item: RemoteFileItem) => deleteRemoteItem(item, browserConnection, () => browserProvider.refresh())
+    ),
+
+    vscode.commands.registerCommand(
+      'fileferry.remoteBrowser.createFile',
+      (item: RemoteFileItem) => createRemoteFile(item.entry.remotePath, {
+        connection: browserConnection,
+        configManager,
+        registry: remoteEditSessionRegistry,
+        output,
+        refresh: () => browserProvider.refresh(),
+      })
+    ),
+
+    vscode.commands.registerCommand(
+      'fileferry.remoteBrowser.createFolder',
+      (item: RemoteFileItem) => createRemoteFolder(item.entry.remotePath, {
+        connection: browserConnection,
+        configManager,
+        output,
+        refresh: () => browserProvider.refresh(),
+      })
+    ),
+
+    vscode.commands.registerCommand(
+      'fileferry.remoteBrowser.createFileInCurrentPath',
+      () => {
+        const currentPath = browserProvider.getCurrentPath();
+        if (!currentPath) {
+          vscode.window.showErrorMessage('FileFerry: The Remote Files panel has not listed a folder yet — expand it first.');
+          return;
+        }
+        return createRemoteFile(currentPath, {
+          connection: browserConnection,
+          configManager,
+          registry: remoteEditSessionRegistry,
+          output,
+          refresh: () => browserProvider.refresh(),
+        });
+      }
+    ),
+
+    vscode.commands.registerCommand(
+      'fileferry.remoteBrowser.createFolderInCurrentPath',
+      () => {
+        const currentPath = browserProvider.getCurrentPath();
+        if (!currentPath) {
+          vscode.window.showErrorMessage('FileFerry: The Remote Files panel has not listed a folder yet — expand it first.');
+          return;
+        }
+        return createRemoteFolder(currentPath, {
+          connection: browserConnection,
+          configManager,
+          output,
+          refresh: () => browserProvider.refresh(),
+        });
+      }
     ),
 
     vscode.commands.registerCommand(

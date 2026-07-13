@@ -24,6 +24,8 @@ export interface TransferService {
   resolveRemotePath(remotePath: string): Promise<string>;
   statType(remotePath: string): Promise<'d' | '-' | null>;
   stat(remotePath: string): Promise<{ mtime: Date } | null>;
+  mkdir(remotePath: string, recursive?: boolean): Promise<void>;
+  exists(remotePath: string): Promise<boolean>;
   deleteFile(remotePath: string): Promise<void>;
   deleteDirectory(remotePath: string): Promise<void>;
   chmod(remotePath: string, mode: number): Promise<void>;

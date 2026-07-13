@@ -18,6 +18,8 @@ const mockSftp = {
   deleteFile: jest.fn(),
   deleteDirectory: jest.fn(),
   statType: jest.fn(),
+  mkdir: jest.fn(),
+  exists: jest.fn(),
   connected: false,
 };
 
@@ -312,6 +314,76 @@ describe('RemoteBrowserConnection', () => {
       mockSftp.disconnect.mockClear();
 
       await connection.disconnect();
+      expect(mockSftp.disconnect).toHaveBeenCalled();
+    });
+  });
+
+  describe('createDirectory', () => {
+    it('ensures connection and delegates to sftp mkdir non-recursively', async () => {
+      mockSftp.mkdir.mockResolvedValue(undefined);
+      await connection.createDirectory('/var/www/newdir');
+      expect(mockSftp.connect).toHaveBeenCalled();
+      expect(mockSftp.mkdir).toHaveBeenCalledWith('/var/www/newdir');
+    });
+
+    it('propagates the underlying error', async () => {
+      mockSftp.mkdir.mockRejectedValue(new Error('Permission denied'));
+      await expect(connection.createDirectory('/var/www/newdir')).rejects.toThrow('Permission denied');
+    });
+
+    it('resets the idle timer', async () => {
+      mockSftp.mkdir.mockResolvedValue(undefined);
+      mockSftp.listDirectoryDetailed.mockResolvedValue([]);
+
+      await connection.listDirectory('/var/www');
+      mockSftp.connected = true;
+      mockSftp.disconnect.mockClear();
+
+      jest.advanceTimersByTime(4 * 60 * 1000);
+      await connection.createDirectory('/var/www/newdir');
+      mockSftp.disconnect.mockClear();
+
+      // 4 minutes after the mkdir — timer was reset, still connected
+      jest.advanceTimersByTime(4 * 60 * 1000);
+      expect(mockSftp.disconnect).not.toHaveBeenCalled();
+
+      // 5 minutes after the mkdir — idle timeout fires
+      jest.advanceTimersByTime(1 * 60 * 1000);
+      expect(mockSftp.disconnect).toHaveBeenCalled();
+    });
+  });
+
+  describe('exists', () => {
+    it('ensures connection and delegates to sftp exists (true)', async () => {
+      mockSftp.exists.mockResolvedValue(true);
+      await expect(connection.exists('/var/www/present.txt')).resolves.toBe(true);
+      expect(mockSftp.connect).toHaveBeenCalled();
+      expect(mockSftp.exists).toHaveBeenCalledWith('/var/www/present.txt');
+    });
+
+    it('passes through false when the path does not exist', async () => {
+      mockSftp.exists.mockResolvedValue(false);
+      await expect(connection.exists('/var/www/missing.txt')).resolves.toBe(false);
+    });
+
+    it('resets the idle timer', async () => {
+      mockSftp.exists.mockResolvedValue(false);
+      mockSftp.listDirectoryDetailed.mockResolvedValue([]);
+
+      await connection.listDirectory('/var/www');
+      mockSftp.connected = true;
+      mockSftp.disconnect.mockClear();
+
+      jest.advanceTimersByTime(4 * 60 * 1000);
+      await connection.exists('/var/www/anything');
+      mockSftp.disconnect.mockClear();
+
+      // 4 minutes after the exists check — timer was reset, still connected
+      jest.advanceTimersByTime(4 * 60 * 1000);
+      expect(mockSftp.disconnect).not.toHaveBeenCalled();
+
+      // 5 minutes after the exists check — idle timeout fires
+      jest.advanceTimersByTime(1 * 60 * 1000);
       expect(mockSftp.disconnect).toHaveBeenCalled();
     });
   });

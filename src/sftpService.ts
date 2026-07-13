@@ -293,6 +293,17 @@ export class SftpService implements TransferService, RemoteCommandRunner {
     }
   }
 
+  async mkdir(remotePath: string, recursive: boolean = false): Promise<void> {
+    if (!this.client) {
+      throw new Error('Not connected. Call connect() before mkdir.');
+    }
+    await this.client.mkdir(remotePath, recursive);
+  }
+
+  async exists(remotePath: string): Promise<boolean> {
+    return (await this.statType(remotePath)) !== null;
+  }
+
   async deleteFile(remotePath: string): Promise<void> {
     if (!this.client) {
       throw new Error('Not connected. Call connect() before deleting files.');

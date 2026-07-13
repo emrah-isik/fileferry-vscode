@@ -2,6 +2,7 @@ import {
   validateSshCredential,
   validateProjectServer,
   validateMappings,
+  validateRemoteEntryName,
 } from '../../utils/validation';
 import { SshCredential } from '../../models/SshCredential';
 
@@ -326,5 +327,49 @@ describe('validateMappings', () => {
 
   it('returns no errors for valid mappings and excluded paths', () => {
     expect(validateMappings(validMappings, ['node_modules', '*.log'])).toHaveLength(0);
+  });
+});
+
+describe('validateRemoteEntryName (feature 32b, decision L3)', () => {
+  it.each([
+    ['newfile.php', null],
+    ['notes.txt', null],
+    ['.htaccess', null],
+    ['...', null],
+    ['name with spaces.txt', null],
+    ['üñïçødé.md', null],
+  ])('accepts %j', (name, expected) => {
+    expect(validateRemoteEntryName(name as string)).toBe(expected);
+  });
+
+  it.each([
+    [''],
+    ['   '],
+    ['\t'],
+  ])('rejects empty or whitespace-only input %j', (name) => {
+    expect(validateRemoteEntryName(name as string)).not.toBeNull();
+  });
+
+  it.each([
+    ['a/b'],
+    ['/leading'],
+    ['trailing/'],
+    ['a\\b'],
+    ['\\leading'],
+  ])('rejects any slash or backslash: %j', (name) => {
+    expect(validateRemoteEntryName(name as string)).not.toBeNull();
+  });
+
+  it.each([
+    ['.'],
+    ['..'],
+    [' . '],
+    [' .. '],
+  ])('rejects exactly dot or dot-dot (after trimming): %j', (name) => {
+    expect(validateRemoteEntryName(name as string)).not.toBeNull();
+  });
+
+  it('trims before validating, so surrounding whitespace is not itself an error', () => {
+    expect(validateRemoteEntryName('  notes.txt  ')).toBeNull();
   });
 });
