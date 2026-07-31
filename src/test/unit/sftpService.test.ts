@@ -6,6 +6,8 @@ const mockClient = {
   connect: jest.fn(),
   mkdir: jest.fn(),
   stat: jest.fn(),
+  posixRename: jest.fn(),
+  rename: jest.fn(),
   end: jest.fn(),
 };
 
@@ -81,6 +83,35 @@ describe('SftpService', () => {
       await connect();
       mockClient.stat.mockRejectedValueOnce(Object.assign(new Error('No such file'), { code: 'ENOENT' }));
       await expect(service.exists('/remote/missing')).resolves.toBe(false);
+    });
+  });
+
+  describe('rename', () => {
+    it('throws when not connected', async () => {
+      await expect(service.rename('/remote/old.txt', '/remote/new.txt')).rejects.toThrow('Not connected');
+      expect(mockClient.posixRename).not.toHaveBeenCalled();
+      expect(mockClient.rename).not.toHaveBeenCalled();
+    });
+
+    it('uses the POSIX rename extension when the server supports it', async () => {
+      await connect();
+      await service.rename('/remote/old.txt', '/remote/new.txt');
+      expect(mockClient.posixRename).toHaveBeenCalledWith('/remote/old.txt', '/remote/new.txt');
+      expect(mockClient.rename).not.toHaveBeenCalled();
+    });
+
+    it('falls back to regular rename when posixRename fails', async () => {
+      await connect();
+      mockClient.posixRename.mockRejectedValueOnce(new Error('Server does not support posix-rename@openssh.com'));
+      await service.rename('/remote/old.txt', '/remote/new.txt');
+      expect(mockClient.rename).toHaveBeenCalledWith('/remote/old.txt', '/remote/new.txt');
+    });
+
+    it('propagates the fallback error when both attempts fail', async () => {
+      await connect();
+      mockClient.posixRename.mockRejectedValueOnce(new Error('unsupported'));
+      mockClient.rename.mockRejectedValueOnce(new Error('Permission denied'));
+      await expect(service.rename('/remote/old.txt', '/remote/new.txt')).rejects.toThrow('Permission denied');
     });
   });
 });

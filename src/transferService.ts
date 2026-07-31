@@ -28,6 +28,7 @@ export interface TransferService {
   exists(remotePath: string): Promise<boolean>;
   deleteFile(remotePath: string): Promise<void>;
   deleteDirectory(remotePath: string): Promise<void>;
+  rename(oldPath: string, newPath: string): Promise<void>;
   chmod(remotePath: string, mode: number): Promise<void>;
   disconnect(): Promise<void>;
 }

@@ -58,4 +58,64 @@ describe('RemoteEditSessionRegistry', () => {
   it('unregister of an unknown path is a no-op', () => {
     expect(() => registry.unregister('/tmp/fileferry-browse/unknown.remote.abc123.php')).not.toThrow();
   });
+
+  describe('rewriteRemotePath', () => {
+    it('rewrites an exact file match to the new path', () => {
+      const tempPath = '/tmp/fileferry-browse/index.remote.abc123.php';
+      registry.register(tempPath, session({ remotePath: '/var/www/index.php' }));
+
+      registry.rewriteRemotePath('server-1', '/var/www/index.php', '/var/www/home.php');
+
+      expect(registry.get(tempPath)?.remotePath).toBe('/var/www/home.php');
+    });
+
+    it('preserves the session fields other than remotePath', () => {
+      const tempPath = '/tmp/fileferry-browse/index.remote.abc123.php';
+      registry.register(tempPath, session({ remotePath: '/var/www/index.php' }));
+
+      registry.rewriteRemotePath('server-1', '/var/www/index.php', '/var/www/home.php');
+
+      expect(registry.get(tempPath)).toEqual(session({ remotePath: '/var/www/home.php' }));
+    });
+
+    it('rewrites sessions on files inside a renamed directory (prefix match)', () => {
+      registry.register('/tmp/fileferry-browse/one.remote.abc123.php', session({ remotePath: '/var/www/app/one.php' }));
+      registry.register('/tmp/fileferry-browse/two.remote.def456.php', session({ remotePath: '/var/www/app/sub/two.php' }));
+
+      registry.rewriteRemotePath('server-1', '/var/www/app', '/var/www/site');
+
+      expect(registry.get('/tmp/fileferry-browse/one.remote.abc123.php')?.remotePath).toBe('/var/www/site/one.php');
+      expect(registry.get('/tmp/fileferry-browse/two.remote.def456.php')?.remotePath).toBe('/var/www/site/sub/two.php');
+    });
+
+    it('does not treat a sibling whose name merely starts with the old path as a descendant', () => {
+      const tempPath = '/tmp/fileferry-browse/index.remote.abc123.php';
+      registry.register(tempPath, session({ remotePath: '/var/www/app2/index.php' }));
+
+      registry.rewriteRemotePath('server-1', '/var/www/app', '/var/www/site');
+
+      expect(registry.get(tempPath)?.remotePath).toBe('/var/www/app2/index.php');
+    });
+
+    it('only rewrites sessions bound to the given server', () => {
+      registry.register('/tmp/fileferry-browse/one.remote.abc123.php', session({ serverId: 'server-1', remotePath: '/var/www/index.php' }));
+      registry.register('/tmp/fileferry-browse/two.remote.def456.php', session({ serverId: 'server-2', remotePath: '/var/www/index.php' }));
+
+      registry.rewriteRemotePath('server-1', '/var/www/index.php', '/var/www/home.php');
+
+      expect(registry.get('/tmp/fileferry-browse/one.remote.abc123.php')?.remotePath).toBe('/var/www/home.php');
+      expect(registry.get('/tmp/fileferry-browse/two.remote.def456.php')?.remotePath).toBe('/var/www/index.php');
+    });
+
+    it('is a no-op when nothing matches', () => {
+      const tempPath = '/tmp/fileferry-browse/index.remote.abc123.php';
+      registry.register(tempPath, session({ remotePath: '/var/www/index.php' }));
+
+      expect(() =>
+        registry.rewriteRemotePath('server-1', '/var/www/other.php', '/var/www/renamed.php')
+      ).not.toThrow();
+
+      expect(registry.get(tempPath)?.remotePath).toBe('/var/www/index.php');
+    });
+  });
 });

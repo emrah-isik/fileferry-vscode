@@ -17,6 +17,7 @@ const mockSftp = {
   stat: jest.fn(),
   deleteFile: jest.fn(),
   deleteDirectory: jest.fn(),
+  rename: jest.fn(),
   statType: jest.fn(),
   mkdir: jest.fn(),
   exists: jest.fn(),
@@ -383,6 +384,76 @@ describe('RemoteBrowserConnection', () => {
       expect(mockSftp.disconnect).not.toHaveBeenCalled();
 
       // 5 minutes after the exists check — idle timeout fires
+      jest.advanceTimersByTime(1 * 60 * 1000);
+      expect(mockSftp.disconnect).toHaveBeenCalled();
+    });
+  });
+
+  describe('statRemoteType', () => {
+    it('ensures connection and delegates to sftp statType', async () => {
+      mockSftp.statType.mockResolvedValue('d');
+      await expect(connection.statRemoteType('/var/www/folder')).resolves.toBe('d');
+      expect(mockSftp.connect).toHaveBeenCalled();
+      expect(mockSftp.statType).toHaveBeenCalledWith('/var/www/folder');
+    });
+
+    it('passes through null when the path does not exist', async () => {
+      mockSftp.statType.mockResolvedValue(null);
+      await expect(connection.statRemoteType('/var/www/missing')).resolves.toBeNull();
+    });
+
+    it('resets the idle timer', async () => {
+      mockSftp.statType.mockResolvedValue('-');
+      mockSftp.listDirectoryDetailed.mockResolvedValue([]);
+
+      await connection.listDirectory('/var/www');
+      mockSftp.connected = true;
+      mockSftp.disconnect.mockClear();
+
+      jest.advanceTimersByTime(4 * 60 * 1000);
+      await connection.statRemoteType('/var/www/file.txt');
+      mockSftp.disconnect.mockClear();
+
+      // 4 minutes after the stat — timer was reset, still connected
+      jest.advanceTimersByTime(4 * 60 * 1000);
+      expect(mockSftp.disconnect).not.toHaveBeenCalled();
+
+      // 5 minutes after the stat — idle timeout fires
+      jest.advanceTimersByTime(1 * 60 * 1000);
+      expect(mockSftp.disconnect).toHaveBeenCalled();
+    });
+  });
+
+  describe('rename', () => {
+    it('ensures connection and delegates to sftp rename', async () => {
+      mockSftp.rename.mockResolvedValue(undefined);
+      await connection.rename('/var/www/old.php', '/var/www/new.php');
+      expect(mockSftp.connect).toHaveBeenCalled();
+      expect(mockSftp.rename).toHaveBeenCalledWith('/var/www/old.php', '/var/www/new.php');
+    });
+
+    it('propagates the underlying error', async () => {
+      mockSftp.rename.mockRejectedValue(new Error('Permission denied'));
+      await expect(connection.rename('/var/www/old.php', '/var/www/new.php')).rejects.toThrow('Permission denied');
+    });
+
+    it('resets the idle timer', async () => {
+      mockSftp.rename.mockResolvedValue(undefined);
+      mockSftp.listDirectoryDetailed.mockResolvedValue([]);
+
+      await connection.listDirectory('/var/www');
+      mockSftp.connected = true;
+      mockSftp.disconnect.mockClear();
+
+      jest.advanceTimersByTime(4 * 60 * 1000);
+      await connection.rename('/var/www/old.php', '/var/www/new.php');
+      mockSftp.disconnect.mockClear();
+
+      // 4 minutes after the rename — timer was reset, still connected
+      jest.advanceTimersByTime(4 * 60 * 1000);
+      expect(mockSftp.disconnect).not.toHaveBeenCalled();
+
+      // 5 minutes after the rename — idle timeout fires
       jest.advanceTimersByTime(1 * 60 * 1000);
       expect(mockSftp.disconnect).toHaveBeenCalled();
     });

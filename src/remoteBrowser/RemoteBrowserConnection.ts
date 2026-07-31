@@ -205,6 +205,21 @@ export class RemoteBrowserConnection {
     return this.sftp.exists(remotePath);
   }
 
+  // What sits at this path — 'd', '-', or null when nothing does. One call
+  // where exists() would still leave the caller asking "file or folder?" —
+  // the collision pre-checks (rename, and later duplicate/move) branch on it.
+  async statRemoteType(remotePath: string): Promise<'d' | '-' | null> {
+    await this.ensureConnected();
+    this.resetIdleTimer();
+    return this.sftp.statType(remotePath);
+  }
+
+  async rename(oldPath: string, newPath: string): Promise<void> {
+    await this.ensureConnected();
+    this.resetIdleTimer();
+    await this.sftp.rename(oldPath, newPath);
+  }
+
   getCurrentServerId(): string | null {
     return this.currentServerId;
   }

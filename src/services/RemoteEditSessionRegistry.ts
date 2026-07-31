@@ -29,4 +29,24 @@ export class RemoteEditSessionRegistry {
   unregister(tempPath: string): void {
     this.sessions.delete(tempPath);
   }
+
+  // Follows a remote rename/move (feature 33, ruling C2): sessions pointing at
+  // the renamed entry are rebound to its new path, so the next save uploads to
+  // where the file now lives instead of recreating it under the old name.
+  // Exact match covers a renamed file; the prefix match covers sessions on
+  // files INSIDE a renamed directory. Scoped to one server — the same path on
+  // another server is a different file. No match is a no-op.
+  rewriteRemotePath(serverId: string, oldPath: string, newPath: string): void {
+    const oldPrefix = oldPath + '/';
+    for (const session of this.sessions.values()) {
+      if (session.serverId !== serverId) {
+        continue;
+      }
+      if (session.remotePath === oldPath) {
+        session.remotePath = newPath;
+      } else if (session.remotePath.startsWith(oldPrefix)) {
+        session.remotePath = newPath + session.remotePath.slice(oldPath.length);
+      }
+    }
+  }
 }

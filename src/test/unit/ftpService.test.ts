@@ -54,6 +54,7 @@ describe('FtpService', () => {
       expect(typeof svc.exists).toBe('function');
       expect(typeof svc.deleteFile).toBe('function');
       expect(typeof svc.deleteDirectory).toBe('function');
+      expect(typeof svc.rename).toBe('function');
       expect(typeof svc.disconnect).toBe('function');
     });
   });
@@ -483,6 +484,36 @@ describe('FtpService', () => {
     it('deletes a remote file', async () => {
       await service.deleteFile('/remote/file.txt');
       expect(mockClient.remove).toHaveBeenCalledWith('/remote/file.txt');
+    });
+  });
+
+  describe('rename', () => {
+    beforeEach(async () => {
+      await service.connect(
+        { host: 'ftp.example.com', port: 21, username: 'user', type: 'ftp' },
+        { password: 'pass' }
+      );
+    });
+
+    it('throws if not connected', async () => {
+      const svc = new FtpService();
+      await expect(svc.rename('/remote/old.txt', '/remote/new.txt')).rejects.toThrow('Not connected');
+      expect(mockClient.rename).not.toHaveBeenCalled();
+    });
+
+    it('renames with absolute paths on both sides', async () => {
+      await service.rename('/remote/old.txt', '/remote/new.txt');
+      expect(mockClient.rename).toHaveBeenCalledWith('/remote/old.txt', '/remote/new.txt');
+    });
+
+    it('renames across directories with absolute paths', async () => {
+      await service.rename('/remote/a/file.txt', '/remote/b/file.txt');
+      expect(mockClient.rename).toHaveBeenCalledWith('/remote/a/file.txt', '/remote/b/file.txt');
+    });
+
+    it('propagates the underlying error', async () => {
+      mockClient.rename.mockRejectedValueOnce(new Error('550 Permission denied'));
+      await expect(service.rename('/remote/old.txt', '/remote/new.txt')).rejects.toThrow('550 Permission denied');
     });
   });
 

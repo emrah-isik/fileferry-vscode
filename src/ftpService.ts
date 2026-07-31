@@ -218,6 +218,15 @@ export class FtpService implements TransferService {
     await this.client.removeDir(remotePath);
   }
 
+  async rename(oldPath: string, newPath: string): Promise<void> {
+    if (!this.client) {
+      throw new Error('Not connected. Call connect() before renaming.');
+    }
+    // RNFR/RNTO with absolute paths on both sides — statType/ensureDir drift
+    // the client's working directory, so relative paths must never be trusted.
+    await this.client.rename(oldPath, newPath);
+  }
+
   async chmod(remotePath: string, mode: number): Promise<void> {
     if (!this.client) {
       throw new Error('Not connected. Call connect() before chmod.');

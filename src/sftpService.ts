@@ -318,6 +318,19 @@ export class SftpService implements TransferService, RemoteCommandRunner {
     await this.client.rmdir(remotePath, true);
   }
 
+  async rename(oldPath: string, newPath: string): Promise<void> {
+    if (!this.client) {
+      throw new Error('Not connected. Call connect() before renaming.');
+    }
+    // posixRename uses OpenSSH's POSIX rename extension — atomic overwrite.
+    // Falls back to regular rename (works when the target doesn't exist yet).
+    try {
+      await this.client.posixRename(oldPath, newPath);
+    } catch {
+      await this.client.rename(oldPath, newPath);
+    }
+  }
+
   async chmod(remotePath: string, mode: number): Promise<void> {
     if (!this.client) {
       throw new Error('Not connected. Call connect() before chmod.');

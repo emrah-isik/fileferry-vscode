@@ -33,6 +33,7 @@ import { deleteRemoteItem } from './commands/deleteRemoteItem';
 import { normalizeRemoteTargets } from './commands/remoteTargets';
 import { createRemoteFile } from './commands/createRemoteFile';
 import { createRemoteFolder } from './commands/createRemoteFolder';
+import { renameRemoteItem } from './commands/renameRemoteItem';
 import { UploadOnSaveService } from './services/UploadOnSaveService';
 import { FileWatcherService } from './services/FileWatcherService';
 import { DeploymentServer } from './models/DeploymentServer';
@@ -441,6 +442,17 @@ export function activate(context: vscode.ExtensionContext): void {
         browserConnection,
         () => browserProvider.refresh()
       )
+    ),
+
+    vscode.commands.registerCommand(
+      'fileferry.remoteBrowser.rename',
+      (item: RemoteFileItem) => renameRemoteItem(item.entry, {
+        connection: browserConnection,
+        configManager,
+        registry: remoteEditSessionRegistry,
+        output,
+        refresh: () => browserProvider.refresh(),
+      })
     ),
 
     vscode.commands.registerCommand(
