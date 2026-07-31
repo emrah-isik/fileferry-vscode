@@ -114,6 +114,10 @@
         "title": "Duplicate…"
       },
       {
+        "command": "fileferry.remoteBrowser.move",
+        "title": "Move to Folder…"
+      },
+      {
         "command": "fileferry.remoteBrowser.createFileInCurrentPath",
         "title": "FileFerry: New File in Current Path…"
       },
@@ -369,6 +373,11 @@
           "group": "1_modification@4"
         },
         {
+          "command": "fileferry.remoteBrowser.move",
+          "when": "view == fileferry.remoteBrowser && viewItem =~ /^remote(File|Directory)$/",
+          "group": "1_modification@5"
+        },
+        {
           "command": "fileferry.remoteBrowser.delete",
           "when": "view == fileferry.remoteBrowser && viewItem =~ /^remote(File|Directory)$/",
           "group": "3_destructive"
@@ -441,6 +450,10 @@
         },
         {
           "command": "fileferry.remoteBrowser.duplicate",
+          "when": "false"
+        },
+        {
+          "command": "fileferry.remoteBrowser.move",
           "when": "false"
         },
         {
