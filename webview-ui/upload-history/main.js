@@ -20,6 +20,7 @@ const TRIGGER_LABELS = {
   sync: 'Sync',
   'remote-edit': 'Remote Edit',
   'remote-create': 'Remote Create',
+  'remote-duplicate': 'Remote Duplicate',
 };
 
 function triggerLabel(trigger) {
@@ -81,6 +82,7 @@ function render() {
           <option value="sync">Sync</option>
           <option value="remote-edit">Remote Edit</option>
           <option value="remote-create">Remote Create</option>
+          <option value="remote-duplicate">Remote Duplicate</option>
         </select>
         <input type="text" id="filter-search" placeholder="Search file path..." />
       </div>

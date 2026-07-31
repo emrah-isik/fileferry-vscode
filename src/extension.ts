@@ -34,6 +34,7 @@ import { normalizeRemoteTargets } from './commands/remoteTargets';
 import { createRemoteFile } from './commands/createRemoteFile';
 import { createRemoteFolder } from './commands/createRemoteFolder';
 import { renameRemoteItem } from './commands/renameRemoteItem';
+import { duplicateRemoteItem } from './commands/duplicateRemoteItem';
 import { UploadOnSaveService } from './services/UploadOnSaveService';
 import { FileWatcherService } from './services/FileWatcherService';
 import { DeploymentServer } from './models/DeploymentServer';
@@ -453,6 +454,17 @@ export function activate(context: vscode.ExtensionContext): void {
         output,
         refresh: () => browserProvider.refresh(),
       })
+    ),
+
+    vscode.commands.registerCommand(
+      'fileferry.remoteBrowser.duplicate',
+      (item: RemoteFileItem | undefined, selectedItems?: RemoteFileItem[]) =>
+        duplicateRemoteItem(normalizeRemoteTargets(item, selectedItems), {
+          connection: browserConnection,
+          configManager,
+          output,
+          refresh: () => browserProvider.refresh(),
+        })
     ),
 
     vscode.commands.registerCommand(

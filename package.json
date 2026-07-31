@@ -110,6 +110,10 @@
         "title": "Rename…"
       },
       {
+        "command": "fileferry.remoteBrowser.duplicate",
+        "title": "Duplicate…"
+      },
+      {
         "command": "fileferry.remoteBrowser.createFileInCurrentPath",
         "title": "FileFerry: New File in Current Path…"
       },
@@ -360,6 +364,11 @@
           "group": "1_modification@3"
         },
         {
+          "command": "fileferry.remoteBrowser.duplicate",
+          "when": "view == fileferry.remoteBrowser && viewItem == remoteFile",
+          "group": "1_modification@4"
+        },
+        {
           "command": "fileferry.remoteBrowser.delete",
           "when": "view == fileferry.remoteBrowser && viewItem =~ /^remote(File|Directory)$/",
           "group": "3_destructive"
@@ -428,6 +437,10 @@
         },
         {
           "command": "fileferry.remoteBrowser.rename",
+          "when": "false"
+        },
+        {
+          "command": "fileferry.remoteBrowser.duplicate",
           "when": "false"
         },
         {
