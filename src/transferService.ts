@@ -3,6 +3,10 @@ export interface FileEntry {
   type: 'd' | '-' | 'l';
   size: number;
   modifyTime: number;
+  // Octal permission mode ("644", "2775") when the server's listing reports
+  // one — SFTP always does, FTP only for unix-style LIST output. Absent
+  // otherwise; consumers must not assume it (feature 33e chmod prefill).
+  mode?: string;
 }
 
 export interface TransferService {

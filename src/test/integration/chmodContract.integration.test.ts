@@ -83,37 +83,31 @@ describe('chmod contract — SFTP', () => {
     try { fs.unlinkSync(localProbe); } catch { /* ignore */ }
   });
 
-  async function rightsOf(remoteDirectory: string, name: string) {
+  async function modeOf(remoteDirectory: string, name: string): Promise<string | undefined> {
     const listing = await service.listDirectoryDetailed(remoteDirectory);
     const match = listing.find(item => item.name === name);
     expect(match).toBeDefined();
-    // ssh2-sftp-client's raw FileInfo carries rights; the TransferService
-    // FileEntry mapping drops them, so pin against the raw listing here.
-    return (match as unknown as { rights: { user: string; group: string; other: string } }).rights;
+    // FileEntry.mode is derived from the server's listing (33e follow-up) —
+    // the same value the chmod prompt prefills, so pin it end to end.
+    return match!.mode;
   }
 
-  it('chmod 600 lands: owner rw, nothing for group/other in the listing', async () => {
+  it('chmod 600 lands and the listing-derived mode reports it', async () => {
     const remoteFile = `${remoteBase}/locked.txt`;
     await service.uploadFile(localProbe, remoteFile);
 
     await service.chmod(remoteFile, 0o600);
 
-    const rights = await rightsOf(remoteBase, 'locked.txt');
-    expect(rights.user).toBe('rw');
-    expect(rights.group).toBe('');
-    expect(rights.other).toBe('');
+    await expect(modeOf(remoteBase, 'locked.txt')).resolves.toBe('600');
   });
 
-  it('chmod 755 lands: rwx / r-x / r-x', async () => {
+  it('chmod 755 lands and the listing-derived mode reports it', async () => {
     const remoteFile = `${remoteBase}/exec.sh`;
     await service.uploadFile(localProbe, remoteFile);
 
     await service.chmod(remoteFile, 0o755);
 
-    const rights = await rightsOf(remoteBase, 'exec.sh');
-    expect(rights.user).toBe('rwx');
-    expect(rights.group).toBe('rx');
-    expect(rights.other).toBe('rx');
+    await expect(modeOf(remoteBase, 'exec.sh')).resolves.toBe('755');
   });
 
   it('chmod on a missing path rejects', async () => {
@@ -147,11 +141,18 @@ describe('chmod contract — FTP (SITE CHMOD, honest failures per 33e L2)', () =
     try { fs.unlinkSync(localProbe); } catch { /* ignore */ }
   });
 
-  it('SITE CHMOD on an existing file succeeds on this server', async () => {
+  it('SITE CHMOD on an existing file succeeds, and the listing-derived mode reports it', async () => {
     const remoteFile = `${remoteBase}/probe.txt`;
     await service.uploadFile(localProbe, remoteFile);
 
-    await expect(service.chmod(remoteFile, 0o600)).resolves.toBeUndefined();
+    await service.chmod(remoteFile, 0o600);
+
+    const listing = await service.listDirectoryDetailed(remoteBase);
+    const match = listing.find(item => item.name === 'probe.txt');
+    expect(match).toBeDefined();
+    // The container serves unix-style LIST output, so basic-ftp parses
+    // permissions and FileEntry.mode carries them (33e follow-up).
+    expect(match!.mode).toBe('600');
   });
 
   it('a failed SITE CHMOD (missing path) rejects — the pre-33e swallow is gone', async () => {

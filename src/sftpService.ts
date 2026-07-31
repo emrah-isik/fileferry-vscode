@@ -5,7 +5,7 @@ import * as path from 'path';
 import { ServerConfig, UploadPair, UploadResult } from './types';
 import { resolveAgentSocket } from './ssh/agentResolver';
 import { resolveHostAlias, applySshConfig } from './ssh/SshConfigResolver';
-import { TransferService, RemoteCommandResult, RemoteCommandRunner } from './transferService';
+import { TransferService, RemoteCommandResult, RemoteCommandRunner, FileEntry } from './transferService';
 
 // Default algorithms that ensure compatibility with modern OpenSSH 8.8+ servers.
 // ssh2 1.17.0 supports these natively — we set them explicitly so they can't be
@@ -244,11 +244,21 @@ export class SftpService implements TransferService, RemoteCommandRunner {
     return items.map(item => ({ name: item.name, type: item.type }));
   }
 
-  async listDirectoryDetailed(remotePath: string): Promise<SftpClient.FileInfo[]> {
+  async listDirectoryDetailed(remotePath: string): Promise<FileEntry[]> {
     if (!this.client) {
       throw new Error('Not connected. Call connect() before listing directories.');
     }
-    return this.client.list(remotePath);
+    const items = await this.client.list(remotePath);
+    return items.map(item => {
+      const mode = rightsToOctalMode((item as { rights?: { user: string; group: string; other: string } }).rights);
+      return {
+        name: item.name,
+        type: item.type as 'd' | '-' | 'l',
+        size: item.size,
+        modifyTime: item.modifyTime,
+        ...(mode !== undefined ? { mode } : {}),
+      };
+    });
   }
 
   async resolveRemotePath(remotePath: string): Promise<string> {
@@ -415,6 +425,27 @@ export class SftpService implements TransferService, RemoteCommandRunner {
     await this.client?.end();
     this.client = null;
   }
+}
+
+// ssh2-sftp-client reports permissions as rights triads ('rw', 'rwx', 'rws');
+// fold them into the octal mode FileEntry carries. Lowercase s/t mean the
+// special bit PLUS execute; uppercase S/T mean the special bit without it.
+function rightsToOctalMode(
+  rights?: { user?: string; group?: string; other?: string }
+): string | undefined {
+  // All three triads must be present (empty string is a valid triad: no
+  // permissions). A partial rights object from an odd server yields no mode
+  // rather than a wrong one.
+  if (!rights || typeof rights.user !== 'string' || typeof rights.group !== 'string' || typeof rights.other !== 'string') {
+    return undefined;
+  }
+  const { user, group, other } = rights;
+  const triadDigit = (triad: string): number =>
+    (triad.includes('r') ? 4 : 0) + (triad.includes('w') ? 2 : 0) + (/[xst]/.test(triad) ? 1 : 0);
+  const specialDigit =
+    (/[sS]/.test(user) ? 4 : 0) + (/[sS]/.test(group) ? 2 : 0) + (/[tT]/.test(other) ? 1 : 0);
+  const base = `${triadDigit(user)}${triadDigit(group)}${triadDigit(other)}`;
+  return specialDigit > 0 ? `${specialDigit}${base}` : base;
 }
 
 // Minimal shape of the ssh2 exec channel we consume: a stdout stream emitting

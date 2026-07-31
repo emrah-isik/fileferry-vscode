@@ -71,6 +71,34 @@ describe('chmodRemoteItem', () => {
     expect(mockRefresh).not.toHaveBeenCalled();
   });
 
+  it('prefills the current mode for a single target when the listing reported one', async () => {
+    const item = makeItem({ name: 'index.php', remotePath: '/var/www/index.php', mode: '640' });
+
+    await chmodRemoteItem([item], dependencies());
+
+    const inputBoxOptions = vscode.window.showInputBox.mock.calls[0][0];
+    expect(inputBoxOptions.value).toBe('640');
+  });
+
+  it('leaves the input blank when the listing carried no mode', async () => {
+    const item = makeItem({ name: 'index.php', remotePath: '/var/www/index.php' });
+
+    await chmodRemoteItem([item], dependencies());
+
+    const inputBoxOptions = vscode.window.showInputBox.mock.calls[0][0];
+    expect(inputBoxOptions.value).toBeUndefined();
+  });
+
+  it('leaves the input blank for a multi-selection — mixed modes have no sensible prefill', async () => {
+    const fileItem = makeItem({ name: 'a.txt', remotePath: '/var/www/a.txt', mode: '644' });
+    const otherItem = makeItem({ name: 'b.txt', remotePath: '/var/www/b.txt', mode: '600' });
+
+    await chmodRemoteItem([fileItem, otherItem], dependencies());
+
+    const inputBoxOptions = vscode.window.showInputBox.mock.calls[0][0];
+    expect(inputBoxOptions.value).toBeUndefined();
+  });
+
   it('wires the octal validator into the input box', async () => {
     const item = makeItem({ name: 'index.php', remotePath: '/var/www/index.php' });
 

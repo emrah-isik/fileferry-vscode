@@ -47,6 +47,17 @@ describe('RemoteBrowserProvider', () => {
       expect(children![0].entry.name).toBe('index.html');
     });
 
+    it('passes the listing mode through to the entry, absent when the server did not report one', async () => {
+      mockConnection.listDirectory.mockResolvedValue([
+        { name: 'index.html', type: '-', size: 1024, modifyTime: 1710000000000, mode: '644' },
+        { name: 'unknown.bin', type: '-', size: 10, modifyTime: 1710000000000 },
+      ]);
+
+      const children = await provider.getChildren();
+      expect(children![0].entry.mode).toBe('644');
+      expect(children![1].entry.mode).toBeUndefined();
+    });
+
     it('lists directory contents when called with a directory item', async () => {
       const dirEntry: RemoteEntry = {
         name: 'logs',

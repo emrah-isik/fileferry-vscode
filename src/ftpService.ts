@@ -120,6 +120,11 @@ export class FtpService implements TransferService {
       type: this.mapType(item) as 'd' | '-' | 'l',
       size: item.size,
       modifyTime: item.modifiedAt ? item.modifiedAt.getTime() : 0,
+      // basic-ftp parses unix-style LIST output into per-triad digits; servers
+      // with other listing formats leave permissions unset — so must mode.
+      ...(item.permissions !== undefined
+        ? { mode: `${item.permissions.user}${item.permissions.group}${item.permissions.world}` }
+        : {}),
     }));
   }
 

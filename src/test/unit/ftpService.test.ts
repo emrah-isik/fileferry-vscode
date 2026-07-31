@@ -299,6 +299,26 @@ describe('FtpService', () => {
         { name: 'file.txt', type: '-', size: 500, modifyTime: modDate.getTime() },
       ]);
     });
+
+    it('derives the octal mode from unix-style permissions when the server reports them', async () => {
+      mockClient.list.mockResolvedValueOnce([
+        {
+          name: 'file.txt', type: 1, size: 500, modifiedAt: new Date(),
+          isDirectory: false, isFile: true, isSymbolicLink: false,
+          permissions: { user: 6, group: 4, world: 4 },
+        },
+      ]);
+      const result = await service.listDirectoryDetailed('/remote');
+      expect(result[0].mode).toBe('644');
+    });
+
+    it('leaves mode undefined when the listing carries no permissions (non-unix server)', async () => {
+      mockClient.list.mockResolvedValueOnce([
+        { name: 'file.txt', type: 1, size: 500, modifiedAt: new Date(), isDirectory: false, isFile: true, isSymbolicLink: false },
+      ]);
+      const result = await service.listDirectoryDetailed('/remote');
+      expect(result[0].mode).toBeUndefined();
+    });
   });
 
   describe('resolveRemotePath', () => {

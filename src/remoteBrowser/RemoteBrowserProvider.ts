@@ -113,6 +113,7 @@ export class RemoteBrowserProvider implements vscode.TreeDataProvider<RemoteFile
         size: entry.size,
         modifyTime: entry.modifyTime,
         remotePath: path.posix.join(parentPath, entry.name),
+        ...(entry.mode !== undefined ? { mode: entry.mode } : {}),
       };
       if (entry.type === 'l' && symlinkTargets.has(entry.name)) {
         remoteEntry.symlinkTarget = symlinkTargets.get(entry.name)!;

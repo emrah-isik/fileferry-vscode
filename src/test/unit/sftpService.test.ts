@@ -6,6 +6,7 @@ const mockClient = {
   connect: jest.fn(),
   mkdir: jest.fn(),
   stat: jest.fn(),
+  list: jest.fn(),
   posixRename: jest.fn(),
   rename: jest.fn(),
   end: jest.fn(),
@@ -83,6 +84,56 @@ describe('SftpService', () => {
       await connect();
       mockClient.stat.mockRejectedValueOnce(Object.assign(new Error('No such file'), { code: 'ENOENT' }));
       await expect(service.exists('/remote/missing')).resolves.toBe(false);
+    });
+  });
+
+  describe('listDirectoryDetailed', () => {
+    it('throws when not connected', async () => {
+      await expect(service.listDirectoryDetailed('/remote')).rejects.toThrow('Not connected');
+    });
+
+    function fileInfo(rights: { user: string; group: string; other: string }) {
+      return {
+        name: 'file.txt', type: '-', size: 500, modifyTime: 1710000000000,
+        accessTime: 1710000000000, rights, owner: 1000, group: 1000,
+      };
+    }
+
+    it.each([
+      [{ user: 'rw', group: 'r', other: 'r' }, '644'],
+      [{ user: 'rwx', group: 'rx', other: 'rx' }, '755'],
+      [{ user: 'rw', group: '', other: '' }, '600'],
+      [{ user: '', group: '', other: '' }, '000'],
+    ])('derives the octal mode from rights %j → %s', async (rights, expected) => {
+      await connect();
+      mockClient.list.mockResolvedValueOnce([fileInfo(rights as { user: string; group: string; other: string })]);
+      const result = await service.listDirectoryDetailed('/remote');
+      expect(result[0].mode).toBe(expected);
+    });
+
+    it('maps setgid/setuid rights (lowercase s counts as execute + special bit)', async () => {
+      await connect();
+      mockClient.list.mockResolvedValueOnce([fileInfo({ user: 'rwx', group: 'rws', other: 'rx' })]);
+      const result = await service.listDirectoryDetailed('/remote');
+      expect(result[0].mode).toBe('2775');
+    });
+
+    it('keeps the FileEntry fields alongside the mode', async () => {
+      await connect();
+      mockClient.list.mockResolvedValueOnce([fileInfo({ user: 'rw', group: 'r', other: 'r' })]);
+      const result = await service.listDirectoryDetailed('/remote');
+      expect(result[0]).toEqual(
+        expect.objectContaining({ name: 'file.txt', type: '-', size: 500, modifyTime: 1710000000000 })
+      );
+    });
+
+    it('leaves mode undefined when the listing carries no rights', async () => {
+      await connect();
+      mockClient.list.mockResolvedValueOnce([
+        { name: 'file.txt', type: '-', size: 500, modifyTime: 1710000000000 },
+      ]);
+      const result = await service.listDirectoryDetailed('/remote');
+      expect(result[0].mode).toBeUndefined();
     });
   });
 

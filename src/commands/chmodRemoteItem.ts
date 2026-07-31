@@ -47,6 +47,9 @@ export async function chmodRemoteItem(
     prompt: isMultiTarget
       ? `Permissions for ${entries.length} items (octal)`
       : `Permissions for ${entries[0].name} (octal)`,
+    // Prefill the current mode when the listing reported one — only for a
+    // single target; a multi-selection has no single current mode.
+    ...(!isMultiTarget && entries[0].mode !== undefined ? { value: entries[0].mode } : {}),
     placeHolder: 'e.g. 644, 755, 2775',
     validateInput: validateOctalFileMode,
   });
