@@ -122,6 +122,22 @@
         "title": "Change Permissions…"
       },
       {
+        "command": "fileferry.remoteBrowser.uploadFilesHere",
+        "title": "Upload Files Here…"
+      },
+      {
+        "command": "fileferry.remoteBrowser.uploadFolderHere",
+        "title": "Upload Folder Here…"
+      },
+      {
+        "command": "fileferry.remoteBrowser.uploadFilesToCurrentPath",
+        "title": "FileFerry: Upload Files to Current Path…"
+      },
+      {
+        "command": "fileferry.remoteBrowser.uploadFolderToCurrentPath",
+        "title": "FileFerry: Upload Folder to Current Path…"
+      },
+      {
         "command": "fileferry.remoteBrowser.createFileInCurrentPath",
         "title": "FileFerry: New File in Current Path…"
       },
@@ -305,6 +321,16 @@
           "group": "1_create@2"
         },
         {
+          "command": "fileferry.remoteBrowser.uploadFilesToCurrentPath",
+          "when": "view == fileferry.remoteBrowser",
+          "group": "2_upload@1"
+        },
+        {
+          "command": "fileferry.remoteBrowser.uploadFolderToCurrentPath",
+          "when": "view == fileferry.remoteBrowser",
+          "group": "2_upload@2"
+        },
+        {
           "command": "fileferry.openSettings",
           "when": "view == fileferry.serversView",
           "group": "navigation"
@@ -355,6 +381,16 @@
           "command": "fileferry.remoteBrowser.createFolder",
           "when": "view == fileferry.remoteBrowser && viewItem == remoteDirectory",
           "group": "1_modification@2"
+        },
+        {
+          "command": "fileferry.remoteBrowser.uploadFilesHere",
+          "when": "view == fileferry.remoteBrowser && viewItem == remoteDirectory",
+          "group": "1_transfer@1"
+        },
+        {
+          "command": "fileferry.remoteBrowser.uploadFolderHere",
+          "when": "view == fileferry.remoteBrowser && viewItem == remoteDirectory",
+          "group": "1_transfer@2"
         },
         {
           "command": "fileferry.remoteBrowser.downloadToWorkspace",
@@ -467,6 +503,14 @@
         },
         {
           "command": "fileferry.remoteBrowser.chmod",
+          "when": "false"
+        },
+        {
+          "command": "fileferry.remoteBrowser.uploadFilesHere",
+          "when": "false"
+        },
+        {
+          "command": "fileferry.remoteBrowser.uploadFolderHere",
           "when": "false"
         },
         {

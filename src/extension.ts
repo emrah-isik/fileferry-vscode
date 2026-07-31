@@ -37,6 +37,7 @@ import { renameRemoteItem } from './commands/renameRemoteItem';
 import { duplicateRemoteItem } from './commands/duplicateRemoteItem';
 import { moveRemoteItem } from './commands/moveRemoteItem';
 import { chmodRemoteItem } from './commands/chmodRemoteItem';
+import { uploadFilesHere, uploadFolderHere } from './commands/uploadHere';
 import { UploadOnSaveService } from './services/UploadOnSaveService';
 import { FileWatcherService } from './services/FileWatcherService';
 import { DeploymentServer } from './models/DeploymentServer';
@@ -491,6 +492,60 @@ export function activate(context: vscode.ExtensionContext): void {
           output,
           refresh: () => browserProvider.refresh(),
         })
+    ),
+
+    vscode.commands.registerCommand(
+      'fileferry.remoteBrowser.uploadFilesHere',
+      (item: RemoteFileItem) => uploadFilesHere(item.entry.remotePath, {
+        connection: browserConnection,
+        configManager,
+        output,
+        refresh: () => browserProvider.refresh(),
+      })
+    ),
+
+    vscode.commands.registerCommand(
+      'fileferry.remoteBrowser.uploadFolderHere',
+      (item: RemoteFileItem) => uploadFolderHere(item.entry.remotePath, {
+        connection: browserConnection,
+        configManager,
+        output,
+        refresh: () => browserProvider.refresh(),
+      })
+    ),
+
+    vscode.commands.registerCommand(
+      'fileferry.remoteBrowser.uploadFilesToCurrentPath',
+      () => {
+        const currentPath = browserProvider.getCurrentPath();
+        if (!currentPath) {
+          vscode.window.showErrorMessage('FileFerry: The Remote Files panel has not listed a folder yet — expand it first.');
+          return;
+        }
+        return uploadFilesHere(currentPath, {
+          connection: browserConnection,
+          configManager,
+          output,
+          refresh: () => browserProvider.refresh(),
+        });
+      }
+    ),
+
+    vscode.commands.registerCommand(
+      'fileferry.remoteBrowser.uploadFolderToCurrentPath',
+      () => {
+        const currentPath = browserProvider.getCurrentPath();
+        if (!currentPath) {
+          vscode.window.showErrorMessage('FileFerry: The Remote Files panel has not listed a folder yet — expand it first.');
+          return;
+        }
+        return uploadFolderHere(currentPath, {
+          connection: browserConnection,
+          configManager,
+          output,
+          refresh: () => browserProvider.refresh(),
+        });
+      }
     ),
 
     vscode.commands.registerCommand(
