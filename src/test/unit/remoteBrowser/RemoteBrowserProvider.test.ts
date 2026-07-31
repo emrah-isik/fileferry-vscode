@@ -330,6 +330,99 @@ describe('RemoteBrowserProvider', () => {
     });
   });
 
+  describe('disconnect suspension (feature 33a)', () => {
+    it('suspend disconnects the connection and fires a tree refresh', async () => {
+      const listener = jest.fn();
+      provider.onDidChangeTreeData(listener);
+
+      await provider.suspend();
+
+      expect(mockConnection.disconnect).toHaveBeenCalled();
+      expect(listener).toHaveBeenCalled();
+    });
+
+    it('while suspended, a root listing shows the Disconnected placeholder and never touches the connection', async () => {
+      await provider.suspend();
+
+      const children = await provider.getChildren();
+
+      expect(children).toHaveLength(1);
+      expect(children![0].label).toBe('Disconnected');
+      expect(children![0].entry.remotePath).toBe('');
+      expect(mockConnection.ensureConnected).not.toHaveBeenCalled();
+      expect(mockConnection.listDirectory).not.toHaveBeenCalled();
+    });
+
+    it('the Disconnected placeholder is wired to the refresh command', async () => {
+      await provider.suspend();
+
+      const children = await provider.getChildren();
+
+      expect(children![0].command).toEqual({
+        command: 'fileferry.remoteBrowser.refresh',
+        title: 'Reconnect',
+      });
+    });
+
+    it('suspend clears the current path and announces it', async () => {
+      mockConnection.listDirectory.mockResolvedValue([]);
+      await provider.getChildren();
+      expect(provider.getCurrentPath()).toBe('/var/www');
+
+      const pathListener = jest.fn();
+      provider.onDidChangePath(pathListener);
+      await provider.suspend();
+      await provider.getChildren();
+
+      expect(provider.getCurrentPath()).toBeNull();
+      expect(pathListener).toHaveBeenCalledWith('');
+    });
+
+    it('internal refresh while suspended stays disconnected', async () => {
+      await provider.suspend();
+
+      provider.refresh();
+      const children = await provider.getChildren();
+
+      expect(children![0].label).toBe('Disconnected');
+      expect(mockConnection.ensureConnected).not.toHaveBeenCalled();
+    });
+
+    it('resume reconnects on the next listing', async () => {
+      mockConnection.listDirectory.mockResolvedValue([]);
+      await provider.suspend();
+
+      provider.resume();
+      await provider.getChildren();
+
+      expect(mockConnection.ensureConnected).toHaveBeenCalled();
+      expect(mockConnection.listDirectory).toHaveBeenCalledWith('/var/www');
+    });
+
+    it('navigateTo clears suspension and lists the navigated path', async () => {
+      mockConnection.listDirectory.mockResolvedValue([]);
+      await provider.suspend();
+
+      provider.navigateTo('/var/log');
+      await provider.getChildren();
+
+      expect(mockConnection.listDirectory).toHaveBeenCalledWith('/var/log');
+    });
+
+    it('a connection-side disconnect (idle timeout) does not suspend the provider', async () => {
+      mockConnection.listDirectory.mockResolvedValue([]);
+
+      // The idle timer lives in the connection and never touches the
+      // provider — a later listing must transparently reconnect.
+      await mockConnection.disconnect();
+
+      await provider.getChildren();
+
+      expect(mockConnection.ensureConnected).toHaveBeenCalled();
+      expect(mockConnection.listDirectory).toHaveBeenCalledWith('/var/www');
+    });
+  });
+
   describe('dynamic root path', () => {
     it('resolves root path after connecting on initial load', async () => {
       // Simulate: getRootPath returns '/' before ensureConnected, '/var/www' after

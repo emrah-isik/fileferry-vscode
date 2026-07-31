@@ -6,6 +6,12 @@ import { FileEntry } from '../transferService';
 
 export class RemoteBrowserProvider implements vscode.TreeDataProvider<RemoteFileItem> {
   private userNavigatedPath: string | null = null;
+  // Set by an explicit "Disconnect Remote Browser". While suspended the panel
+  // shows a Disconnected placeholder instead of auto-reconnecting — only an
+  // explicit user action (refresh command, Go to Remote Path, set default
+  // server) clears it. The connection's own idle-timeout disconnect never
+  // sets this, so idle sessions still reconnect transparently.
+  private suspended = false;
   // The path the panel's ROOT currently shows — the last successful root
   // listing. Null before the first listing and after a failed one, so callers
   // (the "…in Current Path" create commands) can tell "not connected yet"
@@ -25,6 +31,15 @@ export class RemoteBrowserProvider implements vscode.TreeDataProvider<RemoteFile
   }
 
   async getChildren(element?: RemoteFileItem): Promise<RemoteFileItem[]> {
+    if (this.suspended) {
+      if (element) {
+        return [];
+      }
+      this.currentPath = null;
+      this._onDidChangePath.fire('');
+      return [this.createDisconnectedItem()];
+    }
+
     // Only directories (and symlinks to directories) have children
     if (element) {
       const isExpandable = element.entry.type === 'd' ||
@@ -68,7 +83,19 @@ export class RemoteBrowserProvider implements vscode.TreeDataProvider<RemoteFile
     this._onDidChangeTreeData.fire();
   }
 
+  async suspend(): Promise<void> {
+    this.suspended = true;
+    await this.connection.disconnect();
+    this.refresh();
+  }
+
+  resume(): void {
+    this.suspended = false;
+    this.refresh();
+  }
+
   navigateTo(remotePath: string): void {
+    this.suspended = false;
     this.userNavigatedPath = remotePath;
     this.refresh();
   }
@@ -100,6 +127,24 @@ export class RemoteBrowserProvider implements vscode.TreeDataProvider<RemoteFile
       if (aIsDir !== bIsDir) { return aIsDir - bIsDir; }
       return a.entry.name.localeCompare(b.entry.name);
     });
+  }
+
+  // Same placeholder pattern as createErrorItem: empty remotePath marks it as
+  // not a real entry, so multi-target commands filter it out.
+  private createDisconnectedItem(): RemoteFileItem {
+    const disconnectedEntry: RemoteEntry = {
+      name: 'Disconnected',
+      type: '-',
+      size: 0,
+      modifyTime: 0,
+      remotePath: '',
+    };
+
+    const item = new RemoteFileItem(disconnectedEntry);
+    item.description = 'Click to reconnect';
+    item.iconPath = new vscode.ThemeIcon('debug-disconnect');
+    item.command = { command: 'fileferry.remoteBrowser.refresh', title: 'Reconnect' };
+    return item;
   }
 
   private createErrorItem(err: unknown): RemoteFileItem {

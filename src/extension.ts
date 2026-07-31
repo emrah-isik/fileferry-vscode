@@ -30,6 +30,7 @@ import { copyRemotePath } from './commands/copyRemotePath';
 import { downloadToWorkspace } from './commands/downloadToWorkspace';
 import { diffRemoteWithLocal } from './commands/diffRemoteWithLocal';
 import { deleteRemoteItem } from './commands/deleteRemoteItem';
+import { normalizeRemoteTargets } from './commands/remoteTargets';
 import { createRemoteFile } from './commands/createRemoteFile';
 import { createRemoteFolder } from './commands/createRemoteFolder';
 import { UploadOnSaveService } from './services/UploadOnSaveService';
@@ -327,6 +328,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const browserTreeView = vscode.window.createTreeView('fileferry.remoteBrowser', {
     treeDataProvider: browserProvider,
     showCollapseAll: true,
+    canSelectMany: true,
   });
 
   // Update path indicator in Remote Files view header
@@ -346,7 +348,9 @@ export function activate(context: vscode.ExtensionContext): void {
         await configManager.setDefaultServer(serverId);
         statusBar.refresh();
         serversProvider.refresh();
-        browserProvider.refresh();
+        // resume, not refresh: picking a server is an explicit request to
+        // browse it, so it also lifts an explicit-disconnect suspension.
+        browserProvider.resume();
       })
     ),
 
@@ -401,7 +405,7 @@ export function activate(context: vscode.ExtensionContext): void {
     // Remote browser commands
     vscode.commands.registerCommand(
       'fileferry.remoteBrowser.refresh',
-      () => browserProvider.refresh()
+      () => browserProvider.resume()
     ),
 
     vscode.commands.registerCommand(
@@ -411,13 +415,15 @@ export function activate(context: vscode.ExtensionContext): void {
 
     vscode.commands.registerCommand(
       'fileferry.remoteBrowser.copyPath',
-      (item: RemoteFileItem | undefined) => copyRemotePath(item)
+      (item: RemoteFileItem | undefined, selectedItems?: RemoteFileItem[]) =>
+        copyRemotePath(normalizeRemoteTargets(item, selectedItems))
     ),
 
     vscode.commands.registerCommand(
       'fileferry.remoteBrowser.downloadToWorkspace',
-      withErrorHandling('downloadToWorkspace', async (item: RemoteFileItem) => {
-        await downloadToWorkspace(item.entry, browserConnection, configManager);
+      withErrorHandling('downloadToWorkspace', async (item: RemoteFileItem, selectedItems?: RemoteFileItem[]) => {
+        const targetEntries = normalizeRemoteTargets(item, selectedItems).map(target => target.entry);
+        await downloadToWorkspace(targetEntries, browserConnection, configManager);
       })
     ),
 
@@ -430,7 +436,11 @@ export function activate(context: vscode.ExtensionContext): void {
 
     vscode.commands.registerCommand(
       'fileferry.remoteBrowser.delete',
-      (item: RemoteFileItem) => deleteRemoteItem(item, browserConnection, () => browserProvider.refresh())
+      (item: RemoteFileItem, selectedItems?: RemoteFileItem[]) => deleteRemoteItem(
+        normalizeRemoteTargets(item, selectedItems),
+        browserConnection,
+        () => browserProvider.refresh()
+      )
     ),
 
     vscode.commands.registerCommand(
@@ -505,8 +515,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand(
       'fileferry.remoteBrowser.disconnect',
       withErrorHandling('disconnect', async () => {
-        await browserConnection.disconnect();
-        browserProvider.refresh();
+        await browserProvider.suspend();
         vscode.window.showInformationMessage('FileFerry: Remote browser disconnected.');
       })
     ),
