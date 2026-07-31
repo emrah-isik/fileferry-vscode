@@ -569,9 +569,14 @@ describe('FtpService', () => {
       expect(mockClient.send).toHaveBeenCalledWith('SITE CHMOD 755 /var/www/index.php');
     });
 
-    it('silently ignores errors from SITE CHMOD (server may not support it)', async () => {
+    it('propagates SITE CHMOD failures (33e L2 — a panel chmod must not fake success)', async () => {
       mockClient.send.mockRejectedValue(new Error('502 Command not implemented'));
-      await expect(service.chmod('/var/www/index.php', 0o644)).resolves.toBeUndefined();
+      await expect(service.chmod('/var/www/index.php', 0o644)).rejects.toThrow('502 Command not implemented');
+    });
+
+    it('throws when not connected', async () => {
+      const svc = new FtpService();
+      await expect(svc.chmod('/var/www/index.php', 0o644)).rejects.toThrow('Not connected');
     });
 
     it('throws if not connected', async () => {

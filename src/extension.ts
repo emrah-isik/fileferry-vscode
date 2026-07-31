@@ -36,6 +36,7 @@ import { createRemoteFolder } from './commands/createRemoteFolder';
 import { renameRemoteItem } from './commands/renameRemoteItem';
 import { duplicateRemoteItem } from './commands/duplicateRemoteItem';
 import { moveRemoteItem } from './commands/moveRemoteItem';
+import { chmodRemoteItem } from './commands/chmodRemoteItem';
 import { UploadOnSaveService } from './services/UploadOnSaveService';
 import { FileWatcherService } from './services/FileWatcherService';
 import { DeploymentServer } from './models/DeploymentServer';
@@ -478,6 +479,17 @@ export function activate(context: vscode.ExtensionContext): void {
           output,
           refresh: () => browserProvider.refresh(),
           getCurrentPath: () => browserProvider.getCurrentPath(),
+        })
+    ),
+
+    vscode.commands.registerCommand(
+      'fileferry.remoteBrowser.chmod',
+      (item: RemoteFileItem | undefined, selectedItems?: RemoteFileItem[]) =>
+        chmodRemoteItem(normalizeRemoteTargets(item, selectedItems), {
+          connection: browserConnection,
+          configManager,
+          output,
+          refresh: () => browserProvider.refresh(),
         })
     ),
 

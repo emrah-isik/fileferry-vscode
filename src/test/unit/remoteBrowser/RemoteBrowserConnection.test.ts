@@ -18,6 +18,7 @@ const mockSftp = {
   deleteFile: jest.fn(),
   deleteDirectory: jest.fn(),
   rename: jest.fn(),
+  chmod: jest.fn(),
   statType: jest.fn(),
   mkdir: jest.fn(),
   exists: jest.fn(),
@@ -454,6 +455,41 @@ describe('RemoteBrowserConnection', () => {
       expect(mockSftp.disconnect).not.toHaveBeenCalled();
 
       // 5 minutes after the rename — idle timeout fires
+      jest.advanceTimersByTime(1 * 60 * 1000);
+      expect(mockSftp.disconnect).toHaveBeenCalled();
+    });
+  });
+
+  describe('chmod', () => {
+    it('ensures connection and delegates to sftp chmod', async () => {
+      mockSftp.chmod.mockResolvedValue(undefined);
+      await connection.chmod('/var/www/index.php', 0o644);
+      expect(mockSftp.connect).toHaveBeenCalled();
+      expect(mockSftp.chmod).toHaveBeenCalledWith('/var/www/index.php', 0o644);
+    });
+
+    it('propagates the underlying error', async () => {
+      mockSftp.chmod.mockRejectedValue(new Error('502 Command not implemented'));
+      await expect(connection.chmod('/var/www/index.php', 0o644)).rejects.toThrow('502 Command not implemented');
+    });
+
+    it('resets the idle timer', async () => {
+      mockSftp.chmod.mockResolvedValue(undefined);
+      mockSftp.listDirectoryDetailed.mockResolvedValue([]);
+
+      await connection.listDirectory('/var/www');
+      mockSftp.connected = true;
+      mockSftp.disconnect.mockClear();
+
+      jest.advanceTimersByTime(4 * 60 * 1000);
+      await connection.chmod('/var/www/index.php', 0o644);
+      mockSftp.disconnect.mockClear();
+
+      // 4 minutes after the chmod — timer was reset, still connected
+      jest.advanceTimersByTime(4 * 60 * 1000);
+      expect(mockSftp.disconnect).not.toHaveBeenCalled();
+
+      // 5 minutes after the chmod — idle timeout fires
       jest.advanceTimersByTime(1 * 60 * 1000);
       expect(mockSftp.disconnect).toHaveBeenCalled();
     });

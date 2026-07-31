@@ -118,6 +118,10 @@
         "title": "Move to Folder…"
       },
       {
+        "command": "fileferry.remoteBrowser.chmod",
+        "title": "Change Permissions…"
+      },
+      {
         "command": "fileferry.remoteBrowser.createFileInCurrentPath",
         "title": "FileFerry: New File in Current Path…"
       },
@@ -378,6 +382,11 @@
           "group": "1_modification@5"
         },
         {
+          "command": "fileferry.remoteBrowser.chmod",
+          "when": "view == fileferry.remoteBrowser && viewItem =~ /^remote(File|Directory)$/",
+          "group": "1_modification@6"
+        },
+        {
           "command": "fileferry.remoteBrowser.delete",
           "when": "view == fileferry.remoteBrowser && viewItem =~ /^remote(File|Directory)$/",
           "group": "3_destructive"
@@ -454,6 +463,10 @@
         },
         {
           "command": "fileferry.remoteBrowser.move",
+          "when": "false"
+        },
+        {
+          "command": "fileferry.remoteBrowser.chmod",
           "when": "false"
         },
         {

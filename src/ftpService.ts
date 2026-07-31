@@ -232,11 +232,11 @@ export class FtpService implements TransferService {
       throw new Error('Not connected. Call connect() before chmod.');
     }
     const octal = mode.toString(8);
-    try {
-      await this.client.send(`SITE CHMOD ${octal} ${remotePath}`);
-    } catch {
-      // FTP SITE CHMOD is server-dependent — silently ignore if unsupported
-    }
+    // SITE CHMOD is server-dependent, and failures PROPAGATE (33e L2): a
+    // panel chmod must not report success on a server that rejected it. The
+    // deploy path is unaffected — UploadOrchestratorV2's call site wraps its
+    // chmod in a best-effort try/catch of its own.
+    await this.client.send(`SITE CHMOD ${octal} ${remotePath}`);
   }
 
   async disconnect(): Promise<void> {

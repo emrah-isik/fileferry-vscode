@@ -220,6 +220,12 @@ export class RemoteBrowserConnection {
     await this.sftp.rename(oldPath, newPath);
   }
 
+  async chmod(remotePath: string, mode: number): Promise<void> {
+    await this.ensureConnected();
+    this.resetIdleTimer();
+    await this.sftp.chmod(remotePath, mode);
+  }
+
   getCurrentServerId(): string | null {
     return this.currentServerId;
   }
