@@ -2,6 +2,16 @@
 
 All notable changes to FileFerry will be documented in this file.
 
+## [Unreleased]
+
+### Changed
+
+- **Relicensed from GPL-3.0-or-later to MIT.** Prior releases remain available
+  under GPL-3.0-or-later. Contributor consent for PR #1 recorded in that PR's
+  comments.
+
+---
+
 ## [0.12.0] - 2026-07-13
 
 ### Added

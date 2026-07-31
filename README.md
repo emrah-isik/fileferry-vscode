@@ -237,4 +237,7 @@ See [CHANGELOG.md](./CHANGELOG.md) for release notes.
 
 ## License
 
-GPL-3.0-or-later — see [LICENSE](LICENSE)
+MIT — see [LICENSE](LICENSE)
+
+Releases up to and including v0.12.0 were published under GPL-3.0-or-later
+and remain available under that license.

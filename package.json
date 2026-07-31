@@ -5,7 +5,7 @@
   "version": "0.12.0",
   "publisher": "esidevlabs",
   "icon": "resources/icon.png",
-  "license": "GPL-3.0-or-later",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/emrah-isik/fileferry-vscode"

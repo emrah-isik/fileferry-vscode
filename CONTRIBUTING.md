@@ -88,3 +88,12 @@ schema and `docs/CONFIG.md`.
 ## Security
 
 Please don't open a public issue for a security problem. See [SECURITY.md](SECURITY.md).
+
+## Licensing of Contributions
+
+By submitting a contribution to FileFerry, you confirm that the contribution is
+your own work, that you license it under the project's current license (MIT),
+and that you grant the maintainer the right to distribute it under any future
+license the project may adopt. Submitting a pull request constitutes agreement
+to this section. If you're not comfortable with any of this, please open an
+issue to discuss it before submitting code.
