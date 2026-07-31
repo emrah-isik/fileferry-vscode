@@ -1,14 +1,18 @@
 # FileFerry Roadmap
 
-## Current — v0.12
+## Current — v0.13
 
-- Everything in v0.11, plus:
-- Edit remote files in place — files opened from the Remote Files panel upload back to the server on save, with conflict detection that warns (Overwrite / Show Diff) when the file changed on the server since you opened it; honours dry run and backup-before-overwrite, and shows up in Upload History under a Remote Edit source
-- Create files and folders in the Remote Files panel — from a folder's context menu or the panel menu's "in Current Path" variants; new files open immediately, ready to edit and save back; file collisions prompt to overwrite, folder collisions abort rather than silently merge
+- Everything in v0.12, plus:
+- FileFerry is now MIT-licensed — relicensed from GPL-3.0-or-later to make adoption and integration easier; all previous releases remain available under the GPL
 
 ---
 
 ## Previous Releases
+
+### v0.12
+
+- Edit remote files in place — files opened from the Remote Files panel upload back to the server on save, with conflict detection that warns (Overwrite / Show Diff) when the file changed on the server since you opened it; honours dry run and backup-before-overwrite, and shows up in Upload History under a Remote Edit source
+- Create files and folders in the Remote Files panel — from a folder's context menu or the panel menu's "in Current Path" variants; new files open immediately, ready to edit and save back; file collisions prompt to overwrite, folder collisions abort rather than silently merge
 
 ### v0.11
 
@@ -93,7 +97,7 @@
 
 ## Upcoming
 
-### v0.13 — SSH Power Features
+### v0.14 — SSH Power Features
 
 - SSH connection hopping (jump hosts), including `ProxyCommand` / `ProxyJump` from `~/.ssh/config`
 - Open SSH terminal to active server
