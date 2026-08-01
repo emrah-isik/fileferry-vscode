@@ -93,6 +93,15 @@ describe('uploadHere', () => {
       expect(mockRefresh).not.toHaveBeenCalled();
     });
 
+    it('starts the dialog at the workspace root, not wherever the window last browsed', async () => {
+      await uploadFilesHere('/var/www/html', dependencies());
+
+      const dialogOptions = vscode.window.showOpenDialog.mock.calls[0][0];
+      expect(dialogOptions.defaultUri).toEqual(
+        expect.objectContaining({ fsPath: '/tmp/workspace' })
+      );
+    });
+
     it('confirms once with the exact count, the bypass note, and the overwrite warning', async () => {
       await uploadFilesHere('/var/www/html', dependencies());
 
@@ -244,6 +253,15 @@ describe('uploadHere', () => {
       expect(dialogOptions.canSelectFiles).toBe(false);
       expect(dialogOptions.canSelectMany).toBe(false);
       expect(mockConnection.uploadFile).not.toHaveBeenCalled();
+    });
+
+    it('starts the dialog at the workspace root', async () => {
+      await uploadFolderHere('/var/www/html', dependencies());
+
+      const dialogOptions = vscode.window.showOpenDialog.mock.calls[0][0];
+      expect(dialogOptions.defaultUri).toEqual(
+        expect.objectContaining({ fsPath: '/tmp/workspace' })
+      );
     });
 
     it('walks the picked folder with NO skip-list — .git and node_modules are not filtered', async () => {

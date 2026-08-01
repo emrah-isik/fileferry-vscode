@@ -36,6 +36,7 @@ export async function uploadFilesHere(
     canSelectMany: true,
     openLabel: 'Upload',
     title: `Upload files to ${parentPath}`,
+    ...defaultDialogLocation(),
   });
   if (!picked || picked.length === 0) {
     return; // cancelled
@@ -59,6 +60,7 @@ export async function uploadFolderHere(
     canSelectMany: false,
     openLabel: 'Upload',
     title: `Upload a folder to ${parentPath}`,
+    ...defaultDialogLocation(),
   });
   if (!picked || picked.length === 0) {
     return; // cancelled
@@ -107,6 +109,15 @@ export async function uploadFolderHere(
 // Remote paths are POSIX — joined with '/', never path.join.
 function joinRemote(parentPath: string, name: string): string {
   return parentPath === '/' ? `/${name}` : `${parentPath}/${name}`;
+}
+
+// Without a defaultUri, VS Code's dialog falls back to the window's last
+// browsed location — which in a remote/WSL window (simple file dialog) is
+// often this extension's own fileferry-browse temp dir, left behind by
+// edit-session opens. Start at the workspace root instead.
+function defaultDialogLocation(): { defaultUri?: vscode.Uri } {
+  const workspaceUri = vscode.workspace.workspaceFolders?.[0]?.uri;
+  return workspaceUri !== undefined ? { defaultUri: workspaceUri } : {};
 }
 
 async function runUploadBatch(
