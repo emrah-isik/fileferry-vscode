@@ -5,10 +5,14 @@ import * as fs from 'fs/promises';
 
 jest.mock('fs/promises');
 jest.mock('../../../services/UploadHistoryService');
+jest.mock('../../../services/StrictRemoteTreeWalker');
 
 import { UploadHistoryService } from '../../../services/UploadHistoryService';
+import { walkRemoteTreeStrict } from '../../../services/StrictRemoteTreeWalker';
 import { duplicateRemoteItem } from '../../../commands/duplicateRemoteItem';
 import { RemoteFileItem, RemoteEntry } from '../../../remoteBrowser/RemoteFileItem';
+
+const mockWalkRemoteTreeStrict = walkRemoteTreeStrict as jest.Mock;
 
 const vscode = require('vscode');
 
@@ -26,6 +30,7 @@ const mockConnection = {
   uploadFile: jest.fn(),
   exists: jest.fn(),
   statRemoteType: jest.fn(),
+  createDirectory: jest.fn(),
 };
 
 const mockConfigManager = {
@@ -83,11 +88,13 @@ describe('duplicateRemoteItem', () => {
     mockConnection.uploadFile.mockResolvedValue(undefined);
     mockConnection.exists.mockResolvedValue(false);
     mockConnection.statRemoteType.mockResolvedValue(null);
+    mockConnection.createDirectory.mockResolvedValue(undefined);
     (fs.mkdir as jest.Mock).mockResolvedValue(undefined);
     (fs.writeFile as jest.Mock).mockResolvedValue(undefined);
     (fs.unlink as jest.Mock).mockResolvedValue(undefined);
     mockHistoryLog.mockResolvedValue(undefined);
     mockHistoryEnforceRetention.mockResolvedValue(undefined);
+    mockWalkRemoteTreeStrict.mockResolvedValue({ files: [], directories: [], symlinks: [], totalBytes: 0 });
   });
 
   describe('single target', () => {
@@ -383,18 +390,6 @@ describe('duplicateRemoteItem', () => {
       ]));
     });
 
-    it('defensively skips folders in the selection and says so in the summary', async () => {
-      const folderItem = makeItem({ name: 'logs', type: 'd', size: 4096, remotePath: '/var/www/logs' });
-
-      await duplicateRemoteItem([itemA(), folderItem, itemB()], dependencies());
-
-      expect(mockConnection.downloadFile).not.toHaveBeenCalledWith('/var/www/logs');
-      expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
-        expect.stringContaining('folder')
-      );
-      expect(mockRefresh).toHaveBeenCalledTimes(1);
-    });
-
     it('honours dry run before any network call, logging the plan per file', async () => {
       mockConfigManager.getConfig.mockResolvedValue({ ...baseConfig, dryRun: true });
 
@@ -410,6 +405,226 @@ describe('duplicateRemoteItem', () => {
       expect(mockConnection.downloadFile).not.toHaveBeenCalled();
       expect(mockConnection.uploadFile).not.toHaveBeenCalled();
       expect(mockRefresh).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('folder targets (33g)', () => {
+    const folderItem = () =>
+      makeItem({ name: 'assets', type: 'd', size: 4096, remotePath: '/var/www/assets' });
+
+    const snapshot = () => ({
+      files: [
+        { remotePath: '/var/www/assets/logo.png', size: 1000 },
+        { remotePath: '/var/www/assets/css/site.css', size: 200 },
+      ],
+      directories: ['/var/www/assets/css', '/var/www/assets/empty'],
+      symlinks: ['/var/www/assets/current'],
+      totalBytes: 1200,
+    });
+
+    beforeEach(() => {
+      vscode.window.showInputBox.mockResolvedValue('assets copy');
+      vscode.window.showWarningMessage.mockResolvedValue('Duplicate');
+      mockWalkRemoteTreeStrict.mockResolvedValue(snapshot());
+    });
+
+    it('prefills "<name> copy" with the WHOLE name selected — no extension split on folders', async () => {
+      vscode.window.showInputBox.mockResolvedValue(undefined);
+      const item = makeItem({ name: 'v1.2', type: 'd', size: 4096, remotePath: '/var/www/v1.2' });
+
+      await duplicateRemoteItem([item], dependencies());
+
+      const inputBoxOptions = vscode.window.showInputBox.mock.calls[0][0];
+      expect(inputBoxOptions.value).toBe('v1.2 copy');
+      expect(inputBoxOptions.valueSelection).toEqual([0, 9]);
+    });
+
+    it('pre-walks, then confirms once with the real counts and the skipped symlink named', async () => {
+      vscode.window.showWarningMessage.mockResolvedValue(undefined); // cancel
+
+      await duplicateRemoteItem([folderItem()], dependencies());
+
+      expect(mockWalkRemoteTreeStrict).toHaveBeenCalledWith(mockConnection, '/var/www/assets');
+      const [message, options] = vscode.window.showWarningMessage.mock.calls[0];
+      expect(message).toContain('assets');
+      expect(message).toContain('assets copy');
+      expect(message).toContain('2 files');
+      expect(message).toContain('1 symlink');
+      expect(options.modal).toBe(true);
+      expect(options.detail).toContain('/var/www/assets/current');
+      // Cancelled: nothing was written
+      expect(mockConnection.createDirectory).not.toHaveBeenCalled();
+      expect(mockConnection.uploadFile).not.toHaveBeenCalled();
+      expect(mockRefresh).not.toHaveBeenCalled();
+    });
+
+    it('recreates the skeleton (empty directory included) and copies every file into it', async () => {
+      await duplicateRemoteItem([folderItem()], dependencies());
+
+      const createdDirectories = mockConnection.createDirectory.mock.calls.map(call => call[0]);
+      expect(createdDirectories).toEqual([
+        '/var/www/assets copy',
+        '/var/www/assets copy/css',
+        '/var/www/assets copy/empty',
+      ]);
+      expect(mockConnection.downloadFile).toHaveBeenCalledWith('/var/www/assets/logo.png');
+      expect(mockConnection.uploadFile).toHaveBeenCalledWith(expect.any(String), '/var/www/assets copy/logo.png');
+      expect(mockConnection.uploadFile).toHaveBeenCalledWith(expect.any(String), '/var/www/assets copy/css/site.css');
+      expect(vscode.window.setStatusBarMessage).toHaveBeenCalledWith(
+        expect.stringContaining('$(check)'),
+        expect.any(Number)
+      );
+      expect(mockRefresh).toHaveBeenCalledTimes(1);
+    });
+
+    it('logs one batched history call with a remote-duplicate row per copied file', async () => {
+      await duplicateRemoteItem([folderItem()], dependencies());
+
+      expect(mockHistoryLog).toHaveBeenCalledTimes(1);
+      const entries = mockHistoryLog.mock.calls[0][0];
+      expect(entries).toHaveLength(2);
+      expect(entries[0]).toEqual(expect.objectContaining({
+        remotePath: '/var/www/assets copy/logo.png',
+        trigger: 'remote-duplicate',
+        result: 'success',
+      }));
+    });
+
+    it('a name collision aborts with an error — folders are never overwritten or merged', async () => {
+      mockConnection.statRemoteType.mockResolvedValue('d');
+
+      await duplicateRemoteItem([folderItem()], dependencies());
+
+      expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+        expect.stringContaining('assets copy')
+      );
+      expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
+      expect(mockWalkRemoteTreeStrict).not.toHaveBeenCalled();
+      expect(mockConnection.createDirectory).not.toHaveBeenCalled();
+      expect(mockConnection.uploadFile).not.toHaveBeenCalled();
+    });
+
+    it('aborts before any write when the pre-walk fails — no partial copy from a blind spot', async () => {
+      mockWalkRemoteTreeStrict.mockRejectedValue(new Error('Permission denied: /var/www/assets/css'));
+
+      await duplicateRemoteItem([folderItem()], dependencies());
+
+      expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+        expect.stringContaining('Permission denied')
+      );
+      expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
+      expect(mockConnection.createDirectory).not.toHaveBeenCalled();
+      expect(mockConnection.uploadFile).not.toHaveBeenCalled();
+      expect(mockRefresh).not.toHaveBeenCalled();
+    });
+
+    it('honours dry run: pre-walks for the counts, logs the plan, writes nothing, never confirms', async () => {
+      mockConfigManager.getConfig.mockResolvedValue({ ...baseConfig, dryRun: true });
+
+      await duplicateRemoteItem([folderItem()], dependencies());
+
+      expect(mockOutput.appendLine).toHaveBeenCalledWith(
+        expect.stringContaining('DRY RUN — would duplicate /var/www/assets → /var/www/assets copy')
+      );
+      expect(mockOutput.appendLine).toHaveBeenCalledWith(
+        expect.stringContaining('2 files')
+      );
+      expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
+      expect(mockConnection.createDirectory).not.toHaveBeenCalled();
+      expect(mockConnection.uploadFile).not.toHaveBeenCalled();
+      expect(mockRefresh).not.toHaveBeenCalled();
+    });
+
+    it('cancellation stops the copy and reports the partial result honestly', async () => {
+      let cancelRequested = false;
+      vscode.window.withProgress.mockImplementation(
+        (_options: any, task: (progress: any, token: any) => Promise<any>) =>
+          task({ report: jest.fn() }, { get isCancellationRequested() { return cancelRequested; } })
+      );
+      mockConnection.uploadFile.mockImplementation(async () => { cancelRequested = true; });
+
+      await duplicateRemoteItem([folderItem()], dependencies());
+
+      expect(mockConnection.uploadFile).toHaveBeenCalledTimes(1);
+      expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+        expect.stringContaining('cancelled')
+      );
+      expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+        expect.stringContaining('1 remaining')
+      );
+      expect(mockRefresh).toHaveBeenCalledTimes(1);
+    });
+
+    it('continues past a failed file and lists the failed path in the aggregate error', async () => {
+      mockConnection.downloadFile
+        .mockRejectedValueOnce(new Error('Connection reset'))
+        .mockResolvedValue(Buffer.from('content'));
+
+      await duplicateRemoteItem([folderItem()], dependencies());
+
+      expect(mockConnection.uploadFile).toHaveBeenCalledWith(expect.any(String), '/var/www/assets copy/css/site.css');
+      expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+        expect.stringContaining('/var/www/assets/logo.png')
+      );
+      const entries = mockHistoryLog.mock.calls[0][0];
+      expect(entries).toEqual(expect.arrayContaining([
+        expect.objectContaining({ result: 'failed', error: 'Connection reset' }),
+        expect.objectContaining({ remotePath: '/var/www/assets copy/css/site.css', result: 'success' }),
+      ]));
+      expect(mockRefresh).toHaveBeenCalledTimes(1);
+    });
+
+    it('an empty folder duplicates as skeleton only', async () => {
+      mockWalkRemoteTreeStrict.mockResolvedValue({
+        files: [], directories: ['/var/www/assets/empty'], symlinks: [], totalBytes: 0,
+      });
+
+      await duplicateRemoteItem([folderItem()], dependencies());
+
+      expect(mockConnection.createDirectory).toHaveBeenCalledWith('/var/www/assets copy');
+      expect(mockConnection.createDirectory).toHaveBeenCalledWith('/var/www/assets copy/empty');
+      expect(mockConnection.uploadFile).not.toHaveBeenCalled();
+      expect(mockRefresh).toHaveBeenCalledTimes(1);
+    });
+
+    describe('in a multi-selection', () => {
+      it('confirms ONCE with aggregate counts, auto-names without prompting, copies both kinds', async () => {
+        const fileItem = makeItem({ name: 'a.txt', remotePath: '/var/www/a.txt' });
+
+        await duplicateRemoteItem([folderItem(), fileItem], dependencies());
+
+        expect(vscode.window.showInputBox).not.toHaveBeenCalled();
+        expect(vscode.window.showWarningMessage).toHaveBeenCalledTimes(1);
+        const [message] = vscode.window.showWarningMessage.mock.calls[0];
+        expect(message).toContain('2 items');
+        expect(message).toContain('3 files'); // 2 walked + 1 direct
+        expect(mockConnection.createDirectory).toHaveBeenCalledWith('/var/www/assets copy');
+        expect(mockConnection.uploadFile).toHaveBeenCalledWith(expect.any(String), '/var/www/assets copy/logo.png');
+        expect(mockConnection.uploadFile).toHaveBeenCalledWith(expect.any(String), '/var/www/a copy.txt');
+        expect(mockRefresh).toHaveBeenCalledTimes(1);
+      });
+
+      it('numbers a folder copy past a taken name without an extension split', async () => {
+        mockConnection.exists.mockImplementation(async (remotePath: string) =>
+          remotePath === '/var/www/assets copy'
+        );
+
+        await duplicateRemoteItem([folderItem(), makeItem({ name: 'a.txt', remotePath: '/var/www/a.txt' })], dependencies());
+
+        expect(mockConnection.createDirectory).toHaveBeenCalledWith('/var/www/assets copy 2');
+        expect(mockConnection.uploadFile).toHaveBeenCalledWith(expect.any(String), '/var/www/assets copy 2/logo.png');
+      });
+
+      it('a pure-file multi-selection still never sees a confirmation (33c behaviour pinned)', async () => {
+        const fileItem = makeItem({ name: 'a.txt', remotePath: '/var/www/a.txt' });
+        const otherItem = makeItem({ name: 'b.txt', remotePath: '/var/www/b.txt' });
+
+        await duplicateRemoteItem([fileItem, otherItem], dependencies());
+
+        expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
+        expect(mockWalkRemoteTreeStrict).not.toHaveBeenCalled();
+        expect(mockConnection.uploadFile).toHaveBeenCalledTimes(2);
+      });
     });
   });
 });

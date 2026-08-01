@@ -409,7 +409,7 @@
         },
         {
           "command": "fileferry.remoteBrowser.duplicate",
-          "when": "view == fileferry.remoteBrowser && viewItem == remoteFile",
+          "when": "view == fileferry.remoteBrowser && viewItem =~ /^remote(File|Directory)$/",
           "group": "1_modification@4"
         },
         {
