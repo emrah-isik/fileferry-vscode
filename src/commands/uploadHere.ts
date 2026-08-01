@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as os from 'os';
 import * as path from 'path';
 import * as crypto from 'crypto';
 import { RemoteBrowserConnection } from '../remoteBrowser/RemoteBrowserConnection';
@@ -7,6 +8,7 @@ import { ProjectConfig } from '../models/ProjectConfig';
 import { UploadHistoryService } from '../services/UploadHistoryService';
 import { UploadHistoryEntry } from '../models/UploadHistoryEntry';
 import { walkLocalTree } from '../services/SyncTreeWalker';
+import { pickLocalDirectory } from './pickLocalDirectory';
 
 export interface UploadHereDependencies {
   connection: RemoteBrowserConnection;
@@ -54,18 +56,30 @@ export async function uploadFolderHere(
   parentPath: string,
   dependencies: UploadHereDependencies
 ): Promise<void> {
-  const picked = await vscode.window.showOpenDialog({
-    canSelectFiles: false,
-    canSelectFolders: true,
-    canSelectMany: false,
-    openLabel: 'Upload',
-    title: `Upload a folder to ${parentPath}`,
-    ...defaultDialogLocation(),
-  });
-  if (!picked || picked.length === 0) {
+  // In a remote window (WSL/SSH) showOpenDialog degrades to the simple file
+  // dialog, whose only folder-confirm is the easy-to-miss OK button — no
+  // select-this-folder row. Use our own picker there; desktop windows keep
+  // the native OS dialog.
+  let localFolder: string | undefined;
+  if (vscode.env.remoteName !== undefined) {
+    localFolder = await pickLocalDirectory(
+      vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? os.homedir(),
+      `Upload a folder to ${parentPath}`
+    );
+  } else {
+    const picked = await vscode.window.showOpenDialog({
+      canSelectFiles: false,
+      canSelectFolders: true,
+      canSelectMany: false,
+      openLabel: 'Upload',
+      title: `Upload a folder to ${parentPath}`,
+      ...defaultDialogLocation(),
+    });
+    localFolder = picked?.[0]?.fsPath;
+  }
+  if (localFolder === undefined) {
     return; // cancelled
   }
-  const localFolder = picked[0].fsPath;
   const folderName = path.basename(localFolder);
   const remoteRoot = joinRemote(parentPath, folderName);
 

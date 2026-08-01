@@ -2,14 +2,17 @@ import * as path from 'path';
 
 jest.mock('../../../services/UploadHistoryService');
 jest.mock('../../../services/SyncTreeWalker');
+jest.mock('../../../commands/pickLocalDirectory');
 
 import { UploadHistoryService } from '../../../services/UploadHistoryService';
 import { walkLocalTree } from '../../../services/SyncTreeWalker';
+import { pickLocalDirectory } from '../../../commands/pickLocalDirectory';
 import { uploadFilesHere, uploadFolderHere } from '../../../commands/uploadHere';
 
 const vscode = require('vscode');
 
 const mockWalkLocalTree = walkLocalTree as jest.Mock;
+const mockPickLocalDirectory = pickLocalDirectory as jest.Mock;
 
 const mockConnection = {
   uploadFile: jest.fn(),
@@ -358,6 +361,43 @@ describe('uploadHere', () => {
         trigger: 'remote-upload',
         result: 'success',
       }));
+    });
+
+    describe('in a remote window (WSL/SSH — simple dialog has no folder-confirm row)', () => {
+      beforeEach(() => {
+        (vscode.env as any).remoteName = 'wsl';
+        mockPickLocalDirectory.mockResolvedValue(localFolder);
+      });
+
+      afterEach(() => {
+        (vscode.env as any).remoteName = undefined;
+      });
+
+      it('uses the custom local picker starting at the workspace root, not the stock dialog', async () => {
+        await uploadFolderHere('/var/www/html', dependencies());
+
+        expect(mockPickLocalDirectory).toHaveBeenCalledWith('/tmp/workspace', expect.stringContaining('/var/www/html'));
+        expect(vscode.window.showOpenDialog).not.toHaveBeenCalled();
+        expect(mockConnection.uploadFile).toHaveBeenCalledTimes(3);
+      });
+
+      it('does nothing when the custom picker is dismissed', async () => {
+        mockPickLocalDirectory.mockResolvedValue(undefined);
+
+        await uploadFolderHere('/var/www/html', dependencies());
+
+        expect(mockConnection.uploadFile).not.toHaveBeenCalled();
+        expect(mockRefresh).not.toHaveBeenCalled();
+      });
+
+      it('the files variant keeps the stock dialog even in a remote window', async () => {
+        vscode.window.showOpenDialog.mockResolvedValue([uri(path.join('/home/emo/project', 'a.txt'))]);
+
+        await uploadFilesHere('/var/www/html', dependencies());
+
+        expect(vscode.window.showOpenDialog).toHaveBeenCalled();
+        expect(mockPickLocalDirectory).not.toHaveBeenCalled();
+      });
     });
   });
 });
