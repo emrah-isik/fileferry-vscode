@@ -203,6 +203,16 @@ describe('RemoteBrowserProvider', () => {
       });
     });
 
+    it('the error placeholder is NOT a remoteFile — no file context menu on it', async () => {
+      mockConnection.listDirectory.mockRejectedValue(new Error('Connection refused'));
+
+      const children = await provider.getChildren();
+      // 'remoteFile' would match every file-scoped view/item/context clause
+      // (Rename…, Duplicate…, Compare with Local, …) on a row that is not a
+      // file. A distinct value matches none of them.
+      expect(children![0].contextValue).toBe('remotePlaceholder');
+    });
+
     it('permission denied placeholder has reconnect command', async () => {
       mockConnection.listDirectory.mockRejectedValue(new Error('Permission denied'));
 
@@ -373,6 +383,14 @@ describe('RemoteBrowserProvider', () => {
         command: 'fileferry.remoteBrowser.refresh',
         title: 'Reconnect',
       });
+    });
+
+    it('the Disconnected placeholder is NOT a remoteFile — no file context menu on it', async () => {
+      await provider.suspend();
+
+      const children = await provider.getChildren();
+
+      expect(children![0].contextValue).toBe('remotePlaceholder');
     });
 
     it('suspend clears the current path and announces it', async () => {

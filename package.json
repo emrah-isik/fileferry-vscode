@@ -429,7 +429,7 @@
         },
         {
           "command": "fileferry.remoteBrowser.copyPath",
-          "when": "view == fileferry.remoteBrowser",
+          "when": "view == fileferry.remoteBrowser && viewItem =~ /^remote(File|Directory)$/",
           "group": "2_actions"
         },
         {
