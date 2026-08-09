@@ -10,7 +10,11 @@ import * as path from 'path';
 // Desktop windows keep the native OS dialog; this picker is not used there.
 export async function pickLocalDirectory(
   startPath: string,
-  title: string
+  title: string,
+  // The confirm-row wording is context-sensitive: "Select this folder" reads
+  // as the goal when picking a folder, but misleads when the folder is only
+  // step 1 of picking FILES — the files flow overrides it.
+  confirmRowLabel: string = '$(check) Select this folder'
 ): Promise<string | undefined> {
   let currentPath = startPath;
 
@@ -45,7 +49,7 @@ export async function pickLocalDirectory(
     // path.dirname is a fixed point at the filesystem root ('/' or 'C:\').
     const isRoot = path.dirname(currentPath) === currentPath;
     const quickPickItems: vscode.QuickPickItem[] = [
-      { label: '$(check) Select this folder', description: currentPath },
+      { label: confirmRowLabel, description: currentPath },
       ...(!isRoot ? [{ label: '$(arrow-up) ..', description: '(parent directory)' }] : []),
       ...directoryNames.map(name => ({ label: `$(folder) ${name}` })),
     ];
@@ -79,7 +83,11 @@ export async function pickLocalFiles(
   startPath: string,
   title: string
 ): Promise<string[] | undefined> {
-  const directory = await pickLocalDirectory(startPath, title);
+  const directory = await pickLocalDirectory(
+    startPath,
+    `${title} — step 1 of 2`,
+    '$(check) Choose files from this folder'
+  );
   if (directory === undefined) {
     return undefined;
   }
@@ -119,7 +127,7 @@ export async function pickLocalFiles(
   const picked = await vscode.window.showQuickPick(
     fileNames.map(name => ({ label: name })),
     {
-      title: `${title}: ${directory}`,
+      title: `${title} — step 2 of 2: ${directory}`,
       placeHolder: 'Select the files to upload (Space toggles, Enter confirms)',
       canPickMany: true,
     }

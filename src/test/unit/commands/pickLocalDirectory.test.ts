@@ -160,8 +160,8 @@ describe('pickLocalFiles', () => {
 
   it('navigates to a folder, then multi-selects from its FILES only', async () => {
     vscode.window.showQuickPick
-      .mockResolvedValueOnce({ label: '$(check) Select this folder' })      // folder stage
-      .mockResolvedValueOnce([{ label: 'a.txt' }, { label: 'b.txt' }]);     // file stage
+      .mockResolvedValueOnce({ label: '$(check) Choose files from this folder' }) // folder stage
+      .mockResolvedValueOnce([{ label: 'a.txt' }, { label: 'b.txt' }]);           // file stage
 
     const picked = await pickLocalFiles(START, 'Upload files to /var/www');
 
@@ -171,6 +171,22 @@ describe('pickLocalFiles', () => {
     expect(labels).toEqual(['a.txt', 'b.txt']);
     expect(labels.join('\n')).not.toContain('assets');
     expect(picked).toEqual([path.join(START, 'a.txt'), path.join(START, 'b.txt')]);
+  });
+
+  it('announces both steps: step-aware titles and a confirm row that says files come next', async () => {
+    vscode.window.showQuickPick
+      .mockResolvedValueOnce({ label: '$(check) Choose files from this folder' })
+      .mockResolvedValueOnce([{ label: 'a.txt' }]);
+
+    await pickLocalFiles(START, 'Upload files to /var/www');
+
+    const folderStage = vscode.window.showQuickPick.mock.calls[0];
+    // The confirm row must NOT read "Select this folder" — in the files flow
+    // that suggests uploading the folder itself (which is the other command).
+    expect(folderStage[0][0].label).toBe('$(check) Choose files from this folder');
+    expect(folderStage[1].title).toContain('step 1 of 2');
+    const fileStage = vscode.window.showQuickPick.mock.calls[1];
+    expect(fileStage[1].title).toContain('step 2 of 2');
   });
 
   it('returns undefined when the folder stage is dismissed, without a file stage', async () => {
