@@ -143,6 +143,18 @@ export function validateRemoteEntryName(rawName: string): string | null {
   return null;
 }
 
+// Octal permission mode for the panel chmod (feature 33e, L1): three or four
+// octal digits ("644", "755", "2775"). Symbolic modes and the checkbox grid
+// are deliberately out of scope. Returns null when valid, else the message
+// shown under the input box.
+export function validateOctalFileMode(rawMode: string): string | null {
+  const mode = rawMode.trim();
+  if (!/^[0-7]{3,4}$/.test(mode)) {
+    return 'Enter 3 or 4 octal digits, e.g. 644, 755, or 2775.';
+  }
+  return null;
+}
+
 export function validateMappings(
   mappings: Array<{ localPath: string; remotePath: string }>,
   excludedPaths: string[]

@@ -3,6 +3,7 @@ import {
   validateProjectServer,
   validateMappings,
   validateRemoteEntryName,
+  validateOctalFileMode,
 } from '../../utils/validation';
 import { SshCredential } from '../../models/SshCredential';
 
@@ -371,5 +372,36 @@ describe('validateRemoteEntryName (feature 32b, decision L3)', () => {
 
   it('trims before validating, so surrounding whitespace is not itself an error', () => {
     expect(validateRemoteEntryName('  notes.txt  ')).toBeNull();
+  });
+});
+
+describe('validateOctalFileMode (feature 33e, decision L1)', () => {
+  it.each([
+    ['644', null],
+    ['755', null],
+    ['600', null],
+    ['000', null],
+    ['777', null],
+    ['2775', null],
+    ['0644', null],
+    ['4755', null],
+    ['  644  ', null],
+  ])('accepts 3-4 octal digits (surrounding whitespace trimmed): %j', (mode, expected) => {
+    expect(validateOctalFileMode(mode as string)).toBe(expected);
+  });
+
+  it.each([
+    [''],
+    ['   '],
+    ['64'],
+    ['12345'],
+    ['888'],
+    ['79'],
+    ['rw-r--r--'],
+    ['u+x'],
+    ['0o644'],
+    ['6 44'],
+  ])('rejects anything but 3-4 octal digits: %j', (mode) => {
+    expect(validateOctalFileMode(mode as string)).not.toBeNull();
   });
 });

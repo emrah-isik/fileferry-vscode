@@ -54,6 +54,7 @@ describe('FtpService', () => {
       expect(typeof svc.exists).toBe('function');
       expect(typeof svc.deleteFile).toBe('function');
       expect(typeof svc.deleteDirectory).toBe('function');
+      expect(typeof svc.rename).toBe('function');
       expect(typeof svc.disconnect).toBe('function');
     });
   });
@@ -298,6 +299,52 @@ describe('FtpService', () => {
         { name: 'file.txt', type: '-', size: 500, modifyTime: modDate.getTime() },
       ]);
     });
+
+    it('derives the octal mode from unix-style permissions when the server reports them', async () => {
+      mockClient.list.mockResolvedValueOnce([
+        {
+          name: 'file.txt', type: 1, size: 500, modifiedAt: new Date(),
+          isDirectory: false, isFile: true, isSymbolicLink: false,
+          permissions: { user: 6, group: 4, world: 4 },
+        },
+      ]);
+      const result = await service.listDirectoryDetailed('/remote');
+      expect(result[0].mode).toBe('644');
+    });
+
+    it('leaves mode undefined when the listing carries no permissions (non-unix server)', async () => {
+      mockClient.list.mockResolvedValueOnce([
+        { name: 'file.txt', type: 1, size: 500, modifiedAt: new Date(), isDirectory: false, isFile: true, isSymbolicLink: false },
+      ]);
+      const result = await service.listDirectoryDetailed('/remote');
+      expect(result[0].mode).toBeUndefined();
+    });
+
+    // Some servers (vsftpd among them) answer LIST on a permission-denied
+    // directory with an EMPTY success instead of an error — indistinguishable
+    // from a genuinely empty directory, which let a recursive copy silently
+    // skip an unreadable subtree (feature-33 manual pass, finding G6-FTP).
+    // A cd probe tells them apart: traversal into an unreadable dir is denied.
+    it('an empty listing is verified with a cd probe — genuinely empty returns []', async () => {
+      mockClient.list.mockResolvedValueOnce([]);
+      mockClient.cd.mockResolvedValueOnce(undefined);
+      await expect(service.listDirectoryDetailed('/remote/empty')).resolves.toEqual([]);
+      expect(mockClient.cd).toHaveBeenCalledWith('/remote/empty');
+    });
+
+    it('an empty listing whose cd probe is denied THROWS — never a fake empty dir', async () => {
+      mockClient.list.mockResolvedValueOnce([]);
+      mockClient.cd.mockRejectedValueOnce(new Error('550 Failed to change directory.'));
+      await expect(service.listDirectoryDetailed('/remote/secret')).rejects.toThrow(/unreadable|550/i);
+    });
+
+    it('a non-empty listing skips the cd probe — no extra round-trip', async () => {
+      mockClient.list.mockResolvedValueOnce([
+        { name: 'file.txt', type: 1, size: 500, modifiedAt: new Date(), isDirectory: false, isFile: true, isSymbolicLink: false },
+      ]);
+      await service.listDirectoryDetailed('/remote');
+      expect(mockClient.cd).not.toHaveBeenCalled();
+    });
   });
 
   describe('resolveRemotePath', () => {
@@ -486,6 +533,36 @@ describe('FtpService', () => {
     });
   });
 
+  describe('rename', () => {
+    beforeEach(async () => {
+      await service.connect(
+        { host: 'ftp.example.com', port: 21, username: 'user', type: 'ftp' },
+        { password: 'pass' }
+      );
+    });
+
+    it('throws if not connected', async () => {
+      const svc = new FtpService();
+      await expect(svc.rename('/remote/old.txt', '/remote/new.txt')).rejects.toThrow('Not connected');
+      expect(mockClient.rename).not.toHaveBeenCalled();
+    });
+
+    it('renames with absolute paths on both sides', async () => {
+      await service.rename('/remote/old.txt', '/remote/new.txt');
+      expect(mockClient.rename).toHaveBeenCalledWith('/remote/old.txt', '/remote/new.txt');
+    });
+
+    it('renames across directories with absolute paths', async () => {
+      await service.rename('/remote/a/file.txt', '/remote/b/file.txt');
+      expect(mockClient.rename).toHaveBeenCalledWith('/remote/a/file.txt', '/remote/b/file.txt');
+    });
+
+    it('propagates the underlying error', async () => {
+      mockClient.rename.mockRejectedValueOnce(new Error('550 Permission denied'));
+      await expect(service.rename('/remote/old.txt', '/remote/new.txt')).rejects.toThrow('550 Permission denied');
+    });
+  });
+
   describe('deleteDirectory', () => {
     beforeEach(async () => {
       await service.connect(
@@ -538,9 +615,14 @@ describe('FtpService', () => {
       expect(mockClient.send).toHaveBeenCalledWith('SITE CHMOD 755 /var/www/index.php');
     });
 
-    it('silently ignores errors from SITE CHMOD (server may not support it)', async () => {
+    it('propagates SITE CHMOD failures (33e L2 — a panel chmod must not fake success)', async () => {
       mockClient.send.mockRejectedValue(new Error('502 Command not implemented'));
-      await expect(service.chmod('/var/www/index.php', 0o644)).resolves.toBeUndefined();
+      await expect(service.chmod('/var/www/index.php', 0o644)).rejects.toThrow('502 Command not implemented');
+    });
+
+    it('throws when not connected', async () => {
+      const svc = new FtpService();
+      await expect(svc.chmod('/var/www/index.php', 0o644)).rejects.toThrow('Not connected');
     });
 
     it('throws if not connected', async () => {

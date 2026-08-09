@@ -106,6 +106,38 @@
         "title": "New Folder…"
       },
       {
+        "command": "fileferry.remoteBrowser.rename",
+        "title": "Rename…"
+      },
+      {
+        "command": "fileferry.remoteBrowser.duplicate",
+        "title": "Duplicate…"
+      },
+      {
+        "command": "fileferry.remoteBrowser.move",
+        "title": "Move to Folder…"
+      },
+      {
+        "command": "fileferry.remoteBrowser.chmod",
+        "title": "Change Permissions…"
+      },
+      {
+        "command": "fileferry.remoteBrowser.uploadFilesHere",
+        "title": "Upload Files Here…"
+      },
+      {
+        "command": "fileferry.remoteBrowser.uploadFolderHere",
+        "title": "Upload Folder Here…"
+      },
+      {
+        "command": "fileferry.remoteBrowser.uploadFilesToCurrentPath",
+        "title": "FileFerry: Upload Files to Current Path…"
+      },
+      {
+        "command": "fileferry.remoteBrowser.uploadFolderToCurrentPath",
+        "title": "FileFerry: Upload Folder to Current Path…"
+      },
+      {
         "command": "fileferry.remoteBrowser.createFileInCurrentPath",
         "title": "FileFerry: New File in Current Path…"
       },
@@ -289,6 +321,16 @@
           "group": "1_create@2"
         },
         {
+          "command": "fileferry.remoteBrowser.uploadFilesToCurrentPath",
+          "when": "view == fileferry.remoteBrowser",
+          "group": "2_upload@1"
+        },
+        {
+          "command": "fileferry.remoteBrowser.uploadFolderToCurrentPath",
+          "when": "view == fileferry.remoteBrowser",
+          "group": "2_upload@2"
+        },
+        {
           "command": "fileferry.openSettings",
           "when": "view == fileferry.serversView",
           "group": "navigation"
@@ -341,6 +383,16 @@
           "group": "1_modification@2"
         },
         {
+          "command": "fileferry.remoteBrowser.uploadFilesHere",
+          "when": "view == fileferry.remoteBrowser && viewItem == remoteDirectory",
+          "group": "1_transfer@1"
+        },
+        {
+          "command": "fileferry.remoteBrowser.uploadFolderHere",
+          "when": "view == fileferry.remoteBrowser && viewItem == remoteDirectory",
+          "group": "1_transfer@2"
+        },
+        {
           "command": "fileferry.remoteBrowser.downloadToWorkspace",
           "when": "view == fileferry.remoteBrowser && viewItem == remoteFile",
           "group": "1_transfer"
@@ -351,13 +403,33 @@
           "group": "1_transfer"
         },
         {
+          "command": "fileferry.remoteBrowser.rename",
+          "when": "view == fileferry.remoteBrowser && viewItem =~ /^remote(File|Directory)$/",
+          "group": "1_modification@3"
+        },
+        {
+          "command": "fileferry.remoteBrowser.duplicate",
+          "when": "view == fileferry.remoteBrowser && viewItem =~ /^remote(File|Directory)$/",
+          "group": "1_modification@4"
+        },
+        {
+          "command": "fileferry.remoteBrowser.move",
+          "when": "view == fileferry.remoteBrowser && viewItem =~ /^remote(File|Directory)$/",
+          "group": "1_modification@5"
+        },
+        {
+          "command": "fileferry.remoteBrowser.chmod",
+          "when": "view == fileferry.remoteBrowser && viewItem =~ /^remote(File|Directory)$/",
+          "group": "1_modification@6"
+        },
+        {
           "command": "fileferry.remoteBrowser.delete",
           "when": "view == fileferry.remoteBrowser && viewItem =~ /^remote(File|Directory)$/",
           "group": "3_destructive"
         },
         {
           "command": "fileferry.remoteBrowser.copyPath",
-          "when": "view == fileferry.remoteBrowser",
+          "when": "view == fileferry.remoteBrowser && viewItem =~ /^remote(File|Directory)$/",
           "group": "2_actions"
         },
         {
@@ -415,6 +487,30 @@
         },
         {
           "command": "fileferry.remoteBrowser.diffWithLocal",
+          "when": "false"
+        },
+        {
+          "command": "fileferry.remoteBrowser.rename",
+          "when": "false"
+        },
+        {
+          "command": "fileferry.remoteBrowser.duplicate",
+          "when": "false"
+        },
+        {
+          "command": "fileferry.remoteBrowser.move",
+          "when": "false"
+        },
+        {
+          "command": "fileferry.remoteBrowser.chmod",
+          "when": "false"
+        },
+        {
+          "command": "fileferry.remoteBrowser.uploadFilesHere",
+          "when": "false"
+        },
+        {
+          "command": "fileferry.remoteBrowser.uploadFolderHere",
           "when": "false"
         },
         {

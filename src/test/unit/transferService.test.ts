@@ -17,6 +17,7 @@ describe('TransferService interface', () => {
     expect(typeof service.exists).toBe('function');
     expect(typeof service.deleteFile).toBe('function');
     expect(typeof service.deleteDirectory).toBe('function');
+    expect(typeof service.rename).toBe('function');
     expect(typeof service.disconnect).toBe('function');
   });
 });

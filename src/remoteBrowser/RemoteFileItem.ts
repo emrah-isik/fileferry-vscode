@@ -7,6 +7,9 @@ export interface RemoteEntry {
   modifyTime: number;
   remotePath: string;
   symlinkTarget?: 'd' | '-' | null;
+  // Octal permission mode from the listing, when the server reported one
+  // (see FileEntry.mode). Prefills the Change Permissions… input.
+  mode?: string;
 }
 
 export function formatSize(bytes: number): string {

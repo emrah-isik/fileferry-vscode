@@ -47,6 +47,17 @@ describe('RemoteBrowserProvider', () => {
       expect(children![0].entry.name).toBe('index.html');
     });
 
+    it('passes the listing mode through to the entry, absent when the server did not report one', async () => {
+      mockConnection.listDirectory.mockResolvedValue([
+        { name: 'index.html', type: '-', size: 1024, modifyTime: 1710000000000, mode: '644' },
+        { name: 'unknown.bin', type: '-', size: 10, modifyTime: 1710000000000 },
+      ]);
+
+      const children = await provider.getChildren();
+      expect(children![0].entry.mode).toBe('644');
+      expect(children![1].entry.mode).toBeUndefined();
+    });
+
     it('lists directory contents when called with a directory item', async () => {
       const dirEntry: RemoteEntry = {
         name: 'logs',
@@ -190,6 +201,16 @@ describe('RemoteBrowserProvider', () => {
         command: 'fileferry.remoteBrowser.refresh',
         title: 'Retry connection',
       });
+    });
+
+    it('the error placeholder is NOT a remoteFile — no file context menu on it', async () => {
+      mockConnection.listDirectory.mockRejectedValue(new Error('Connection refused'));
+
+      const children = await provider.getChildren();
+      // 'remoteFile' would match every file-scoped view/item/context clause
+      // (Rename…, Duplicate…, Compare with Local, …) on a row that is not a
+      // file. A distinct value matches none of them.
+      expect(children![0].contextValue).toBe('remotePlaceholder');
     });
 
     it('permission denied placeholder has reconnect command', async () => {
@@ -362,6 +383,14 @@ describe('RemoteBrowserProvider', () => {
         command: 'fileferry.remoteBrowser.refresh',
         title: 'Reconnect',
       });
+    });
+
+    it('the Disconnected placeholder is NOT a remoteFile — no file context menu on it', async () => {
+      await provider.suspend();
+
+      const children = await provider.getChildren();
+
+      expect(children![0].contextValue).toBe('remotePlaceholder');
     });
 
     it('suspend clears the current path and announces it', async () => {

@@ -113,6 +113,7 @@ export class RemoteBrowserProvider implements vscode.TreeDataProvider<RemoteFile
         size: entry.size,
         modifyTime: entry.modifyTime,
         remotePath: path.posix.join(parentPath, entry.name),
+        ...(entry.mode !== undefined ? { mode: entry.mode } : {}),
       };
       if (entry.type === 'l' && symlinkTargets.has(entry.name)) {
         remoteEntry.symlinkTarget = symlinkTargets.get(entry.name)!;
@@ -141,6 +142,9 @@ export class RemoteBrowserProvider implements vscode.TreeDataProvider<RemoteFile
     };
 
     const item = new RemoteFileItem(disconnectedEntry);
+    // Not 'remoteFile' (the constructor's default for type '-'): that would
+    // match every file-scoped context-menu clause on a row that isn't a file.
+    item.contextValue = 'remotePlaceholder';
     item.description = 'Click to reconnect';
     item.iconPath = new vscode.ThemeIcon('debug-disconnect');
     item.command = { command: 'fileferry.remoteBrowser.refresh', title: 'Reconnect' };
@@ -169,6 +173,7 @@ export class RemoteBrowserProvider implements vscode.TreeDataProvider<RemoteFile
     };
 
     const item = new RemoteFileItem(errorEntry);
+    item.contextValue = 'remotePlaceholder'; // same reasoning as the Disconnected row
     item.description = message;
     item.iconPath = new vscode.ThemeIcon('warning');
 

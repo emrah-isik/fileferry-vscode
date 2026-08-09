@@ -115,11 +115,32 @@ export class FtpService implements TransferService {
       throw new Error('Not connected. Call connect() before listing directories.');
     }
     const items = await this.client.list(remotePath);
+
+    // Some servers (vsftpd among them) answer LIST on a permission-denied
+    // directory with an EMPTY success — indistinguishable from a genuinely
+    // empty directory, which would let a recursive copy silently skip an
+    // unreadable subtree (feature-33 manual pass, finding G6-FTP). Traversal
+    // is denied where reading is, so a cd probe tells the two apart. Only
+    // empty listings pay the extra round-trip. The cwd change is harmless:
+    // every FileFerry remote path is absolute (FtpService.mkdir caveat).
+    if (items.length === 0) {
+      try {
+        await this.client.cd(remotePath);
+      } catch {
+        throw new Error(`Unreadable directory (listing denied): ${remotePath}`);
+      }
+    }
+
     return items.map(item => ({
       name: item.name,
       type: this.mapType(item) as 'd' | '-' | 'l',
       size: item.size,
       modifyTime: item.modifiedAt ? item.modifiedAt.getTime() : 0,
+      // basic-ftp parses unix-style LIST output into per-triad digits; servers
+      // with other listing formats leave permissions unset — so must mode.
+      ...(item.permissions !== undefined
+        ? { mode: `${item.permissions.user}${item.permissions.group}${item.permissions.world}` }
+        : {}),
     }));
   }
 
@@ -218,16 +239,25 @@ export class FtpService implements TransferService {
     await this.client.removeDir(remotePath);
   }
 
+  async rename(oldPath: string, newPath: string): Promise<void> {
+    if (!this.client) {
+      throw new Error('Not connected. Call connect() before renaming.');
+    }
+    // RNFR/RNTO with absolute paths on both sides — statType/ensureDir drift
+    // the client's working directory, so relative paths must never be trusted.
+    await this.client.rename(oldPath, newPath);
+  }
+
   async chmod(remotePath: string, mode: number): Promise<void> {
     if (!this.client) {
       throw new Error('Not connected. Call connect() before chmod.');
     }
     const octal = mode.toString(8);
-    try {
-      await this.client.send(`SITE CHMOD ${octal} ${remotePath}`);
-    } catch {
-      // FTP SITE CHMOD is server-dependent — silently ignore if unsupported
-    }
+    // SITE CHMOD is server-dependent, and failures PROPAGATE (33e L2): a
+    // panel chmod must not report success on a server that rejected it. The
+    // deploy path is unaffected — UploadOrchestratorV2's call site wraps its
+    // chmod in a best-effort try/catch of its own.
+    await this.client.send(`SITE CHMOD ${octal} ${remotePath}`);
   }
 
   async disconnect(): Promise<void> {
