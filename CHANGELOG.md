@@ -2,6 +2,25 @@
 
 All notable changes to FileFerry will be documented in this file.
 
+## [0.14.0] - 2026-08-08
+
+### Added
+
+- **The Remote Files panel is now a complete file manager.** Beyond browsing, editing, and creating, you can now reshape the server directly from the tree — and every operation follows the same rules: dry run is honoured (the plan is logged, nothing is sent), deploy hooks never fire (these are file-manager actions, not deploys), and collisions are never merged — writing onto an existing file asks Overwrite/Cancel, onto an existing folder the operation aborts.
+- **Rename files and folders — open editors follow.** **Rename…** prefills the current name with just the stem selected, validates as you type, and — the important part — any file you have open for remote editing follows the rename (or a rename of a folder above it): the next save lands on the *new* path, instead of recreating the file under the old name.
+- **Duplicate files and whole folders.** A single file prefills `name copy.ext`; multi-selections never prompt — copies auto-number (`copy`, `copy 2`, …) and are skipped with a note when every name is taken. Folder duplicates scan the tree first and confirm with the real numbers ("214 files, 132 MB, 3 symlinks skipped"), recreate empty subfolders, and refuse to start at all if any subfolder can't be listed — you'll never get a partial copy that claims success. Cancelling mid-copy stops honestly and reports what was copied.
+- **Move to any folder on the server.** A destination browser navigates the remote tree (`..`, subfolders, an explicit **Select this folder** row). Moving a folder into itself is refused up front, items already in the destination are skipped with a note, nested selections are deduplicated, and open edit sessions follow moved files just like renames.
+- **Change permissions from the panel.** One octal prompt (`644`, `755`, `2775`) — **prefilled with the file's current mode** — applies to every selected item. Deliberately non-recursive on folders. On FTP servers that reject `SITE CHMOD`, the panel now reports the failure honestly instead of pretending it worked.
+- **Upload local files and folders to exactly where you're looking.** **Upload Files Here…** / **Upload Folder Here…** (plus "…to Current Path" panel-menu variants) deliberately bypass path mappings and deploy settings — the confirmation says so, with the exact file count and an overwrite note. Folder uploads recreate the subtree (no skip-list: a `node_modules` inside shows up in the count *before* anything transfers) and are cancellable mid-run with the remainder reported. Both log to Upload History under a new **Remote Upload** source; duplicates log under **Remote Duplicate**.
+- **Multi-select in the Remote Files panel.** Ctrl/Shift-click several rows: Delete confirms once with the exact count and deduplicates nested selections, Download runs under one progress notification, Copy Remote Path joins the paths line by line — and the new Duplicate, Move, and Change Permissions are selection-aware from day one.
+- **Native pickers for remote windows (WSL/SSH/containers).** VS Code's fallback file dialog in remote windows can't multi-select files or cleanly confirm a folder, so FileFerry ships its own there: a folder browser with an explicit **Select this folder** row, and a two-step file picker (choose the folder, then check files off a list). Desktop windows keep the real native dialogs.
+
+### Fixed
+
+- **Disconnect Remote Browser now actually disconnects.** Previously the panel's own refresh immediately reconnected, making the command a no-op while the panel was visible. The panel now shows a **Disconnected** row and stays offline until you explicitly reconnect (click the row, refresh, or navigate); background refreshes never sneak the connection back open.
+- **Unreadable directories on FTP no longer masquerade as empty.** Some FTP servers answer a listing of a permission-denied directory with an empty success; FileFerry now probes and reports the directory as unreadable — which is also what makes the folder-duplicate abort guarantee hold on FTP.
+- **The Disconnected/error placeholder rows no longer offer the file context menu** (Rename…, Delete from Server, and friends appeared there; every entry was a harmless no-op, but the menu was misleading).
+
 ## [0.13.0] - 2026-07-31
 
 ### Changed

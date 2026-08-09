@@ -97,18 +97,23 @@ Type a token once in the Hooks tab and FileFerry puts it in your **OS keychain**
 
 ## Browse and manage remote files
 
-A dedicated sidebar panel lets you browse, edit, create, download, compare, and delete files directly on the server.
+A dedicated sidebar panel is a full remote file manager: browse, edit, create, rename, duplicate, move, chmod, upload, download, compare, and delete — directly on the server.
 
 ![Remote Files panel](https://raw.githubusercontent.com/emrah-isik/fileferry-vscode/main/resources/readme/fileferry_remote_files_panel.png)
 
-- **Remote File Browser** — expandable directory tree with persistent connection and idle timeout
+- **Remote File Browser** — expandable directory tree with persistent connection, idle timeout, and **multi-select** (Ctrl/Shift-click; delete, download, duplicate, move, and chmod all act on the whole selection)
 - **Edit in place** — open a remote file, edit, save: it uploads straight back to the server it came from. If the file changed on the server in the meantime, a warning offers Overwrite or a side-by-side diff before anything is lost
 - **New File / New Folder** — right-click a folder (or use the panel menu's "in Current Path" variants) to create entries on the server; a new file opens immediately, ready to type into and save back
+- **Rename & Move** — with a destination browser for moves, into-itself guards, and one crucial nicety: files you have open for editing *follow* a rename or move, so the next save lands on the new path
+- **Duplicate** — files or whole folders; folder copies scan first and confirm with real counts ("214 files, 132 MB"), recreate empty subfolders, and abort up front rather than ever producing a silently partial copy
+- **Change Permissions** — octal prompt prefilled with the current mode; honest errors on FTP servers that reject `SITE CHMOD`
+- **Upload Files / Folder Here** — put local files at exactly the path you're looking at, bypassing mappings by design (the confirmation says so, with exact counts); cancellable mid-run
+- **Collisions are never merged** — overwriting a file always asks; folders always abort; multi-select operations never prompt and never overwrite
 - **Compare with Remote** — side-by-side diff of local vs server version (`Alt+P`). Identical files, and files differing only in line endings, are reported directly instead of opening an empty diff
 - **Compare with Local** — right-click a remote file to diff against the local counterpart
 - **Download to Workspace** — right-click a remote file to download it to the mapped local path
-- **Delete from Server** — right-click to delete with confirmation
-- **Copy Remote Path** — copy any remote path to clipboard
+- **Delete from Server** — right-click to delete with confirmation; multi-select confirms once with the exact count
+- **Copy Remote Path** — copy any remote path (or several, newline-joined) to clipboard
 
 ---
 
@@ -162,7 +167,7 @@ This file is created and managed by FileFerry — you do not need to edit it man
 
 ## Upload history
 
-Every deploy is logged. Each entry records how it was triggered — **Manual**, **On Save**, **Multi-Server**, **Watch**, or **Sync** — shown in a **Source** column. Filter by server, result, source, or file path.
+Every deploy is logged. Each entry records how it was triggered — **Manual**, **On Save**, **Multi-Server**, **Watch**, **Sync**, **Remote Edit**, **Remote Create**, **Remote Duplicate**, or **Remote Upload** — shown in a **Source** column. Filter by server, result, source, or file path.
 
 ![Upload History](https://raw.githubusercontent.com/emrah-isik/fileferry-vscode/main/resources/readme/fileferry_upload_history.png)
 

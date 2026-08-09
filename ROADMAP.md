@@ -1,13 +1,19 @@
 # FileFerry Roadmap
 
-## Current — v0.13
+## Current — v0.14
 
-- Everything in v0.12, plus:
-- FileFerry is now MIT-licensed — relicensed from GPL-3.0-or-later to make adoption and integration easier; all previous releases remain available under the GPL
+- The Remote Files panel is a complete file manager — rename, duplicate (files and whole folders, with real-count confirmations), move (with a destination browser), change permissions (prefilled with the current mode), and upload local files or folders to exactly the path you're looking at
+- Open edit sessions follow renames and moves — saving after a rename lands on the new path instead of recreating the old file
+- Multi-select in the Remote Files panel — delete, download, copy path, duplicate, move, and chmod act on the whole selection; collision-safe by design (multi-select never prompts and never overwrites)
+- Disconnect Remote Browser now genuinely disconnects (the panel stays offline until you explicitly reconnect), and FTP servers that hide unreadable directories or reject `SITE CHMOD` are reported honestly
 
 ---
 
 ## Previous Releases
+
+### v0.13
+
+- FileFerry is now MIT-licensed — relicensed from GPL-3.0-or-later to make adoption and integration easier; all previous releases remain available under the GPL
 
 ### v0.12
 
@@ -97,16 +103,16 @@
 
 ## Upcoming
 
-### v0.14 — SSH Power Features
+### v0.15 — SSH Power Features
 
 - SSH connection hopping (jump hosts), including `ProxyCommand` / `ProxyJump` from `~/.ssh/config`
 - Open SSH terminal to active server
 
 ### Later
 
-- More Remote Files panel management — rename, move, duplicate, upload-here, permissions
 - Batch deploy from branch diff (all files changed between two branches)
 - Additional sync directions — remote→local and bidirectional sync (v0.10 shipped the one-way local→remote mirror)
+- Download whole folders from the Remote Files panel
 
 ---
 

@@ -1,6 +1,6 @@
 # FileFerry Architecture
 
-This document covers the seven key design decisions that shape FileFerry's codebase.
+This document covers the nine key design decisions that shape FileFerry's codebase.
 
 ---
 
@@ -132,7 +132,9 @@ Using `ready`→`init` rather than injecting data into the HTML means the webvie
 
 **Validation flow**: All validation runs in the extension process (pure `src/utils/validation.ts` functions with no VSCode dependencies). The webview receives `{ command: 'validationError', errors: { [field]: message } }` and renders inline field errors. This keeps the webview thin and ensures validation logic is unit-testable without a webview environment.
 
-**CSP**: All three panels use `default-src 'none'; style-src ${cspSource}; script-src 'nonce-${nonce}'` — no inline scripts, no external resources, bundled JS loaded via nonce.
+**CSP**: All four panels use `default-src 'none'; style-src ${cspSource}; script-src 'nonce-${nonce}'` — no inline scripts, no external resources, bundled JS loaded via nonce.
+
+The Deployment Settings panel additionally carries the hook-secrets messages (`storeSecret`, `deleteSecret`, `renameSecret` → `secretsUpdated`/`secretError`): secret *names* flow to the webview for the missing-secret indicators, secret *values* only ever flow inward on an explicit store.
 
 ---
 
@@ -165,7 +167,7 @@ class DeploymentSettingsPanel {
 
 **Cross-panel navigation**: The "Manage Credentials" button in Deployment Settings sends `{ command: 'openCredentials' }` to the extension, which calls `vscode.commands.executeCommand('fileferry.openCredentials')`. This keeps the two panels decoupled — neither panel holds a reference to the other.
 
-**`retainContextWhenHidden: true`**: All three panels keep their JavaScript state alive when the tab is hidden. This preserves in-progress form edits when the user briefly switches tabs.
+**`retainContextWhenHidden: true`**: All four panels keep their JavaScript state alive when the tab is hidden. This preserves in-progress form edits when the user briefly switches tabs.
 
 ---
 
@@ -184,8 +186,12 @@ interface TransferService {
   resolveRemotePath(remotePath): Promise<string>;
   statType(remotePath): Promise<'d' | '-' | null>;
   stat(remotePath): Promise<{ mtime: Date } | null>;
+  mkdir(remotePath, recursive?): Promise<void>;
+  exists(remotePath): Promise<boolean>;
   deleteFile(remotePath): Promise<void>;
   deleteDirectory(remotePath): Promise<void>;
+  rename(oldPath, newPath): Promise<void>;
+  chmod(remotePath, mode): Promise<void>;
   disconnect(): Promise<void>;
 }
 ```
@@ -194,8 +200,32 @@ interface TransferService {
 
 **Factory**: `createTransferService(type: ServerType)` returns the correct implementation based on the server's protocol type. All consumers (upload orchestrator, backup service, file date guard, diff service, remote browser) use this factory instead of instantiating a specific service directly.
 
+**Remote command execution is deliberately NOT on the interface.** Only SSH transports can exec, so `RemoteCommandRunner` (`execCommand`) is a separate capability implemented by `SftpService` alone; callers narrow with the `canExec()` type predicate. `execCommand` returns stdout, stderr, and the raw exit code without judging success — hook failure is decided on **exit code only**, never on stderr (servers print MOTD/banners to stderr on success). Deploy hooks (feature 27) are its only consumer.
+
 **Protocol-specific constraints**:
 
 - FTP/FTPS only supports password authentication. The Deployment Settings webview filters the credential dropdown to password-only credentials when an FTP protocol is selected. The backend also validates this before connecting.
 - Host key verification only applies to SFTP connections. FTP/FTPS connections skip the `hostVerifier` option.
-- `FileEntry` is a protocol-agnostic type (`{ name, type, size, modifyTime }`) that replaces the ssh2-specific `SftpClient.FileInfo` across the codebase.
+- `FileEntry` is a protocol-agnostic type (`{ name, type, size, modifyTime, mode? }`) that replaces the ssh2-specific `SftpClient.FileInfo` across the codebase. `mode` is the listing-derived octal permission string (`"644"`) — always present on SFTP, only for unix-style listings on FTP; consumers must not assume it.
+- FTP `mkdir` is basic-ftp's `ensureDir`: it always creates missing parents *and* changes the client's working directory — acceptable only because every FileFerry remote path is absolute and callers pre-check collisions with `exists()`.
+- Honest failures: `FtpService.chmod` propagates `SITE CHMOD` rejections (the deploy path best-efforts at its own call site), and an **empty** FTP listing is verified with a `cd` probe — some servers report permission-denied directories as empty, which would otherwise let a recursive copy silently skip a subtree.
+
+---
+
+## 8. Deploy Hooks and Secret Resolution
+
+Per-server `preDeploy`/`postDeploy` hooks live in the committed `fileferry.json`. Local hooks run via `spawn(cmd, { shell: vscode.env.shell || true })` at the workspace root; remote hooks run over the deploy's own SSH connection (see `RemoteCommandRunner` above). They are wired into `UploadOrchestratorV2` behind a `runHooks` flag so that only **deliberate** deploys fire them — upload-on-save, the watcher, and every Remote Files panel operation never do. Order: local pre → connect → remote pre → transfer → post; a failed pre-hook aborts before any transfer.
+
+**Secrets** (`${secret:NAME}`): `HookSecretManager` stores values in `context.secrets`, keyed per project by a hash of the workspace root; the committed config only ever holds the reference by name. Resolution happens at the last moment before a hook runs (`hookSecretResolution`): local hooks get the value injected as an environment variable (the token is rewritten to the shell's own `$NAME` syntax, so the value never enters the command string); remote hooks inline it at exec time. A pre-flight check aborts the whole deploy before any transfer when a hook that would run references a missing secret. `SecretMaskingOutputChannel` masks resolved values as `••••` in all output.
+
+---
+
+## 9. The Remote Files Panel Write Layer
+
+The panel graduated from a browser to a file manager (features 32–33). Its design pivots:
+
+- **`RemoteBrowserConnection`** owns one lazily-connected `TransferService` for the panel: `ensureConnected()` before every operation, a 5-minute idle timeout after each, reconnect keyed to server *identity* (a default-server or credential change drops the session; a `rootPath` edit doesn't). Panel writes go through its thin passthroughs (`uploadFile`, `createDirectory`, `rename`, `chmod`, `statRemoteType`, deletes) — never through `UploadOrchestratorV2`, which is exactly why panel operations can never fire deploy hooks.
+- **Edit sessions**: opening a remote file downloads it to a temp path and registers a `RemoteEditSessionRegistry` entry (server identity, remote path, baseline mtime + sha256). `RemoteEditSaveListener` uploads on save, using raw mtime *inequality* plus a sha256 comparison to separate *changed* (conflict modal) from merely *touched* (silent upload), and re-baselines after every successful upload. Renames and moves call `rewriteRemotePath(serverId, oldPath, newPath)` — exact match for files, prefix match for folders — so open sessions follow the file instead of recreating it under the old name.
+- **Two remote walkers with opposite error contracts** — deliberately: `SyncTreeWalker.walkRemoteTree` swallows listing errors into an empty subtree (correct for sync: "remote root not created yet" means everything uploads), while `StrictRemoteTreeWalker.walkRemoteTreeStrict` **throws** on any listing error and also emits directories (empty ones must be recreated). Folder duplication uses the strict walker: a blind spot aborts before a single write rather than producing a partial copy that reports success.
+- **History triggers**: `UploadHistoryEntry.trigger` is a closed union (`manual | multi-server | save | watch | sync | remote-edit | remote-create | remote-duplicate | remote-upload`). Panel operations that move bytes log with their own trigger; rename/move/chmod/delete log nothing, keeping the `action` union (`upload | delete`) untouched.
+- **Remote-window pickers**: in remote windows (`vscode.env.remoteName` set) the native file dialog degrades to VS Code's simple dialog, which can't confirm a folder from its list and ignores multi-select. `pickLocalDirectory` (navigation QuickPick with an explicit confirm row) and `pickLocalFiles` (two-step: folder, then a `canPickMany` checkbox list) replace it there; desktop windows keep native dialogs. `pickRemoteDirectory` is the same navigation pattern over the panel's own connection, used by Move.

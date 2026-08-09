@@ -10,8 +10,12 @@ For a quick overview, see the [README](../README.md).
 
 - [Getting Started](#getting-started)
 - [Uploading Files](#uploading-files)
+- [The Changed Files View](#the-changed-files-view)
 - [Multi-Server Push](#multi-server-push)
+- [Syncing to the Server](#syncing-to-the-server)
+- [Deploy Hooks and Secrets](#deploy-hooks-and-secrets)
 - [Browsing Remote Files](#browsing-remote-files)
+- [Managing Remote Files](#managing-remote-files)
 - [Comparing Files](#comparing-files)
 - [Downloading Files](#downloading-files)
 - [Deleting Remote Files](#deleting-remote-files)
@@ -130,6 +134,22 @@ Enable this in **Project Settings** (`FileFerry: Project Settings`) to automatic
 
 Toggle it quickly from the status bar without opening settings.
 
+### Upload All Changed Files
+
+`Ctrl+Alt+U` (or **FileFerry: Upload All Changed Files** from the palette) deploys everything git considers changed to the default server — no selection needed.
+
+### Upload Only If Newer
+
+**FileFerry: Upload Changed Files (Only If Newer)** — the `$(history)` button on the Source Control title bar — is the smart-sync variant: before uploading, each file's remote timestamp is checked, and any file whose remote copy is the **same age or newer** is skipped (skips are listed in the output channel, not in history). Re-running a deploy only pushes what actually moved forward.
+
+### Upload from Commits
+
+**FileFerry: Upload Files from Commit** shows your recent commits; pick one or more and FileFerry uploads the **working-tree version** of every file those commits touched.
+
+### Watch & Auto-Upload
+
+For build outputs and other generated files that never fire an editor save, enable the opt-in file-system watcher in **Project Settings**: turn on **Watch & auto-upload** and list workspace-relative glob patterns (e.g. `dist/**`). Files matching the globs upload automatically when they change on disk — an explicit allowlist, so they upload **even when git-ignored** (unlike upload-on-save). Changes are debounced and batched, `excludedPaths` and the file date guard still apply, and watch uploads appear in Upload History under the **Watch** source. Watch uploads never run deploy hooks.
+
 ### Upload Confirmation
 
 Before every upload, FileFerry shows a summary of what will be uploaded and what will be deleted. You can review and confirm or cancel.
@@ -141,6 +161,16 @@ To re-enable prompts, run `FileFerry: Reset Upload Confirmations`.
 ### Atomic Upload
 
 FileFerry uploads to a temporary file first, then renames it to the final path. This prevents partial or corrupted files on the server if the connection drops mid-transfer.
+
+---
+
+## The Changed Files View
+
+The FileFerry sidebar has a **Changed Files** view — FileFerry's own tree of everything git considers changed, refreshed automatically as you edit.
+
+- Select one or more rows (Ctrl/Shift-click) and press `Alt+U` to upload the selection — or press the `$(cloud-upload)` title button, which uploads your selection, or **all** changed files when nothing is selected.
+- The `$(history)` title button is the **only-if-newer** variant of the same action: selection if you have one, everything otherwise, skipping files whose remote copy is the same age or newer.
+- Right-click a row for **Upload** and **Compare with Remote**.
 
 ---
 
@@ -157,21 +187,77 @@ All selected servers receive the files simultaneously. Each server uses its own 
 
 ---
 
+## Syncing to the Server
+
+Beyond deploying individual changes, FileFerry can mirror a whole tree to the server in one action.
+
+### Sync to Remote
+
+Run **FileFerry: Sync to Remote** (Command Palette or the status-bar menu). FileFerry walks your mapped local tree and the corresponding remote tree, reconciles them, and:
+
+- **uploads** files that are new locally or newer than their remote copy,
+- **skips** files the remote already holds at the same age or newer,
+- optionally **deletes remote extras** — files that exist on the server but no longer exist locally.
+
+### Sync Folder to Remote
+
+Right-click one or more folders in the Explorer and choose **FileFerry: Sync Folder to Remote** to run the same mirror scoped to just those subtrees. Deletes (if enabled) are restricted to the folders you picked.
+
+### Delete-extras safety
+
+Deleting remote extras is **off by default** and asked per run. When you opt in:
+
+1. A dry-run preview of the full plan is shown first.
+2. A modal confirmation names the exact number of files that would be deleted.
+3. Deletes are restricted to the mapped remote root (or the right-clicked folders).
+4. Files matching `excludedPaths` are never pruned.
+5. With **Back up before sync deletes** (a Project Settings toggle, on by default), each to-be-deleted file is downloaded to `.vscode/fileferry-backups/` first.
+
+`.git` and `node_modules` are always skipped in both directions. Sync transfers appear in Upload History under the **Sync** source. Symlinks are neither synced nor pruned.
+
+---
+
+## Deploy Hooks and Secrets
+
+Each server can define **pre-deploy** and **post-deploy** hook commands (Deployment Settings → **Hooks** tab) — build assets before upload, reload a service or run migrations after.
+
+### How hooks run
+
+- **Local** hooks run in your shell at the workspace root; **remote** hooks run over the deploy's own SSH connection (SFTP only — on FTP a remote hook is skipped with a warning).
+- Hooks fire **only for deliberate deploys** (Upload / Upload All Changed / Only-If-Newer / To Servers / From Commits, and the Sync commands). Upload-on-save, the watcher, and every Remote Files panel operation never run them.
+- Order: local pre-hooks → connect → remote pre-hooks → transfer → post-hooks. A long local build therefore never holds an SSH session idle.
+- A failed **pre**-hook aborts the deploy before anything is transferred. A failed **post**-hook is reported but never rolls back files already uploaded. Each hook can opt into **continue on error** and a **timeout**.
+- "Failed" means a non-zero exit code, a process that would not start, or a timeout — **never** stderr output on its own (many servers print banners/MOTD to stderr on success).
+- Two safety gates: hooks are inert in an **untrusted workspace** (Workspace Trust), and the deploy confirmation names every command that will run.
+
+### Keychain-backed secrets — `${secret:NAME}`
+
+Type a secret once in the Hooks tab's **Secrets** section; the value goes into your OS keychain and the committed `fileferry.json` holds only the `${secret:NAME}` reference.
+
+- Secrets are **per-project and machine-local** — a teammate re-enters them once; the Hooks tab flags referenced secrets that are missing on this machine.
+- Resolution happens only at the moment a hook runs: dialogs, logs, and dry run always show the unresolved token, and resolved values are masked as `••••` in the output channel.
+- Local hooks receive the value as an **environment variable** (the token is rewritten to your shell's own syntax), so it never enters the command string. Remote hooks inline it at exec time — briefly visible in the server's process list, so prefer the server's own environment for remote secrets.
+- **Pre-flight check**: a deploy aborts before any transfer when a hook that would run references a missing or malformed secret — a post-deploy migration can't be silently skipped after the files are already live.
+- Pasted a raw secret into a command? The inline warning offers a one-click **Move to keychain** that stores it and rewrites the command to a reference.
+
+---
+
 ## Browsing Remote Files
 
 Click the **FileFerry icon** in the activity bar to open the sidebar. It has two panels:
 
 ### Remote File Browser
 
-Browse your remote server's filesystem. Click directories to expand them, click files to open them in the editor.
+Browse your remote server's filesystem. Click directories to expand them, click files to open them in the editor (editable — see [Managing Remote Files](#managing-remote-files)).
 
 Features:
 
 - File type icons match your VS Code icon theme
 - Persistent connection with automatic idle timeout
+- **Multi-select** — Ctrl/Shift-click several rows; Delete, Download, Copy Path, Duplicate, Move, and Change Permissions all operate on the whole selection. A context-menu command only appears when it applies to *every* selected row (stock VS Code behaviour), so e.g. a mixed file+folder selection won't offer file-only commands
 - Path indicator shows your current location
 - Use `FileFerry: Go to Remote Path` to jump to a specific directory
-- Use `FileFerry: Disconnect Remote Browser` to close the connection
+- Use `FileFerry: Disconnect Remote Browser` to close the connection — the panel shows a **Disconnected** row and stays offline until you click it (or navigate/refresh explicitly); internal refreshes never reconnect behind your back
 
 ### Servers Panel
 
@@ -179,6 +265,71 @@ See all configured servers at a glance. The active server shows a filled circle 
 
 - Click a server to switch to it
 - Right-click for options: **Edit Server**, **Test Connection**
+
+---
+
+## Managing Remote Files
+
+The Remote Files panel is a full file manager. Every operation below shares the same ground rules:
+
+- **Dry Run applies** — with dry run on, the operation logs its plan to the output channel (`$(beaker)` in the status bar) and touches nothing.
+- **Deploy hooks never fire** — panel operations are file-manager actions, not deploys.
+- **Collisions are never merged**: writing onto an existing *file* asks **Overwrite / Cancel**; onto an existing *folder* the operation aborts with an error. In multi-select mode nothing ever prompts and nothing is overwritten — colliding items are auto-renamed or skipped and reported.
+- Only operations that move bytes appear in Upload History (see [Upload History](#upload-history)); rename, move, and permission changes log nothing.
+
+### Edit in Place
+
+Click a file to open it in an editor wired to the server it came from: edit, save, and the file uploads straight back — no download-edit-upload round-trip.
+
+Every save is guarded: if the file **changed on the server** since you opened it, a modal offers **Overwrite** or **Show Diff** (server version side by side with yours) before anything is lost; a file merely *touched* (same content, newer timestamp) uploads without nagging. Saves honour Dry Run and Backup Before Overwrite and log to history under **Remote Edit**. If you switch the project's default server while editing, the save is blocked with a warning instead of landing on the wrong server.
+
+If you **rename or move** an open file (or a folder containing it) from the panel, the edit session follows: the next save uploads to the new path. The editor tab keeps its original name — cosmetic only.
+
+FTP note: FTP reports timestamps at second granularity, so conflict detection there is slightly coarser.
+
+### New File / New Folder
+
+Right-click a folder for **New File…** / **New Folder…**, or use the panel menu's **New File/Folder in Current Path…** to create at the path the panel currently shows. A new file is created empty and opens immediately in the edit-in-place flow — create → type → save lands on the server in one motion (logged under **Remote Create**). Names are validated as you type: no slashes or backslashes, not `.` or `..`.
+
+### Rename
+
+**Rename…** on any file or folder. The input is prefilled with the current name — for files only the stem is selected, so typing replaces the name and keeps the extension. Renaming to the unchanged name is a silent no-op.
+
+### Duplicate
+
+**Duplicate…** copies a file or a whole folder next to itself.
+
+- A single file prefills `<stem> copy<ext>` (`index.php` → `index copy.php`); a folder prefills `<name> copy`.
+- A multi-selection never prompts: copies are auto-named `copy`, `copy 2` … `copy 9`, then skipped and reported when every name is taken.
+- **Folder duplicates confirm with real numbers**: the tree is scanned first and the confirmation shows the exact file count and size — e.g. *"Duplicate 'assets' → 'assets copy' — 214 files, 132 MB (3 symlinks skipped)?"*. Empty subfolders are recreated; symlinks are never copied but are counted and named.
+- A scan error **aborts before anything is written** — you never get a silently partial copy. Cancelling mid-copy stops at the next file and reports what was copied and what remains; nothing is rolled back.
+- Copies move bytes, so each copied file logs to history under **Remote Duplicate**.
+
+### Move
+
+**Move to Folder…** relocates files and folders. A QuickPick browser picks the destination: navigate with the `$(folder)` rows and `..`, confirm with **Select this folder**.
+
+- Moving a folder into itself (or its own subtree) is refused before anything is touched; an item already in the chosen folder is skipped with a note.
+- A selected folder carries its selected contents with it (nested selections are deduplicated).
+- Open edit sessions on moved files follow to the new path. Moves log no history (no bytes move).
+
+### Change Permissions
+
+**Change Permissions…** prompts for an octal mode (`644`, `755`, `2775`) — prefilled with the file's **current mode** when the server reports one. One prompt applies to every selected item (not prefilled for multi-selections). Deliberately **non-recursive** on folders: a folder's mode changes, its contents don't. To chmod a folder *and* specific children, select them together.
+
+FTP honesty: on servers that reject `SITE CHMOD`, the panel reports the failure — it never fakes success.
+
+### Upload Here
+
+**Upload Files Here…** and **Upload Folder Here…** (context menu on any remote folder, plus **…to Current Path** variants in the panel menu) put local files at exactly that remote path.
+
+- **This deliberately bypasses your path mappings and deploy settings** — it is "put these bytes there", not a deploy — and the single up-front confirmation says so, together with the exact file count and a note that same-named remote files will be overwritten.
+- A folder upload recreates the subfolder skeleton and walks **everything** — there is no skip-list, so a folder containing `node_modules` uploads it too; the count in the confirmation makes that visible before anything transfers.
+- Uploads are cancellable mid-run; the remainder is reported. Each uploaded file logs to history under **Remote Upload**.
+
+### Remote-window pickers (WSL / SSH / containers)
+
+In a remote VS Code window the native OS file dialog can't browse the window's filesystem, so VS Code falls back to a limited "simple dialog". FileFerry replaces it where it falls short: **Upload Folder Here…** uses a QuickPick browser with an explicit **Select this folder** row, and **Upload Files Here…** is a two-step picker — *step 1 of 2* navigates to a folder (**Choose files from this folder**), *step 2 of 2* multi-selects its files with checkboxes (Space toggles, Enter confirms). Desktop windows keep the native dialogs.
 
 ---
 
@@ -191,6 +342,10 @@ Select a file and press `Alt+P` or right-click and choose **FileFerry: Compare w
 ### Remote vs Local (from Remote File Browser)
 
 Right-click a file in the Remote File Browser and choose **Compare with Local**. Same diff view, initiated from the remote side.
+
+### When there's nothing to see
+
+Both compare commands classify the files before opening a diff: **identical** files report "is identical" and skip the diff entirely, and files that differ **only in line endings** (CRLF vs LF, or a trailing newline) say so explicitly — noting that a deploy would still overwrite them — instead of opening an empty-looking diff.
 
 ---
 
@@ -217,6 +372,8 @@ When you delete a file locally, it appears as deleted in the Source Control pane
 
 Right-click a file or folder in the Remote File Browser and choose **Delete from Server**. A confirmation prompt always appears before deletion.
 
+With a multi-selection, one confirmation names the exact count ("Delete 3 items from the server?"), deletes run sequentially, and failures are aggregated into a single message. A selection containing both a folder and files inside it is deduplicated first — the folder delete covers its children, and the count stays honest.
+
 ---
 
 ## Upload History
@@ -231,7 +388,9 @@ Open the Upload History panel from any of these places:
 - **Status bar menu** — click the FileFerry status bar item, then choose **Upload History**
 - **Post-upload notification** — click the **Show History** button that appears after each upload
 
-The panel shows a table of all uploads with columns for timestamp, file, server, action (upload/delete), result (success/failed/cancelled), and error message.
+The panel shows a table of all uploads with columns for timestamp, file, server, action (upload/delete), **source** (how the transfer was triggered), result (success/failed/cancelled), and error message.
+
+The **Source** column distinguishes: **Manual**, **On Save**, **Multi-Server**, **Watch**, **Sync**, **Remote Edit** (edit-in-place saves), **Remote Create** (panel-created files), **Remote Duplicate**, and **Remote Upload** (upload-here). Only byte-moving operations are logged — renames, moves, permission changes, and deletes from the panel don't appear.
 
 ### Filtering
 
@@ -239,6 +398,7 @@ Use the controls at the top of the panel to narrow down the history:
 
 - **Server dropdown** — show only entries for a specific server
 - **Result dropdown** — filter by success, failed, or cancelled
+- **Source dropdown** — filter by any of the trigger sources above
 - **File search** — free-text search across file paths
 
 Filtering runs in the extension, not in the webview.
@@ -310,7 +470,10 @@ This is a per-project settings panel for toggling features that apply to the cur
 
 - **Dry run mode** — preview what would be deployed without transferring any files
 - **Upload on save** — auto-deploy files when you save
-- **Backup before overwrite** — download remote files before replacing them
+- **File date guard** — warn before overwriting a remote file newer than your local copy
+- **Backup before overwrite** — download remote files before replacing them (with retention controls)
+- **Watch & auto-upload** — the file-system watcher and its glob patterns (see [Uploading Files](#uploading-files))
+- **Back up before sync deletes** — download files before Sync to Remote's delete-extras removes them (on by default)
 
 These settings are stored in `.vscode/fileferry.json` alongside your server bindings.
 
@@ -357,6 +520,7 @@ Comma-separated glob patterns set in the Mappings tab. Files matching these patt
 | Key | Action | Context |
 | --- | --- | --- |
 | `Alt+U` | Upload selected files | Source Control, Explorer, or Editor |
+| `Alt+U` | Upload the selected rows | FileFerry → Changed Files view |
 | `Alt+P` | Compare with Remote | Source Control or Editor |
 | `Shift+Alt+U` | Upload to multiple servers | Source Control, Explorer, or Editor |
 | `Ctrl+Alt+U` | Upload all changed files | Source Control, Explorer, or Editor |
@@ -372,21 +536,37 @@ Customize via `Preferences -> Keyboard Shortcuts` and search for `fileferry`.
 | `FileFerry: Upload` | Upload selected files (SCM, Explorer, or Editor) |
 | `FileFerry: Upload to Servers...` | Upload selected files to multiple servers |
 | `FileFerry: Upload All Changed Files` | Deploy everything git considers changed to the default server (no selection needed) |
+| `FileFerry: Upload Changed Files (Only If Newer)` | Same, but skip files whose remote copy is the same age or newer |
 | `FileFerry: Upload Files from Commit` | Pick recent commit(s) from a list; uploads the working-tree version of every file those commits touched |
+| `FileFerry: Sync to Remote` | Mirror the whole mapped local tree to the server (opt-in delete-extras) |
+| `FileFerry: Sync Folder to Remote` | The same mirror scoped to right-clicked Explorer folder(s) |
 | `FileFerry: Compare with Remote` | Diff local file against the server version |
-| `FileFerry: Deployment Settings` | Open server and mapping configuration |
+| `FileFerry: Deployment Settings` | Open server, mapping, and hooks configuration |
 | `FileFerry: Project Settings` | Open project-level toggles |
 | `FileFerry: Upload History` | View and filter upload history for this project |
 | `FileFerry: Manage SSH Credentials` | Add, edit, or delete credentials |
 | `FileFerry: Switch Server` | Change the default server for this project |
 | `FileFerry: Go to Remote Path` | Navigate the Remote File Browser to a path |
-| `FileFerry: Disconnect Remote Browser` | Close the remote browser connection |
+| `FileFerry: Disconnect Remote Browser` | Suspend the remote browser connection until explicitly resumed |
 | `FileFerry: Reset Upload Confirmations` | Re-enable upload prompts |
 | `FileFerry: Test Connection` | Verify server credentials |
-| `Download to Workspace` | Download a remote file to the mapped local path |
+| `FileFerry: New File/Folder in Current Path…` | Create an entry at the path the panel currently shows |
+| `FileFerry: Upload Files/Folder to Current Path…` | Upload local files or a folder to the path the panel currently shows |
+
+Remote Files panel context menu (right-click a file or folder):
+
+| Command | Description |
+| --- | --- |
+| `New File…` / `New Folder…` | Create an entry inside the clicked folder |
+| `Upload Files Here…` / `Upload Folder Here…` | Put local files or a folder tree at the clicked folder (bypasses mappings) |
+| `Rename…` | Rename the clicked file or folder |
+| `Duplicate…` | Copy file(s) or folder(s) next to themselves (auto-named in multi-select) |
+| `Move to Folder…` | Move the selection to a destination picked in a folder browser |
+| `Change Permissions…` | Set an octal mode on the selection (prefilled with the current mode) |
+| `Download to Workspace` | Download remote file(s) to the mapped local path |
 | `Compare with Local` | Diff a remote file against the local version |
-| `Delete from Server` | Delete a remote file or folder (with confirmation) |
-| `Copy Remote Path` | Copy the full remote path to clipboard |
+| `Copy Remote Path` | Copy the selected remote path(s) to clipboard |
+| `Delete from Server` | Delete the selection (with confirmation) |
 
 ---
 
@@ -437,3 +617,11 @@ Click the error item to retry the connection, or check your server configuration
 ### Upload on save not working
 
 Make sure it's enabled in **Project Settings**. Files in your `.gitignore` are never auto-uploaded. Check that the file you're saving isn't excluded by your ignore patterns.
+
+### "Unreadable directory (listing denied)" on FTP
+
+Duplicating or browsing hit a directory your FTP user cannot read. Some FTP servers report such directories as *empty* rather than failing; FileFerry probes and refuses instead — otherwise a folder duplicate would silently produce a partial copy. Fix the directory's permissions on the server (or exclude it) and retry.
+
+### A remote hook didn't run on FTP
+
+Remote hooks need an SSH exec channel, which only SFTP provides. On FTP/FTPS servers the remote hook is skipped with a warning; local hooks run normally.
