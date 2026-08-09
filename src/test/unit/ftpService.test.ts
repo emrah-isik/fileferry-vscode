@@ -319,6 +319,32 @@ describe('FtpService', () => {
       const result = await service.listDirectoryDetailed('/remote');
       expect(result[0].mode).toBeUndefined();
     });
+
+    // Some servers (vsftpd among them) answer LIST on a permission-denied
+    // directory with an EMPTY success instead of an error — indistinguishable
+    // from a genuinely empty directory, which let a recursive copy silently
+    // skip an unreadable subtree (feature-33 manual pass, finding G6-FTP).
+    // A cd probe tells them apart: traversal into an unreadable dir is denied.
+    it('an empty listing is verified with a cd probe — genuinely empty returns []', async () => {
+      mockClient.list.mockResolvedValueOnce([]);
+      mockClient.cd.mockResolvedValueOnce(undefined);
+      await expect(service.listDirectoryDetailed('/remote/empty')).resolves.toEqual([]);
+      expect(mockClient.cd).toHaveBeenCalledWith('/remote/empty');
+    });
+
+    it('an empty listing whose cd probe is denied THROWS — never a fake empty dir', async () => {
+      mockClient.list.mockResolvedValueOnce([]);
+      mockClient.cd.mockRejectedValueOnce(new Error('550 Failed to change directory.'));
+      await expect(service.listDirectoryDetailed('/remote/secret')).rejects.toThrow(/unreadable|550/i);
+    });
+
+    it('a non-empty listing skips the cd probe — no extra round-trip', async () => {
+      mockClient.list.mockResolvedValueOnce([
+        { name: 'file.txt', type: 1, size: 500, modifiedAt: new Date(), isDirectory: false, isFile: true, isSymbolicLink: false },
+      ]);
+      await service.listDirectoryDetailed('/remote');
+      expect(mockClient.cd).not.toHaveBeenCalled();
+    });
   });
 
   describe('resolveRemotePath', () => {

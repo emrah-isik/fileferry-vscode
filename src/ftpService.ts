@@ -115,6 +115,22 @@ export class FtpService implements TransferService {
       throw new Error('Not connected. Call connect() before listing directories.');
     }
     const items = await this.client.list(remotePath);
+
+    // Some servers (vsftpd among them) answer LIST on a permission-denied
+    // directory with an EMPTY success — indistinguishable from a genuinely
+    // empty directory, which would let a recursive copy silently skip an
+    // unreadable subtree (feature-33 manual pass, finding G6-FTP). Traversal
+    // is denied where reading is, so a cd probe tells the two apart. Only
+    // empty listings pay the extra round-trip. The cwd change is harmless:
+    // every FileFerry remote path is absolute (FtpService.mkdir caveat).
+    if (items.length === 0) {
+      try {
+        await this.client.cd(remotePath);
+      } catch {
+        throw new Error(`Unreadable directory (listing denied): ${remotePath}`);
+      }
+    }
+
     return items.map(item => ({
       name: item.name,
       type: this.mapType(item) as 'd' | '-' | 'l',
