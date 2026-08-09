@@ -6,13 +6,14 @@ jest.mock('../../../commands/pickLocalDirectory');
 
 import { UploadHistoryService } from '../../../services/UploadHistoryService';
 import { walkLocalTree } from '../../../services/SyncTreeWalker';
-import { pickLocalDirectory } from '../../../commands/pickLocalDirectory';
+import { pickLocalDirectory, pickLocalFiles } from '../../../commands/pickLocalDirectory';
 import { uploadFilesHere, uploadFolderHere } from '../../../commands/uploadHere';
 
 const vscode = require('vscode');
 
 const mockWalkLocalTree = walkLocalTree as jest.Mock;
 const mockPickLocalDirectory = pickLocalDirectory as jest.Mock;
+const mockPickLocalFiles = pickLocalFiles as jest.Mock;
 
 const mockConnection = {
   uploadFile: jest.fn(),
@@ -390,13 +391,31 @@ describe('uploadHere', () => {
         expect(mockRefresh).not.toHaveBeenCalled();
       });
 
-      it('the files variant keeps the stock dialog even in a remote window', async () => {
-        vscode.window.showOpenDialog.mockResolvedValue([uri(path.join('/home/emo/project', 'a.txt'))]);
+      it('the files variant uses the two-step multi-select picker — the simple dialog ignores canSelectMany', async () => {
+        mockPickLocalFiles.mockResolvedValue([
+          path.join('/home/emo/project', 'a.txt'),
+          path.join('/home/emo/project', 'b.txt'),
+        ]);
 
         await uploadFilesHere('/var/www/html', dependencies());
 
-        expect(vscode.window.showOpenDialog).toHaveBeenCalled();
-        expect(mockPickLocalDirectory).not.toHaveBeenCalled();
+        expect(mockPickLocalFiles).toHaveBeenCalledWith('/tmp/workspace', expect.stringContaining('/var/www/html'));
+        expect(vscode.window.showOpenDialog).not.toHaveBeenCalled();
+        expect(mockConnection.uploadFile).toHaveBeenCalledWith(
+          path.join('/home/emo/project', 'a.txt'), '/var/www/html/a.txt'
+        );
+        expect(mockConnection.uploadFile).toHaveBeenCalledWith(
+          path.join('/home/emo/project', 'b.txt'), '/var/www/html/b.txt'
+        );
+      });
+
+      it('the files variant does nothing when the two-step picker is dismissed', async () => {
+        mockPickLocalFiles.mockResolvedValue(undefined);
+
+        await uploadFilesHere('/var/www/html', dependencies());
+
+        expect(mockConnection.uploadFile).not.toHaveBeenCalled();
+        expect(mockRefresh).not.toHaveBeenCalled();
       });
     });
   });

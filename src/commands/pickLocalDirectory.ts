@@ -68,3 +68,64 @@ export async function pickLocalDirectory(
     }
   }
 }
+
+// Two-step multi-FILE pick for remote windows (feature-33 manual pass,
+// finding U1): the simple file dialog those windows get ignores
+// canSelectMany, so real multi-select needs a QuickPick — which cannot mix
+// navigation with checkboxes. Step 1 navigates to a folder with
+// pickLocalDirectory; step 2 multi-selects from a checkbox list of that
+// folder's files. Returns absolute paths, or undefined on cancel/no files.
+export async function pickLocalFiles(
+  startPath: string,
+  title: string
+): Promise<string[] | undefined> {
+  const directory = await pickLocalDirectory(startPath, title);
+  if (directory === undefined) {
+    return undefined;
+  }
+
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(directory, { withFileTypes: true });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    vscode.window.showErrorMessage(`FileFerry: Could not list ${directory} — ${message}`);
+    return undefined;
+  }
+
+  const fileNames = entries
+    .filter(entry => {
+      if (entry.isFile()) {
+        return true;
+      }
+      if (entry.isSymbolicLink()) {
+        // statSync follows the link; a broken link throws and is hidden.
+        try {
+          return fs.statSync(path.join(directory, entry.name)).isFile();
+        } catch {
+          return false;
+        }
+      }
+      return false;
+    })
+    .map(entry => entry.name)
+    .sort();
+
+  if (fileNames.length === 0) {
+    vscode.window.showInformationMessage(`FileFerry: ${directory} contains no files to upload.`);
+    return undefined;
+  }
+
+  const picked = await vscode.window.showQuickPick(
+    fileNames.map(name => ({ label: name })),
+    {
+      title: `${title}: ${directory}`,
+      placeHolder: 'Select the files to upload (Space toggles, Enter confirms)',
+      canPickMany: true,
+    }
+  );
+  if (!picked || picked.length === 0) {
+    return undefined;
+  }
+  return picked.map(item => path.join(directory, item.label));
+}

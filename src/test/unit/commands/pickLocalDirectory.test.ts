@@ -3,7 +3,7 @@ import * as path from 'path';
 jest.mock('fs');
 
 import * as fs from 'fs';
-import { pickLocalDirectory } from '../../../commands/pickLocalDirectory';
+import { pickLocalDirectory, pickLocalFiles } from '../../../commands/pickLocalDirectory';
 
 const vscode = require('vscode');
 
@@ -140,5 +140,90 @@ describe('pickLocalDirectory', () => {
       expect.stringContaining('permission denied')
     );
     expect(picked).toBeUndefined();
+  });
+});
+
+// Two-step multi-file pick for remote windows (feature-33 manual pass, finding
+// U1): VS Code's simple file dialog ignores canSelectMany, so files are picked
+// by navigating to a folder (pickLocalDirectory loop) and then multi-selecting
+// from a checkbox QuickPick of that folder's files.
+describe('pickLocalFiles', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockReaddirSync.mockReturnValue([
+      dirent('a.txt', 'file'),
+      dirent('b.txt', 'file'),
+      dirent('assets', 'directory'),
+    ]);
+    mockStatSync.mockReturnValue({ isDirectory: () => false, isFile: () => false });
+  });
+
+  it('navigates to a folder, then multi-selects from its FILES only', async () => {
+    vscode.window.showQuickPick
+      .mockResolvedValueOnce({ label: '$(check) Select this folder' })      // folder stage
+      .mockResolvedValueOnce([{ label: 'a.txt' }, { label: 'b.txt' }]);     // file stage
+
+    const picked = await pickLocalFiles(START, 'Upload files to /var/www');
+
+    const fileStageCall = vscode.window.showQuickPick.mock.calls[1];
+    expect(fileStageCall[1].canPickMany).toBe(true);
+    const labels = fileStageCall[0].map((item: any) => item.label);
+    expect(labels).toEqual(['a.txt', 'b.txt']);
+    expect(labels.join('\n')).not.toContain('assets');
+    expect(picked).toEqual([path.join(START, 'a.txt'), path.join(START, 'b.txt')]);
+  });
+
+  it('returns undefined when the folder stage is dismissed, without a file stage', async () => {
+    vscode.window.showQuickPick.mockResolvedValueOnce(undefined);
+
+    const picked = await pickLocalFiles(START, 'Upload files to /var/www');
+
+    expect(picked).toBeUndefined();
+    expect(vscode.window.showQuickPick).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns undefined when the file stage is dismissed or empty', async () => {
+    vscode.window.showQuickPick
+      .mockResolvedValueOnce({ label: '$(check) Select this folder' })
+      .mockResolvedValueOnce([]);
+
+    const picked = await pickLocalFiles(START, 'Upload files to /var/www');
+
+    expect(picked).toBeUndefined();
+  });
+
+  it('reports a folder with no files instead of showing an empty checkbox list', async () => {
+    mockReaddirSync.mockReturnValue([dirent('assets', 'directory')]);
+    vscode.window.showQuickPick.mockResolvedValueOnce({ label: '$(check) Select this folder' });
+
+    const picked = await pickLocalFiles(START, 'Upload files to /var/www');
+
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      expect.stringContaining('no files')
+    );
+    expect(picked).toBeUndefined();
+    expect(vscode.window.showQuickPick).toHaveBeenCalledTimes(1);
+  });
+
+  it('includes a symlink that resolves to a file, hides one that does not', async () => {
+    mockReaddirSync.mockReturnValue([
+      dirent('a.txt', 'file'),
+      dirent('link-to-file', 'symlink'),
+      dirent('link-to-dir', 'symlink'),
+    ]);
+    mockStatSync.mockImplementation((target: string) => ({
+      isDirectory: () => target === path.join(START, 'link-to-dir'),
+      isFile: () => target === path.join(START, 'link-to-file'),
+    }));
+    vscode.window.showQuickPick
+      .mockResolvedValueOnce({ label: '$(check) Select this folder' })
+      .mockResolvedValueOnce([{ label: 'link-to-file' }]);
+
+    const picked = await pickLocalFiles(START, 'Upload files to /var/www');
+
+    const labels = vscode.window.showQuickPick.mock.calls[1][0].map((item: any) => item.label);
+    expect(labels).toContain('link-to-file');
+    expect(labels.join('\n')).not.toContain('link-to-dir');
+    expect(picked).toEqual([path.join(START, 'link-to-file')]);
   });
 });

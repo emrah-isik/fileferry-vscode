@@ -8,7 +8,7 @@ import { ProjectConfig } from '../models/ProjectConfig';
 import { UploadHistoryService } from '../services/UploadHistoryService';
 import { UploadHistoryEntry } from '../models/UploadHistoryEntry';
 import { walkLocalTree } from '../services/SyncTreeWalker';
-import { pickLocalDirectory } from './pickLocalDirectory';
+import { pickLocalDirectory, pickLocalFiles } from './pickLocalDirectory';
 
 export interface UploadHereDependencies {
   connection: RemoteBrowserConnection;
@@ -32,21 +32,34 @@ export async function uploadFilesHere(
   parentPath: string,
   dependencies: UploadHereDependencies
 ): Promise<void> {
-  const picked = await vscode.window.showOpenDialog({
-    canSelectFiles: true,
-    canSelectFolders: false,
-    canSelectMany: true,
-    openLabel: 'Upload',
-    title: `Upload files to ${parentPath}`,
-    ...defaultDialogLocation(),
-  });
-  if (!picked || picked.length === 0) {
+  // In a remote window (WSL/SSH) showOpenDialog degrades to the simple file
+  // dialog, which ignores canSelectMany — only one file could ever be picked
+  // (manual-pass finding U1). Use the two-step multi-select picker there;
+  // desktop windows keep the native OS dialog.
+  let localPaths: string[] | undefined;
+  if (vscode.env.remoteName !== undefined) {
+    localPaths = await pickLocalFiles(
+      vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? os.homedir(),
+      `Upload files to ${parentPath}`
+    );
+  } else {
+    const picked = await vscode.window.showOpenDialog({
+      canSelectFiles: true,
+      canSelectFolders: false,
+      canSelectMany: true,
+      openLabel: 'Upload',
+      title: `Upload files to ${parentPath}`,
+      ...defaultDialogLocation(),
+    });
+    localPaths = picked?.map(fileUri => fileUri.fsPath);
+  }
+  if (!localPaths || localPaths.length === 0) {
     return; // cancelled
   }
 
-  const uploads = picked.map(fileUri => ({
-    localPath: fileUri.fsPath,
-    remotePath: joinRemote(parentPath, path.basename(fileUri.fsPath)),
+  const uploads = localPaths.map(localPath => ({
+    localPath,
+    remotePath: joinRemote(parentPath, path.basename(localPath)),
   }));
 
   await runUploadBatch(uploads, parentPath, [], dependencies);
