@@ -105,6 +105,22 @@ describe('parsePlan — happy path (feature-33 convention)', () => {
   });
 });
 
+describe('parsePlan — header variants', () => {
+  it('accepts "Check" in place of "Do" (the feature-33 closing-checks section)', () => {
+    const plan = buildPlan({
+      sections: [
+        '## Z. Closing checks (77z)',
+        '',
+        '| # | Check | Expect | SFTP | FTP |',
+        '| --- | --- | --- | --- | --- |',
+        '| Z1 | Output stayed clean. | No hook lines. | | |',
+      ],
+    });
+    const parsed = parsePlan(plan, '77');
+    expect(parsed.sections[0].cases[0].do).toBe('Output stayed clean.');
+  });
+});
+
 describe('parsePlan — dynamic lanes', () => {
   it('accepts a single lane', () => {
     const plan = buildPlan({

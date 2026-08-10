@@ -259,7 +259,14 @@ export function parsePlan(markdown: string, featureToken: string): TrackerData {
           lineNumber
         );
       }
-      if (headerCells.length < 4 || headerCells[0] !== '#' || headerCells[1] !== 'Do' || headerCells[2] !== 'Expect') {
+      // "Check" is the convention's alias for "Do", used by closing-checks
+      // sections (feature-33 §Z).
+      if (
+        headerCells.length < 4 ||
+        headerCells[0] !== '#' ||
+        (headerCells[1] !== 'Do' && headerCells[1] !== 'Check') ||
+        headerCells[2] !== 'Expect'
+      ) {
         const laneProblem = headerCells.length < 4 ? ' with at least one lane column' : '';
         throw new PlanParseError(
           `expected a case-table header "| # | Do | Expect | <lane…> |"${laneProblem}, found "${line.trim()}"`,
