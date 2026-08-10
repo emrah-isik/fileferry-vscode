@@ -22,7 +22,6 @@ export interface HeadlessTracker {
 }
 
 // Test-harness stubs are structurally dynamic by design.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type StubElement = any;
 
 export async function runTrackerHeadless(
