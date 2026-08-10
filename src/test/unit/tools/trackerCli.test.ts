@@ -30,18 +30,24 @@ describe('parseArguments', () => {
 
 describe('deriveTrackerPaths', () => {
   it('derives the hardcoded repo-relative plan, template, and tracker paths', () => {
+    // Expectations built with the same path.join the source uses, so the
+    // assertions hold on Windows separators too (CI matrix lesson).
     const paths = deriveTrackerPaths('/repo', '33a');
-    expect(paths.planPath).toBe('/repo/docs/plans/manual_tests/feature_33a_manual_test_plan.md');
-    expect(paths.templatePath).toBe('/repo/src/tools/manualTestTracker/template.html');
+    expect(paths.planPath).toBe(
+      path.join('/repo', 'docs/plans/manual_tests', 'feature_33a_manual_test_plan.md')
+    );
+    expect(paths.templatePath).toBe(path.join('/repo', 'src/tools/manualTestTracker/template.html'));
     expect(paths.trackerPath).toBe(
-      '/repo/docs/plans/manual_tests/trackers/feature_33a_manual_test_tracker.html'
+      path.join('/repo', 'docs/plans/manual_tests/trackers', 'feature_33a_manual_test_tracker.html')
     );
   });
 });
 
 describe('repositoryRootFromModuleDirectory', () => {
   it('walks three levels up (out/tools/manualTestTracker → repo root)', () => {
-    expect(repositoryRootFromModuleDirectory('/repo/out/tools/manualTestTracker')).toBe('/repo');
+    expect(repositoryRootFromModuleDirectory(path.join('/repo', 'out/tools/manualTestTracker'))).toBe(
+      path.resolve('/repo')
+    );
   });
 });
 
