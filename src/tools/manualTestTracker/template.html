@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FileFerry manual test tracker</title>
+<!--
+  Static tracker template — hand-generalized once from the feature-33 tracker
+  (docs/plans/manual_tests/trackers/feature_33_manual_test_tracker.html).
+  The generator (npm run tracker -- <feature>) replaces the __DATA__ marker
+  in the script below with the plan's parsed data; nothing else is rewritten.
+  Opened as-is (DATA = null) the page renders nothing — that is expected.
+-->
+<style>
+  :root{
+    --bg:#1b1f27; --panel:#222834; --panel2:#1e242f; --line:#303849;
+    --ink:#d9dfea; --muted:#8b95a9; --dim:#6a7488;
+    --accent:#5fa8d3; --ok:#79c08d; --okbg:rgba(121,192,141,.14);
+    --fail:#e06c75; --failbg:rgba(224,108,117,.13);
+    --mono:ui-monospace,'Cascadia Code','JetBrains Mono',Menlo,Consolas,monospace;
+    --sans:-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;
+  }
+  html,body{margin:0;padding:0;background:var(--bg);min-height:100%}
+  #app{font-family:var(--sans);color:var(--ink);background:var(--bg);
+    padding:0 0 40px;line-height:1.5;font-size:14.5px;min-height:100vh}
+  #app *{box-sizing:border-box}
+  code{font-family:var(--mono);font-size:.88em;background:#161a22;border:1px solid var(--line);
+    border-radius:4px;padding:1px 5px;color:#bcd3e8;white-space:pre-wrap;word-break:break-word}
+  del{color:var(--dim)}
+  /* top bar */
+  .top{position:sticky;top:0;z-index:20;background:linear-gradient(#1b1f27f2,#1b1f27e8);
+    backdrop-filter:blur(6px);border-bottom:1px solid var(--line);
+    padding:14px 20px 12px;border-radius:14px 14px 0 0}
+  .top h1{margin:0;font-size:17px;font-weight:650;letter-spacing:.2px}
+  .top h1 span{color:var(--accent);font-family:var(--mono);font-weight:600}
+  .toprow{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  .grow{flex:1 1 auto;min-width:160px}
+  .barwrap{height:7px;background:#141821;border-radius:99px;margin-top:9px;overflow:hidden;
+    border:1px solid var(--line)}
+  .bar{height:100%;width:0%;background:linear-gradient(90deg,#3f7fa8,var(--accent));
+    border-radius:99px;transition:width .25s}
+  .tally{font-family:var(--mono);font-size:12px;color:var(--muted);white-space:nowrap}
+  .tally b{color:var(--ink)}
+  .btn{background:#2a3140;border:1px solid var(--line);color:var(--ink);border-radius:7px;
+    padding:6px 12px;font-size:13px;cursor:pointer;font-family:inherit}
+  .btn:hover{border-color:var(--accent);color:#eaf3fa}
+  .btn.danger:hover{border-color:var(--fail);color:#f4c9cd}
+  .navchips{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+  .chip{font-family:var(--mono);font-size:11.5px;color:var(--muted);text-decoration:none;
+    border:1px solid var(--line);border-radius:6px;padding:3px 8px;background:#20262f}
+  .chip:hover{color:var(--accent);border-color:var(--accent)}
+  .chip.done{color:var(--ok);border-color:#3c5a46}
+  .chip.bad{color:var(--fail);border-color:#5a3c40}
+  /* record */
+  .record{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;
+    margin:18px 20px 6px;background:var(--panel);border:1px solid var(--line);
+    border-radius:10px;padding:14px}
+  .record label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.08em;
+    color:var(--muted);margin-bottom:4px}
+  .record input{width:100%;background:#161a22;border:1px solid var(--line);border-radius:6px;
+    color:var(--ink);padding:6px 9px;font-size:13px;font-family:var(--mono)}
+  .record input:focus{outline:none;border-color:var(--accent)}
+  /* sections */
+  section{margin:26px 20px 0;scroll-margin-top:130px}
+  .shead{display:flex;align-items:baseline;gap:10px;border-bottom:1px solid var(--line);
+    padding-bottom:8px;margin-bottom:4px}
+  .slet{font-family:var(--mono);font-size:20px;font-weight:700;color:var(--accent)}
+  .stitle{font-size:16px;font-weight:650}
+  .scount{margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--muted)}
+  .subhead{font-size:14px;font-weight:650;margin:16px 0 4px}
+  details.note{margin:10px 0;border:1px solid var(--line);border-radius:8px;background:var(--panel2)}
+  details.note summary{cursor:pointer;padding:8px 12px;font-size:12.5px;color:var(--muted);
+    list-style:none;user-select:none}
+  details.note summary::before{content:'▸ ';color:var(--dim)}
+  details.note[open] summary::before{content:'▾ '}
+  details.note .body{padding:2px 14px 12px;font-size:13px;color:var(--muted)}
+  .seedwrap{border:1px solid #3d4a3f;background:#20281f22;border-radius:8px;margin:10px 0}
+  .seedwrap .seedhead{display:flex;align-items:center;gap:10px;padding:8px 12px;font-size:12.5px;
+    color:#a9c3a0}
+  .seedwrap .seedhead .btn{margin-left:auto;padding:3px 10px;font-size:12px}
+  .seedwrap pre{margin:0;padding:10px 14px 14px;font-family:var(--mono);font-size:12px;
+    color:#bcd3e8;overflow-x:auto;white-space:pre}
+  .prose{color:var(--muted);font-size:13px;margin:10px 0}
+  /* cases */
+  .case{display:grid;grid-template-columns:52px 1fr 240px;gap:0 14px;
+    border:1px solid var(--line);border-radius:10px;background:var(--panel);
+    padding:12px 14px;margin:10px 0;align-items:start}
+  .case.superseded{opacity:.55}
+  .cid{font-family:var(--mono);font-weight:700;color:var(--accent);font-size:14px;padding-top:2px}
+  .ctext .do{margin-bottom:6px}
+  .ctext .expect{color:var(--muted);font-size:13.4px;border-left:3px solid #35405466;
+    padding-left:10px}
+  .ctext .expect b,.ctext .do b{color:var(--ink)}
+  .lanes{display:flex;flex-direction:column;gap:8px}
+  .lane{display:flex;align-items:center;gap:8px}
+  .lname{font-family:var(--mono);font-size:11px;color:var(--muted);width:38px;text-align:right}
+  .st{font-family:var(--mono);font-size:12px;font-weight:600;border-radius:6px;cursor:pointer;
+    padding:5px 0;width:64px;text-align:center;border:1px solid var(--line);
+    background:#1a1f29;color:var(--dim)}
+  .st:hover{border-color:var(--accent)}
+  .st.ok{background:var(--okbg);border-color:#3c5a46;color:var(--ok)}
+  .st.fail{background:var(--failbg);border-color:#5a3c40;color:var(--fail)}
+  .iss{width:84px;background:#161a22;border:1px solid #5a3c40;border-radius:6px;color:#f0b9be;
+    font-family:var(--mono);font-size:12px;padding:4px 7px;display:none}
+  .iss.show{display:block}
+  .iss:focus{outline:none;border-color:var(--fail)}
+  .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:#2a3140;
+    border:1px solid var(--accent);color:var(--ink);border-radius:8px;padding:9px 16px;
+    font-size:13px;z-index:50;opacity:0;transition:opacity .2s;pointer-events:none}
+  .toast.show{opacity:1}
+  .savenote{font-size:11px;color:var(--dim);font-family:var(--mono)}
+  @media(max-width:760px){
+    .case{grid-template-columns:44px 1fr}
+    .lanes{grid-column:1/-1;flex-direction:row;margin-top:10px;flex-wrap:wrap}
+    .record{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+(function(){
+"use strict";
+/* ---------------- data (injected by the generator from the plan markdown) ---------------- */
+const DATA = /*__DATA__*/null;
+
+const LANES = DATA.lanes;
+const KEY = "ff" + DATA.token + "-testrun-v1";
+const SECTIONS = DATA.sections;
+/* The execution-record fields with a stateKey (date / commit / verdict) become
+   editable inputs; the rest (e.g. Dev host) stay static and only appear in the
+   markdown export. Parsed plan values are the defaults — saved state wins. */
+const RECORD_FIELDS = DATA.record.filter(field => field.stateKey);
+const RECORD_PLACEHOLDERS = { date:"YYYY-MM-DD", commit:"<commit>", verdict:"pass / fail — notes" };
+function defaultRecord(){
+  const record = {};
+  RECORD_FIELDS.forEach(field => { record[field.stateKey] = field.value; });
+  return record;
+}
+
+/* ---------------- state ---------------- */
+let state = { record: defaultRecord(), cells: {} };
+let storageOk = false;
+let saveTimer = null;
+
+/* Storage shim, best backend first:
+   1. Served via serve.mjs (http) → autosave into feature_<token>_results.json
+      in the repo (gitignored + OneDrive-synced) on every change.
+   2. Opened straight from disk → localStorage (browser-profile only). */
+const usingHttp = location.protocol.startsWith("http");
+/* RELATIVE URLs on purpose: served at /<token>/, these resolve to
+   /<token>/results and /<token>/save, so one server hosts any number of
+   trackers side by side. */
+const httpStore = {
+  async get(){
+    const r = await fetch("results");
+    if(!r.ok) return null;
+    const t = await r.text();
+    return t ? { value: t } : null;
+  },
+  async set(_key, value){
+    const r = await fetch("save", { method:"POST", headers:{"Content-Type":"application/json"}, body:value });
+    if(!r.ok && r.status !== 204) throw new Error("save failed: " + r.status);
+  },
+};
+const localStore = {
+  async get(key){ const v = localStorage.getItem(key); return v === null ? null : { value: v }; },
+  async set(key, value){ localStorage.setItem(key, value); },
+};
+const store = usingHttp ? httpStore : localStore;
+
+function cell(id, lane){
+  const k = id + "." + lane;
+  if(!state.cells[k]) state.cells[k] = {s:"", i:""};
+  return state.cells[k];
+}
+function scheduleSave(){
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async () => {
+    if(!storageOk) return;
+    try { await store.set(KEY, JSON.stringify(state)); }
+    catch(e){ console.error("save failed", e); }
+  }, 400);
+}
+
+/* ---------------- rendering helpers ---------------- */
+function esc(s){ return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function fmt(s){
+  let t = esc(s);
+  t = t.replace(/`([^`]+)`/g, (_,c)=>"<code>"+c+"</code>");
+  t = t.replace(/~~([^~]+)~~/g, "<del>$1</del>");
+  t = t.replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>");
+  return t;
+}
+
+function totals(){
+  let done=0, fails=0, total=0;
+  const per = {};
+  SECTIONS.forEach(sec=>{
+    let sd=0, sf=0, st=0;
+    sec.cases.forEach(c=>{
+      if(c.superseded) return;
+      LANES.forEach(l=>{
+        st++; total++;
+        const v = state.cells[c.id+"."+l];
+        if(v && v.s==="ok"){ sd++; done++; }
+        if(v && v.s==="fail"){ sd++; done++; sf++; fails++; }
+      });
+    });
+    per[sec.key]={done:sd, total:st, fails:sf};
+  });
+  return {done, fails, total, per};
+}
+
+/* ---------------- build DOM ---------------- */
+function seedBlock(cmd){
+  const w = document.createElement("div"); w.className="seedwrap";
+  const h = document.createElement("div"); h.className="seedhead";
+  h.innerHTML = "<span>Seed block — copy &amp; run</span>";
+  const b = document.createElement("button"); b.className="btn"; b.textContent="Copy";
+  b.onclick = ()=>copyText(cmd, b);
+  h.appendChild(b); w.appendChild(h);
+  const pre = document.createElement("pre"); pre.textContent = cmd; w.appendChild(pre);
+  return w;
+}
+async function copyText(text, btn){
+  try{ await navigator.clipboard.writeText(text); }
+  catch(e){
+    const ta=document.createElement("textarea"); ta.value=text; document.body.appendChild(ta);
+    ta.select(); document.execCommand("copy"); ta.remove();
+  }
+  if(btn){ const old=btn.textContent; btn.textContent="Copied ✓"; setTimeout(()=>btn.textContent=old,1400); }
+}
+
+function build(){
+  const app = document.getElementById("app");
+  app.innerHTML = "";
+
+  /* top bar */
+  const top = document.createElement("div"); top.className="top";
+  top.innerHTML =
+    '<div class="toprow">'+
+      '<h1>FileFerry · <span>feature/'+esc(DATA.token)+'</span> manual pass</h1>'+
+      '<span class="savenote" id="savenote"></span>'+
+      '<span class="tally" id="tally"></span>'+
+      '<button class="btn" id="exportBtn">Export markdown</button>'+
+      '<button class="btn danger" id="resetBtn">Reset</button>'+
+    '</div>'+
+    '<div class="barwrap"><div class="bar" id="bar"></div></div>'+
+    '<div class="navchips" id="chips"></div>';
+  app.appendChild(top);
+
+  /* execution record */
+  const rec = document.createElement("div"); rec.className="record";
+  rec.innerHTML = RECORD_FIELDS.map(f =>
+    field(f.label, f.stateKey, state.record[f.stateKey], RECORD_PLACEHOLDERS[f.stateKey] || "")
+  ).join("");
+  app.appendChild(rec);
+  rec.querySelectorAll("input").forEach(inp=>{
+    inp.addEventListener("input", ()=>{ state.record[inp.dataset.k]=inp.value; scheduleSave(); });
+  });
+
+  /* sections (every plan section, in document order — blocks carry the
+     prose / seed blocks / subheadings / case table exactly as authored) */
+  SECTIONS.forEach(sec=>{
+    const s = document.createElement("section"); s.id="sec-"+sec.key;
+    const hasCases = sec.cases.length > 0;
+    const head = document.createElement("div"); head.className="shead";
+    head.innerHTML = '<span class="slet">'+esc(sec.key)+'</span><span class="stitle">'+esc(sec.title)+'</span>'+
+      (hasCases ? '<span class="scount" id="count-'+sec.key+'"></span>' : '');
+    s.appendChild(head);
+    if(sec.automatedNote){
+      const d = document.createElement("details"); d.className="note";
+      d.innerHTML = '<summary>Already automated — don’t re-test by hand</summary>'+
+        '<div class="body">'+fmt(sec.automatedNote)+'</div>';
+      s.appendChild(d);
+    }
+
+    sec.blocks.forEach(block=>{
+      if(block.kind==="prose"){
+        const p = document.createElement("div"); p.className="prose"; p.innerHTML = fmt(block.text);
+        s.appendChild(p);
+      } else if(block.kind==="subheading"){
+        const h = document.createElement("div"); h.className="subhead"; h.innerHTML = fmt(block.text);
+        s.appendChild(h);
+      } else if(block.kind==="seed"){
+        s.appendChild(seedBlock(block.command));
+      } else if(block.kind==="cases"){
+        sec.cases.forEach(c=>{
+          const row = document.createElement("div"); row.className="case"+(c.superseded?" superseded":"");
+          const cid = document.createElement("div"); cid.className="cid"; cid.textContent=c.id;
+          const txt = document.createElement("div"); txt.className="ctext";
+          txt.innerHTML = '<div class="do">'+fmt(c.do)+'</div>'+
+            (c.superseded ? '' : '<div class="expect">'+fmt(c.expect)+'</div>');
+          row.appendChild(cid); row.appendChild(txt);
+          if(!c.superseded){
+            const lanes = document.createElement("div"); lanes.className="lanes";
+            LANES.forEach(l=>{
+              const lane = document.createElement("div"); lane.className="lane";
+              const nm = document.createElement("span"); nm.className="lname"; nm.textContent=l;
+              const btn = document.createElement("button"); btn.className="st"; btn.type="button";
+              const iss = document.createElement("input"); iss.className="iss"; iss.placeholder="#issue";
+              const v = cell(c.id, l);
+              paint(btn, iss, v);
+              iss.value = v.i;
+              btn.onclick = ()=>{
+                v.s = v.s==="" ? "ok" : (v.s==="ok" ? "fail" : "");
+                if(v.s!=="fail") v.i="", iss.value="";
+                paint(btn, iss, v);
+                if(v.s==="fail") iss.focus();
+                refresh(); scheduleSave();
+              };
+              iss.addEventListener("input", ()=>{ v.i=iss.value; scheduleSave(); });
+              lane.appendChild(nm); lane.appendChild(btn); lane.appendChild(iss);
+              lanes.appendChild(lane);
+            });
+            row.appendChild(lanes);
+          }
+          s.appendChild(row);
+        });
+      }
+    });
+    app.appendChild(s);
+  });
+
+  document.getElementById("exportBtn").onclick = exportMd;
+  document.getElementById("resetBtn").onclick = async ()=>{
+    if(!confirm("Clear all recorded results and the execution record?")) return;
+    state = { record: defaultRecord(), cells: {} };
+    if(storageOk){ try{ await store.set(KEY, JSON.stringify(state)); }catch(e){} }
+    build(); refresh();
+  };
+
+  /* toast node */
+  if(!document.querySelector(".toast")){
+    const t = document.createElement("div"); t.className="toast"; t.id="toast";
+    document.body.appendChild(t);
+  }
+  refresh();
+}
+function field(label,k,val,ph){
+  return '<div><label>'+esc(label)+'</label><input data-k="'+k+'" value="'+esc(val||"")+'" placeholder="'+esc(ph)+'"></div>';
+}
+function paint(btn, iss, v){
+  btn.classList.remove("ok","fail");
+  if(v.s==="ok"){ btn.classList.add("ok"); btn.textContent="ok"; iss.classList.remove("show"); }
+  else if(v.s==="fail"){ btn.classList.add("fail"); btn.textContent="FAIL"; iss.classList.add("show"); }
+  else { btn.textContent="—"; iss.classList.remove("show"); }
+}
+function refresh(){
+  const t = totals();
+  document.getElementById("bar").style.width = (t.total? (100*t.done/t.total):0)+"%";
+  document.getElementById("tally").innerHTML =
+    "<b>"+t.done+"</b>/"+t.total+" checks"+(t.fails?(" · <span style='color:var(--fail)'>"+t.fails+" FAIL</span>"):"");
+  const chips = document.getElementById("chips"); chips.innerHTML="";
+  SECTIONS.forEach(sec=>{
+    const p = t.per[sec.key];
+    if(!p.total) return;
+    const a = document.createElement("a");
+    a.href="#sec-"+sec.key;
+    a.className="chip"+(p.fails?" bad":(p.done===p.total&&p.total?" done":""));
+    a.textContent = sec.key+" "+p.done+"/"+p.total;
+    chips.appendChild(a);
+    const cnt = document.getElementById("count-"+sec.key);
+    if(cnt) cnt.textContent = p.done+"/"+p.total+(p.fails?(" · "+p.fails+" FAIL"):"");
+  });
+}
+
+/* ---------------- export ---------------- */
+function cellMd(id, lane){
+  const v = state.cells[id+"."+lane];
+  if(!v || !v.s) return "";
+  if(v.s==="ok") return "ok";
+  return "FAIL" + (v.i ? " "+(v.i.startsWith("#")?v.i:"#"+v.i) : "");
+}
+function exportMd(){
+  const t = totals();
+  const L = [];
+  L.push("# Feature "+DATA.token+" — manual test pass results");
+  L.push("");
+  L.push("## Execution record");
+  L.push("");
+  L.push("| Field | Value |");
+  L.push("| --- | --- |");
+  DATA.record.forEach(f=>{
+    let value = f.stateKey ? (state.record[f.stateKey]||"") : f.value;
+    if(f.stateKey==="commit" && value) value = "`"+value+"`";
+    L.push("| "+f.label+" | "+value+" |");
+  });
+  L.push("");
+  L.push("_"+t.done+"/"+t.total+" checks recorded"+(t.fails?", "+t.fails+" FAIL":"")+"._");
+  SECTIONS.forEach(sec=>{
+    if(!sec.cases.length) return;
+    L.push("");
+    L.push("## "+sec.key+". "+sec.title);
+    L.push("");
+    L.push("| # | Do | Expect | "+LANES.join(" | ")+" |");
+    L.push("| --- | --- | --- |"+LANES.map(()=>" --- |").join(""));
+    sec.cases.forEach(c=>{
+      const clean = s => s.replace(/\|/g,"\\|").replace(/\n/g," ");
+      if(c.superseded){
+        L.push("| "+c.id+" | "+clean(c.do)+" | — |"+LANES.map(()=>" |").join(""));
+      } else {
+        L.push("| "+c.id+" | "+clean(c.do)+" | "+clean(c.expect)+" | "+
+          LANES.map(l=>cellMd(c.id,l)).join(" | ")+" |");
+      }
+    });
+  });
+  const md = L.join("\n");
+  copyText(md);
+  const blob = new Blob([md], {type:"text/markdown"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "feature_"+DATA.token+"_test_results.md";
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast("Results copied to clipboard + downloaded");
+}
+function toast(msg){
+  const t = document.getElementById("toast");
+  if(!t) return;
+  t.textContent = msg; t.classList.add("show");
+  setTimeout(()=>t.classList.remove("show"), 2200);
+}
+
+/* ---------------- init ---------------- */
+(async function init(){
+  document.title = "FileFerry · feature/" + DATA.token + " manual pass";
+  try{
+    try{
+      const r = await store.get(KEY);
+      if(r && r.value){
+        const parsed = JSON.parse(r.value);
+        if(parsed && parsed.cells) state = parsed;
+      } else if(usingHttp){
+        // First run against the server: migrate results previously recorded
+        // in this browser's localStorage, so nothing already done is lost.
+        try{
+          const prior = localStorage.getItem(KEY);
+          if(prior){
+            const parsed = JSON.parse(prior);
+            if(parsed && parsed.cells){ state = parsed; await store.set(KEY, prior); }
+          }
+        }catch(e){ /* no browser-stored results — fresh start */ }
+      }
+    }catch(e){ /* first run — nothing saved yet */ }
+    // Prove writes actually work (some sandboxed previews block localStorage).
+    // In server mode the /results round-trip above already proved the server.
+    if(!usingHttp) await store.set(KEY + ".probe", "1");
+    storageOk = true;
+  }catch(e){ storageOk = false; }
+  build();
+  const note = document.getElementById("savenote");
+  if(note) note.textContent = storageOk
+    ? (usingHttp ? "autosaves → feature_"+DATA.token+"_results.json (repo)" : "autosaves (browser storage only — run serve.mjs to save into the repo)")
+    : "no storage — results won't persist";
+})();
+})();
+</script>
+</body>
+</html>
