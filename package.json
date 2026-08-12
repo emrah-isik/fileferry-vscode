@@ -611,7 +611,8 @@
     "test:integration": "jest --config jest.integration.config.js",
     "test:watch": "jest --watch",
     "lint": "eslint src",
-    "package": "vsce package"
+    "package": "vsce package",
+    "tracker": "tsc -p ./ && node out/tools/manualTestTracker/cli.js"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",

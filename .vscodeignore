@@ -1,5 +1,6 @@
 .vscode/**
 src/**
+out/**
 node_modules/**
 !node_modules/ssh2-sftp-client/package.json
 !node_modules/ssh2-sftp-client/src/**
