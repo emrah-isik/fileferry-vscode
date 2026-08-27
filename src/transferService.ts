@@ -1,3 +1,4 @@
+import type { KeyboardInteractiveProvider } from './ssh/connectProviders';
 export interface FileEntry {
   name: string;
   type: 'd' | '-' | 'l';
@@ -18,7 +19,8 @@ export interface TransferService {
     options?: {
       /** ssh2 callback form ONLY — return `undefined`, verdict via `verify(permitted)`. See SftpService. */
       hostVerifier?: (key: Buffer, verify: (permitted: boolean) => void) => void;
-      keyboardInteractiveHandler?: (prompts: Array<{ prompt: string; echo: boolean }>) => Promise<string[]>;
+      /** Answers keyboard-interactive challenges; bypasses the registry's provider. */
+      keyboardInteractive?: KeyboardInteractiveProvider;
     }
   ): Promise<void>;
 

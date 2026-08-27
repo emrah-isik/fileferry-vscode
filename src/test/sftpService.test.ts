@@ -3,6 +3,13 @@ import { ServerConfig } from '../types';
 import * as fs from 'fs';
 import { EventEmitter } from 'events';
 import * as agentResolverModule from '../ssh/agentResolver';
+import {
+  connectProviderRegistry,
+  HostKeyProvider,
+  KeyboardInteractiveProvider,
+  PRE_PROMPT_TIMEOUT_MS,
+} from '../ssh/connectProviders';
+import { driveSsh2HostVerifier } from './helpers/driveSsh2HostVerifier';
 
 // Mock for the underlying ssh2 Client that ssh2-sftp-client wraps
 const mockSsh2Client = {
@@ -54,6 +61,7 @@ describe('SftpService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    connectProviderRegistry.clear();
     service = new SftpService();
   });
 
@@ -227,44 +235,203 @@ describe('SftpService', () => {
       const config = mockMethods.connect.mock.calls[0][0];
       expect(config.hostVerifier).toBeUndefined();
     });
+  });
 
-    it('sets tryKeyboard true for keyboard-interactive auth', async () => {
+  describe('connect providers (18a-1a)', () => {
+    const otpPrompts = [{ prompt: 'Verification code: ', echo: false }];
+
+    function kiProvider(answers: string[] | null = ['123456']): KeyboardInteractiveProvider {
+      return { prompt: jest.fn().mockResolvedValue(answers) };
+    }
+
+    function registeredKiListener() {
+      const call = mockSsh2Client.on.mock.calls.find((c: any[]) => c[0] === 'keyboard-interactive');
+      return call?.[1] as ((...args: any[]) => Promise<void>) | undefined;
+    }
+
+    beforeEach(() => {
       mockMethods.connect.mockResolvedValue(undefined);
-      const kiConfig: ServerConfig = { ...serverConfig, authMethod: 'keyboard-interactive' };
-      await service.connect(kiConfig, {}, { keyboardInteractiveHandler: jest.fn() });
-      const config = mockMethods.connect.mock.calls[0][0];
-      expect(config.tryKeyboard).toBe(true);
     });
 
-    it('registers keyboard-interactive event handler on underlying client', async () => {
-      mockMethods.connect.mockResolvedValue(undefined);
-      const handler = jest.fn();
-      const kiConfig: ServerConfig = { ...serverConfig, authMethod: 'keyboard-interactive' };
-      await service.connect(kiConfig, {}, { keyboardInteractiveHandler: handler });
-      expect(mockSsh2Client.on).toHaveBeenCalledWith(
-        'keyboard-interactive',
-        expect.any(Function)
-      );
+    describe('defaults from the registry', () => {
+      it('registers the registry KI provider when the options carry none', async () => {
+        const provider = kiProvider();
+        connectProviderRegistry.set({ keyboardInteractive: provider });
+        await service.connect(serverConfig, { password: 'secret' });
+
+        const finish = jest.fn();
+        await registeredKiListener()!('', '', '', otpPrompts, finish);
+        expect(provider.prompt).toHaveBeenCalledWith(
+          expect.objectContaining({ target: { username: 'deploy', host: 'example.com', port: 22 }, round: 1 }),
+          expect.objectContaining({ promptOpened: expect.any(Function) })
+        );
+        expect(finish).toHaveBeenCalledWith(['123456']);
+      });
+
+      it('an explicit keyboardInteractive option wins over the registry', async () => {
+        const fromRegistry = kiProvider(['registry']);
+        const explicit = kiProvider(['explicit']);
+        connectProviderRegistry.set({ keyboardInteractive: fromRegistry });
+        await service.connect(serverConfig, { password: 'secret' }, { keyboardInteractive: explicit });
+
+        const finish = jest.fn();
+        await registeredKiListener()!('', '', '', otpPrompts, finish);
+        expect(finish).toHaveBeenCalledWith(['explicit']);
+        expect(fromRegistry.prompt).not.toHaveBeenCalled();
+      });
+
+      it('uses the registry HostKeyProvider when the options carry no hostVerifier', async () => {
+        const hostKey: HostKeyProvider = {
+          verify: jest.fn((_target, _key, _context, verdict: (permitted: boolean) => void) => { verdict(true); }),
+        };
+        connectProviderRegistry.set({ hostKey });
+        await service.connect(serverConfig, { password: 'secret' });
+
+        const config = mockMethods.connect.mock.calls[0][0];
+        expect(await driveSsh2HostVerifier(config.hostVerifier, Buffer.from('k'))).toBe(true);
+        expect(hostKey.verify).toHaveBeenCalledWith(
+          { host: 'example.com', port: 22 }, Buffer.from('k'),
+          expect.objectContaining({ promptOpened: expect.any(Function) }), expect.any(Function)
+        );
+      });
+
+      it('an explicit hostVerifier wins over the registry HostKeyProvider', async () => {
+        const hostKey: HostKeyProvider = { verify: jest.fn() };
+        connectProviderRegistry.set({ hostKey });
+        const hostVerifier = jest.fn((_key: Buffer, verify: (permitted: boolean) => void) => { verify(false); });
+        await service.connect(serverConfig, { password: 'secret' }, { hostVerifier });
+
+        const config = mockMethods.connect.mock.calls[0][0];
+        expect(await driveSsh2HostVerifier(config.hostVerifier, Buffer.from('k'))).toBe(false);
+        expect(hostVerifier).toHaveBeenCalled();
+        expect(hostKey.verify).not.toHaveBeenCalled();
+      });
+
+      it('connects with neither when the registry is empty and no options are given', async () => {
+        await service.connect(serverConfig, { password: 'secret' });
+        const config = mockMethods.connect.mock.calls[0][0];
+        expect(config.hostVerifier).toBeUndefined();
+        expect(registeredKiListener()).toBeUndefined();
+      });
     });
 
-    it('keyboard-interactive event forwards prompts to handler and sends responses', async () => {
-      mockMethods.connect.mockResolvedValue(undefined);
-      const handler = jest.fn().mockResolvedValue(['my-otp-code']);
-      const kiConfig: ServerConfig = { ...serverConfig, authMethod: 'keyboard-interactive' };
-      await service.connect(kiConfig, {}, { keyboardInteractiveHandler: handler });
+    describe('tryKeyboard matrix (R5 / C3)', () => {
+      const methods: Array<ServerConfig['authMethod']> = ['password', 'key', 'agent', 'keyboard-interactive'];
 
-      // Get the registered event callback
-      const eventCall = mockSsh2Client.on.mock.calls.find(
-        (call: any[]) => call[0] === 'keyboard-interactive'
-      );
-      const eventCallback = eventCall[1];
+      beforeEach(() => {
+        (fs.readFileSync as jest.Mock).mockReturnValue(Buffer.from('key-data'));
+        (agentResolverModule.resolveAgentSocket as jest.Mock).mockReturnValue('/tmp/agent.sock');
+      });
 
-      // Simulate ssh2 emitting keyboard-interactive event
-      const finish = jest.fn();
-      await eventCallback('', 'SSH Server', '', [{ prompt: 'Verification code: ', echo: false }], finish);
+      it.each(methods)('%s + KI provider present → tryKeyboard true', async (authMethod) => {
+        connectProviderRegistry.set({ keyboardInteractive: kiProvider() });
+        await service.connect({ ...serverConfig, authMethod, privateKeyPath: '/k' }, { password: 'x' });
+        expect(mockMethods.connect.mock.calls[0][0].tryKeyboard).toBe(true);
+      });
 
-      expect(handler).toHaveBeenCalledWith([{ prompt: 'Verification code: ', echo: false }]);
-      expect(finish).toHaveBeenCalledWith(['my-otp-code']);
+      it.each(methods)('%s + no KI provider → tryKeyboard false', async (authMethod) => {
+        await service.connect({ ...serverConfig, authMethod, privateKeyPath: '/k' }, { password: 'x' });
+        expect(mockMethods.connect.mock.calls[0][0].tryKeyboard).toBe(false);
+      });
+    });
+
+    describe('readyTimeout matrix (R4 / C2)', () => {
+      it('interactive (KI provider present) → readyTimeout 0, provider timer instead', async () => {
+        connectProviderRegistry.set({ keyboardInteractive: kiProvider() });
+        await service.connect(serverConfig, { password: 'secret' });
+        expect(mockMethods.connect.mock.calls[0][0].readyTimeout).toBe(0);
+      });
+
+      it('interactive (host-key provider present) → readyTimeout 0', async () => {
+        connectProviderRegistry.set({ hostKey: { verify: jest.fn() } });
+        await service.connect(serverConfig, { password: 'secret' });
+        expect(mockMethods.connect.mock.calls[0][0].readyTimeout).toBe(0);
+      });
+
+      it('non-interactive (no providers) → ssh2 default (readyTimeout unset)', async () => {
+        await service.connect(serverConfig, { password: 'secret' });
+        expect(mockMethods.connect.mock.calls[0][0].readyTimeout).toBeUndefined();
+      });
+    });
+
+    describe('pre-prompt timer', () => {
+      beforeEach(() => { jest.useFakeTimers(); });
+      afterEach(() => { jest.useRealTimers(); });
+
+      it('rejects and ends the client when nothing prompted within 20 s', async () => {
+        connectProviderRegistry.set({ keyboardInteractive: kiProvider() });
+        mockMethods.connect.mockReturnValue(new Promise(() => undefined));
+        mockMethods.end.mockResolvedValue(undefined);
+
+        const pending = service.connect(serverConfig, { password: 'secret' });
+        const outcome = expect(pending).rejects.toThrow(/timed out.*20 s/i);
+        jest.advanceTimersByTime(PRE_PROMPT_TIMEOUT_MS);
+        await outcome;
+        expect(mockMethods.end).toHaveBeenCalled();
+        expect(service.connected).toBe(false);
+      });
+
+      it('does not fire once a host-key prompt has opened', async () => {
+        let resolveConnect!: () => void;
+        mockMethods.connect.mockReturnValue(new Promise<void>((resolve) => { resolveConnect = resolve; }));
+        connectProviderRegistry.set({
+          hostKey: { verify: (_t, _k, context, verdict) => { context.promptOpened(); setTimeout(() => verdict(true), 30_000); } },
+        });
+
+        const pending = service.connect(serverConfig, { password: 'secret' });
+        const config = mockMethods.connect.mock.calls[0][0];
+        const verdict = jest.fn();
+        config.hostVerifier(Buffer.from('k'), verdict);
+        jest.advanceTimersByTime(PRE_PROMPT_TIMEOUT_MS * 2);
+        expect(mockMethods.end).not.toHaveBeenCalled();
+        expect(verdict).toHaveBeenCalledWith(true);
+        resolveConnect();
+        await pending;
+        expect(service.connected).toBe(true);
+      });
+
+      it('is cancelled when connect settles', async () => {
+        connectProviderRegistry.set({ keyboardInteractive: kiProvider() });
+        await service.connect(serverConfig, { password: 'secret' });
+        jest.advanceTimersByTime(PRE_PROMPT_TIMEOUT_MS * 2);
+        expect(mockMethods.end).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('cancel and keychain auto-answer through the listener', () => {
+      it('a cancelled KI prompt rejects connect with a "cancelled" error and ends the client', async () => {
+        connectProviderRegistry.set({ keyboardInteractive: kiProvider(null) });
+        mockMethods.connect.mockReturnValue(new Promise(() => undefined));
+        mockMethods.end.mockResolvedValue(undefined);
+
+        const pending = service.connect(serverConfig, { password: 'secret' });
+        const finish = jest.fn();
+        await registeredKiListener()!('', '', '', otpPrompts, finish);
+
+        await expect(pending).rejects.toThrow(/cancelled/i);
+        expect(finish).not.toHaveBeenCalled();
+        expect(mockMethods.end).toHaveBeenCalled();
+      });
+
+      it('password credentials answer a Password: challenge from the keychain without prompting', async () => {
+        const provider = kiProvider();
+        connectProviderRegistry.set({ keyboardInteractive: provider });
+        await service.connect(serverConfig, { password: 'secret' });
+
+        const finish = jest.fn();
+        await registeredKiListener()!('', '', '', [{ prompt: 'Password: ', echo: false }], finish);
+        expect(finish).toHaveBeenCalledWith(['secret']);
+        expect(provider.prompt).not.toHaveBeenCalled();
+      });
+
+      it('logs the route through the registry log without the password', async () => {
+        const log = jest.fn();
+        connectProviderRegistry.set({ keyboardInteractive: kiProvider(), log });
+        await service.connect(serverConfig, { password: 'secret' });
+        await registeredKiListener()!('', '', '', [{ prompt: 'Password: ', echo: false }], jest.fn());
+        expect(log).toHaveBeenCalledWith(expect.stringContaining('deploy@example.com:22'));
+        for (const call of log.mock.calls) { expect(String(call[0])).not.toContain('secret'); }
+      });
     });
   });
 
