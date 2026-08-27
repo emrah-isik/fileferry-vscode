@@ -4,14 +4,11 @@ import { createTransferService } from '../transferServiceFactory';
 import { CredentialManager } from '../storage/CredentialManager';
 import { ProjectConfigManager } from '../storage/ProjectConfigManager';
 import { ServerConfig } from '../types';
-import { HostKeyManager } from '../ssh/HostKeyManager';
-import { showHostKeyPrompt } from '../ssh/hostKeyPrompt';
 
 const IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
 export class RemoteBrowserConnection {
   private sftp: TransferService;
-  private hostKeyManager: HostKeyManager;
   private currentServerId: string | null = null;
   private currentCredentialId: string | null = null;
   private currentRootPath: string = '/';
@@ -24,11 +21,9 @@ export class RemoteBrowserConnection {
   constructor(
     private readonly credentialManager: CredentialManager,
     private readonly configManager: ProjectConfigManager,
-    private readonly output: vscode.OutputChannel,
-    globalStoragePath: string
+    private readonly output: vscode.OutputChannel
   ) {
     this.sftp = createTransferService('sftp');
-    this.hostKeyManager = new HostKeyManager(globalStoragePath);
     this.configSaveSubscription = this.configManager.onDidSaveConfig(() => {
       void this.handleConfigSaved();
     });
@@ -112,60 +107,19 @@ export class RemoteBrowserConnection {
       excludedPaths: [],
     };
 
-    // Host key verification only applies to SSH-based connections (SFTP).
-    // FTP/FTPS use TLS certificates, not SSH host keys.
-    const isSsh = server.type === 'sftp';
-    //
-    // ssh2 contract (lib/client.js:281-286): `const ret = hostVerifier(key, verify);
-    // if (ret !== undefined) verify(ret)`. The verifier MUST therefore be the
-    // callback form and return `undefined` — an `async` function returns a
-    // Promise, which ssh2 treats as a truthy verdict and accepts the host
-    // before the prompt has resolved (the 0.14.1 security fix).
-    const connectOptions = isSsh ? {
-      hostVerifier: (key: Buffer, verify: (permitted: boolean) => void): void => {
-        this.decideHostKey(credential.host, credential.port, key).then(
-          (permitted) => verify(permitted),
-          (error: unknown) => {
-            // Fail closed: an error while checking or prompting is never a "yes".
-            const message = error instanceof Error ? error.message : String(error);
-            this.output.appendLine(`[remote-browser] Host key verification failed: ${message}`);
-            verify(false);
-          }
-        );
-      },
-    } : undefined;
-
+    // Host-key verification and keyboard-interactive prompts are not wired
+    // here: SftpService.connect() applies the registered connect providers
+    // (src/ssh/connectProviders.ts) to every SSH connect, and FTP/FTPS have
+    // no host keys to verify.
     await this.sftp.connect(serverConfig, {
       password: credential.password,
       passphrase: credential.passphrase,
-    }, connectOptions);
+    });
 
     this.currentServerId = server.id;
     this.currentCredentialId = server.credentialId;
     this.currentRootPath = server.rootPath;
     this.output.appendLine(`[remote-browser] Connected to ${serverName} (${credential.host})`);
-  }
-
-  /**
-   * Trust-on-first-use decision for an SSH host key: trusted entries pass
-   * silently, unknown and changed keys go through the modal prompt, and an
-   * accepted key is persisted before the verdict is returned.
-   */
-  private async decideHostKey(host: string, port: number, key: Buffer): Promise<boolean> {
-    const keyBase64 = key.toString('base64');
-    const status = await this.hostKeyManager.check(host, port, keyBase64);
-
-    if (status === 'trusted') {
-      return true;
-    }
-
-    const fingerprint = this.hostKeyManager.getFingerprint(keyBase64);
-    const accepted = await showHostKeyPrompt(host, port, fingerprint, status);
-
-    if (accepted) {
-      await this.hostKeyManager.trust(host, port, keyBase64);
-    }
-    return accepted;
   }
 
   async listDirectory(remotePath: string): Promise<FileEntry[]> {
