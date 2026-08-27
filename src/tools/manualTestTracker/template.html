@@ -44,6 +44,8 @@
   .btn{background:#2a3140;border:1px solid var(--line);color:var(--ink);border-radius:7px;
     padding:6px 12px;font-size:13px;cursor:pointer;font-family:inherit}
   .btn:hover{border-color:var(--accent);color:#eaf3fa}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .btn:disabled:hover{border-color:var(--line);color:var(--ink)}
   .btn.danger:hover{border-color:var(--fail);color:#f4c9cd}
   .navchips{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
   .chip{font-family:var(--mono);font-size:11.5px;color:var(--muted);text-decoration:none;
@@ -243,6 +245,7 @@ function build(){
       '<h1>FileFerry · <span>feature/'+esc(DATA.token)+'</span> manual pass</h1>'+
       '<span class="savenote" id="savenote"></span>'+
       '<span class="tally" id="tally"></span>'+
+      '<button class="btn" id="markPassBtn" title="Enabled once every cell is ok — stamps today\'s date and a PASS verdict; fill in the commit yourself">Mark PASS</button>'+
       '<button class="btn" id="exportBtn">Export markdown</button>'+
       '<button class="btn danger" id="resetBtn">Reset</button>'+
     '</div>'+
@@ -324,6 +327,18 @@ function build(){
   });
 
   document.getElementById("exportBtn").onclick = exportMd;
+  /* Mark PASS: the verdict is the tester's sign-off, so this only fills the
+     mechanical parts (date, "PASS — N/N ok") once every cell is ok, never
+     the commit (the page cannot know which commit was tested). */
+  document.getElementById("markPassBtn").onclick = ()=>{
+    const t = totals();
+    if(!t.total || t.done!==t.total || t.fails) return;
+    if(state.record.verdict && !confirm("Replace the current verdict \""+state.record.verdict+"\"?")) return;
+    state.record.date = new Date().toLocaleDateString("en-CA");
+    state.record.verdict = "PASS — "+t.done+"/"+t.total+" ok";
+    build(); refresh(); scheduleSave();
+    toast(state.record.commit ? "Marked PASS" : "Marked PASS — fill in the commit tested");
+  };
   document.getElementById("resetBtn").onclick = async ()=>{
     if(!confirm("Clear all recorded results and the execution record?")) return;
     state = { record: defaultRecord(), cells: {} };
@@ -349,6 +364,8 @@ function paint(btn, iss, v){
 }
 function refresh(){
   const t = totals();
+  const markPass = document.getElementById("markPassBtn");
+  if(markPass) markPass.disabled = !(t.total && t.done===t.total && !t.fails);
   document.getElementById("bar").style.width = (t.total? (100*t.done/t.total):0)+"%";
   document.getElementById("tally").innerHTML =
     "<b>"+t.done+"</b>/"+t.total+" checks"+(t.fails?(" · <span style='color:var(--fail)'>"+t.fails+" FAIL</span>"):"");
