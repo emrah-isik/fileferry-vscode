@@ -39,6 +39,7 @@ const mockMethods = {
   get: jest.fn(),
   rename: jest.fn(),
   posixRename: jest.fn(),
+  client: { on: jest.fn(), removeAllListeners: jest.fn(), exec: jest.fn() },
 };
 
 jest.mock('ssh2-sftp-client', () => jest.fn().mockImplementation(() => mockMethods));

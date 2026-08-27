@@ -4,6 +4,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { ServerConfig, UploadPair, UploadResult } from './types';
 import { resolveAgentSocket } from './ssh/agentResolver';
+import { getRawClient } from './ssh/rawClient';
 import { resolveHostAlias, applySshConfig } from './ssh/SshConfigResolver';
 import { TransferService, RemoteCommandResult, RemoteCommandRunner, FileEntry } from './transferService';
 
@@ -119,29 +120,12 @@ export class SftpService implements TransferService, RemoteCommandRunner {
     // before calling connect, so it's ready when the server sends a challenge.
     if (server.authMethod === 'keyboard-interactive' && options?.keyboardInteractiveHandler) {
       const handler = options.keyboardInteractiveHandler;
-      // ssh2-sftp-client exposes the underlying ssh2 Client as `.client`, which
-      // is not part of its published type surface. Reach through with a minimal
-      // shape so we can register the keyboard-interactive challenge listener.
-      const underlyingClient = (this.client as unknown as {
-        client: {
-          on(
-            event: 'keyboard-interactive',
-            listener: (
-              name: string,
-              instructions: string,
-              lang: string,
-              prompts: Array<{ prompt: string; echo: boolean }>,
-              finish: (responses: string[]) => void
-            ) => void
-          ): void;
-        };
-      }).client;
+      const underlyingClient = getRawClient(this.client);
       underlyingClient.on('keyboard-interactive',
-        async (_name: string, _instructions: string, _lang: string,
-          prompts: Array<{ prompt: string; echo: boolean }>,
-          finish: (responses: string[]) => void) => {
-          const responses = await handler(prompts);
-          finish(responses);
+        (_name, _instructions, _lang, prompts, finish) => {
+          // ssh2 types `echo` as optional; our handlers take it as a definite boolean.
+          void handler(prompts.map((p) => ({ prompt: p.prompt, echo: p.echo ?? false })))
+            .then((responses) => finish(responses));
         }
       );
     }
@@ -366,18 +350,7 @@ export class SftpService implements TransferService, RemoteCommandRunner {
       throw new Error('Not connected. Call connect() before running remote commands.');
     }
 
-    // ssh2-sftp-client exposes the underlying ssh2 Client as `.client`, which is
-    // not part of its published type surface. Reach through with a minimal shape
-    // (same accessor the keyboard-interactive handler uses) to call `.exec()`.
-    const underlyingClient = (this.client as unknown as {
-      client: {
-        exec(
-          command: string,
-          options: { pty: boolean },
-          callback: (error: Error | undefined, channel: RemoteExecChannel) => void
-        ): void;
-      };
-    }).client;
+    const underlyingClient = getRawClient(this.client);
 
     return new Promise<RemoteCommandResult>((resolve, reject) => {
       // Deliberately pty:false — a PTY merges stdout+stderr and invites
@@ -451,14 +424,4 @@ function rightsToOctalMode(
     (/[sS]/.test(user) ? 4 : 0) + (/[sS]/.test(group) ? 2 : 0) + (/[tT]/.test(other) ? 1 : 0);
   const base = `${triadDigit(user)}${triadDigit(group)}${triadDigit(other)}`;
   return specialDigit > 0 ? `${specialDigit}${base}` : base;
-}
-
-// Minimal shape of the ssh2 exec channel we consume: a stdout stream emitting
-// 'data'/'exit'/'close', a separate `stderr` stream, and `destroy()` for timeout.
-interface RemoteExecChannel {
-  on(event: 'data', listener: (data: Buffer) => void): void;
-  on(event: 'exit', listener: (code: number | null) => void): void;
-  on(event: 'close', listener: () => void): void;
-  stderr: { on(event: 'data', listener: (data: Buffer) => void): void };
-  destroy(): void;
 }
