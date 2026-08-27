@@ -153,7 +153,7 @@ export class RemoteBrowserConnection {
    */
   private async decideHostKey(host: string, port: number, key: Buffer): Promise<boolean> {
     const keyBase64 = key.toString('base64');
-    const status = await this.hostKeyManager.check(host, port, 'ssh-unknown', keyBase64);
+    const status = await this.hostKeyManager.check(host, port, keyBase64);
 
     if (status === 'trusted') {
       return true;
@@ -163,7 +163,7 @@ export class RemoteBrowserConnection {
     const accepted = await showHostKeyPrompt(host, port, fingerprint, status);
 
     if (accepted) {
-      await this.hostKeyManager.trust(host, port, 'ssh-unknown', keyBase64);
+      await this.hostKeyManager.trust(host, port, keyBase64);
     }
     return accepted;
   }
