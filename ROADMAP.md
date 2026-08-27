@@ -105,8 +105,9 @@
 
 ### v0.15 — SSH Power Features
 
-- SSH connection hopping (jump hosts), including `ProxyCommand` / `ProxyJump` from `~/.ssh/config`
-- Open SSH terminal to active server
+- SSH jump hosts — single and chained hops, MFA/2FA prompts on any hop, `ProxyJump` honoured from `~/.ssh/config`
+- Open an SSH terminal to the active server, through the same jump hosts, in the current remote folder
+- Import your config from vscode-sftp (`.vscode/sftp.json`) — servers, mappings, and ignore patterns carry over in one command, and plaintext passwords move into the OS keychain
 
 ### Later
 
