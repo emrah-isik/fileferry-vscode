@@ -5,6 +5,7 @@
 - The Remote Files panel is a complete file manager — rename, duplicate (files and whole folders, with real-count confirmations), move (with a destination browser), change permissions (prefilled with the current mode), and upload local files or folders to exactly the path you're looking at
 - Open edit sessions follow renames and moves — saving after a rename lands on the new path instead of recreating the old file
 - Multi-select in the Remote Files panel — delete, download, copy path, duplicate, move, and chmod act on the whole selection; collision-safe by design (multi-select never prompts and never overwrites)
+- **0.14.1 (security):** the Remote Files host-key prompt now genuinely blocks — an unknown or changed host key is no longer accepted before you answer
 - Disconnect Remote Browser now genuinely disconnects (the panel stays offline until you explicitly reconnect), and FTP servers that hide unreadable directories or reject `SITE CHMOD` are reported honestly
 
 ---

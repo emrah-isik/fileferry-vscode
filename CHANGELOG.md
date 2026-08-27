@@ -2,6 +2,12 @@
 
 All notable changes to FileFerry will be documented in this file.
 
+## [0.14.1] - 2026-08-28
+
+### Security
+
+- **Host key verification in the Remote Files panel now actually blocks.** Up to 0.14.0 the "authenticity can't be established" / "HOST KEY HAS CHANGED" prompts were shown, but the connection was accepted *before* you answered — declining, or a changed key, never stopped anything. The verifier now uses ssh2's callback form, so an unknown host connects only after you click **Trust**, and a changed key connects only after **Trust Anyway**; closing the dialog refuses the connection. Scope: only the Remote Files panel's connection verifies host keys (deploys, Test Connection, and the other one-shot connections never did — that arrives with the v0.15 SSH work). Trusted keys saved by earlier versions keep working (matching is on the key itself; the stored type is informational and is now recorded correctly). If a server was legitimately reinstalled you will now see the changed-key warning once — see the new **Host key verification** section in the guide.
+
 ## [0.14.0] - 2026-08-08
 
 ### Added
