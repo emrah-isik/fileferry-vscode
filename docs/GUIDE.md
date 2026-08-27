@@ -45,6 +45,8 @@ Click **Add Credential** and fill in the details:
 | SSH Agent | Host, port, username (uses your running `ssh-agent`) | SFTP only |
 | Keyboard Interactive | Host, port, username (server sends 2FA challenges) | SFTP only |
 
+**2FA / keyboard-interactive note:** challenges are not limited to the *Keyboard Interactive* method. If your server asks for a verification code after a key or password step (OpenSSH `AuthenticationMethods publickey,keyboard-interactive`), FileFerry shows the same input prompts for any credential type; for password credentials a plain `Password:` challenge is answered from your keychain first. Dismissing a prompt cancels the connection.
+
 **FTP/FTPS note:** FTP and FTPS protocols only support password authentication. When you select an FTP protocol in Deployment Settings, the credential dropdown automatically filters to show only password-auth credentials.
 
 Passwords and passphrases are stored in your OS keychain (macOS Keychain / Windows Credential Manager / Linux libsecret). They are never written to disk or included in project files.
@@ -261,7 +263,7 @@ Features:
 
 ### Host key verification
 
-The Remote File Browser verifies the server's SSH host key the way OpenSSH does — *trust on first use*:
+Every SFTP connection — deploys, **Test Connection**, the Remote File Browser, diffs, backups — verifies the server's SSH host key the way OpenSSH does — *trust on first use*:
 
 - **First connection to a host** — a modal shows the key's SHA-256 fingerprint (`The authenticity of host 'example.com:22' can't be established…`). Compare it with the fingerprint your hosting provider published (or run `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` on the server) and click **Trust** to save it. Closing the dialog rejects the connection.
 - **Every later connection** — the presented key is compared with the saved one; a match connects silently, no prompt.
@@ -269,9 +271,11 @@ The Remote File Browser verifies the server's SSH host key the way OpenSSH does 
 
 Trusted keys live in `known_hosts.json` in the extension's global storage (`~/.config/Code/User/globalStorage/esidevlabs.fileferry/` on Linux, `~/Library/Application Support/Code/User/globalStorage/esidevlabs.fileferry/` on macOS, `%APPDATA%\Code\User\globalStorage\esidevlabs.fileferry\` on Windows). Delete an entry there to re-prompt for that host. Keys are matched on the key material alone, so entries saved by older versions keep working.
 
-Only the Remote File Browser's connection is verified today; deploys, Test Connection, and the other one-shot connections don't check host keys yet (planned for the v0.15 SSH work). FTP/FTPS servers have no SSH host key — they use TLS certificates instead.
+FTP/FTPS servers have no SSH host key — they use TLS certificates instead.
 
-> **Note (0.14.1 security fix):** in versions up to 0.14.0 the prompt was shown but did **not** block the connection — an unknown or changed host key was accepted before you answered. If you rely on host-key verification, update.
+The first deploy to a host you have never trusted therefore shows the prompt too — and, while it is open, nothing is uploaded. If no prompt has opened within 20 seconds of starting a connection (the server is unreachable or silent), the connection fails with *Timed out waiting for the SSH handshake*.
+
+> **Note (0.14.1 security fix):** in versions up to 0.14.0 the prompt was shown but did **not** block the connection — an unknown or changed host key was accepted before you answered. If you rely on host-key verification, update. In 0.14.1 only the Remote File Browser verified; every SFTP connection does now.
 
 ### Servers Panel
 
@@ -627,6 +631,10 @@ SSH rejects keys with loose permissions. FileFerry will warn you when saving a k
 ### "WARNING: HOST KEY FOR … HAS CHANGED!"
 
 The server's SSH host key differs from the one saved on first connection. See [Host key verification](#host-key-verification) — if you didn't expect the change (server reinstall, key rotation), click **Cancel** and check with whoever runs the server before trusting the new key.
+
+### "Connection cancelled" / "Timed out waiting for the SSH handshake"
+
+*Connection cancelled* means you dismissed a host-key or 2FA prompt — run the command again and answer it. *Timed out waiting for the SSH handshake (20 s) before any prompt opened* means the server never got as far as asking anything: check host, port, and firewall, then **Test Connection** from the Servers panel.
 
 ### Remote File Browser shows an error
 
