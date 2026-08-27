@@ -16,7 +16,8 @@ export interface TransferService {
     server: unknown,
     credentials: { password?: string; passphrase?: string },
     options?: {
-      hostVerifier?: (key: Buffer | string) => boolean | Promise<boolean>;
+      /** ssh2 callback form ONLY — return `undefined`, verdict via `verify(permitted)`. See SftpService. */
+      hostVerifier?: (key: Buffer, verify: (permitted: boolean) => void) => void;
       keyboardInteractiveHandler?: (prompts: Array<{ prompt: string; echo: boolean }>) => Promise<string[]>;
     }
   ): Promise<void>;
