@@ -200,24 +200,25 @@ describe('SftpService', () => {
 
     it('passes hostVerifier callback to ssh2 connect config', async () => {
       mockMethods.connect.mockResolvedValue(undefined);
-      const hostVerifier = jest.fn().mockReturnValue(true);
+      const hostVerifier = jest.fn((_key: Buffer, verify: (permitted: boolean) => void) => { verify(true); });
       await service.connect(serverConfig, { password: 'secret' }, { hostVerifier });
       const config = mockMethods.connect.mock.calls[0][0];
       expect(config.hostVerifier).toBe(hostVerifier);
     });
 
-    it('rejects connection when hostVerifier returns false', async () => {
-      mockMethods.connect.mockImplementation((config: any) => {
-        // Simulate ssh2 calling hostVerifier synchronously and rejecting
-        if (config.hostVerifier && !config.hostVerifier('deadbeef')) {
-          return Promise.reject(new Error('Handshake failed'));
-        }
-        return Promise.resolve();
-      });
-      const hostVerifier = jest.fn().mockReturnValue(false);
+    it('rejects connection when the hostVerifier calls verify(false)', async () => {
+      mockMethods.connect.mockImplementation((config: any) => new Promise<void>((resolve, reject) => {
+        // Simulate ssh2 (lib/client.js:281-286): callback form, verdict via verify()
+        const verify = (permitted: unknown) => {
+          if (permitted === false) { reject(new Error('Handshake failed')); } else { resolve(); }
+        };
+        const ret = config.hostVerifier(Buffer.from('deadbeef'), verify);
+        if (ret !== undefined) { verify(ret); }
+      }));
+      const hostVerifier = jest.fn((_key: Buffer, verify: (permitted: boolean) => void) => { verify(false); });
       await expect(service.connect(serverConfig, { password: 'secret' }, { hostVerifier }))
         .rejects.toThrow('Handshake failed');
-      expect(hostVerifier).toHaveBeenCalled();
+      expect(hostVerifier).toHaveBeenCalledWith(expect.any(Buffer), expect.any(Function));
     });
 
     it('connects without hostVerifier when not provided', async () => {

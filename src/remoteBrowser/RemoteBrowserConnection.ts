@@ -115,25 +115,23 @@ export class RemoteBrowserConnection {
     // Host key verification only applies to SSH-based connections (SFTP).
     // FTP/FTPS use TLS certificates, not SSH host keys.
     const isSsh = server.type === 'sftp';
+    //
+    // ssh2 contract (lib/client.js:281-286): `const ret = hostVerifier(key, verify);
+    // if (ret !== undefined) verify(ret)`. The verifier MUST therefore be the
+    // callback form and return `undefined` — an `async` function returns a
+    // Promise, which ssh2 treats as a truthy verdict and accepts the host
+    // before the prompt has resolved (the 0.14.1 security fix).
     const connectOptions = isSsh ? {
-      hostVerifier: async (key: Buffer | string) => {
-        const hostKeyMgr = this.hostKeyManager;
-        const host = credential.host;
-        const port = credential.port;
-        const keyBase64 = Buffer.isBuffer(key) ? key.toString('base64') : key;
-        const status = await hostKeyMgr.check(host, port, 'ssh-unknown', keyBase64);
-
-        if (status === 'trusted') {
-          return true;
-        }
-
-        const fingerprint = hostKeyMgr.getFingerprint(keyBase64);
-        const accepted = await showHostKeyPrompt(host, port, fingerprint, status);
-
-        if (accepted) {
-          await hostKeyMgr.trust(host, port, 'ssh-unknown', keyBase64);
-        }
-        return accepted;
+      hostVerifier: (key: Buffer, verify: (permitted: boolean) => void): void => {
+        this.decideHostKey(credential.host, credential.port, key).then(
+          (permitted) => verify(permitted),
+          (error: unknown) => {
+            // Fail closed: an error while checking or prompting is never a "yes".
+            const message = error instanceof Error ? error.message : String(error);
+            this.output.appendLine(`[remote-browser] Host key verification failed: ${message}`);
+            verify(false);
+          }
+        );
       },
     } : undefined;
 
@@ -146,6 +144,28 @@ export class RemoteBrowserConnection {
     this.currentCredentialId = server.credentialId;
     this.currentRootPath = server.rootPath;
     this.output.appendLine(`[remote-browser] Connected to ${serverName} (${credential.host})`);
+  }
+
+  /**
+   * Trust-on-first-use decision for an SSH host key: trusted entries pass
+   * silently, unknown and changed keys go through the modal prompt, and an
+   * accepted key is persisted before the verdict is returned.
+   */
+  private async decideHostKey(host: string, port: number, key: Buffer): Promise<boolean> {
+    const keyBase64 = key.toString('base64');
+    const status = await this.hostKeyManager.check(host, port, keyBase64);
+
+    if (status === 'trusted') {
+      return true;
+    }
+
+    const fingerprint = this.hostKeyManager.getFingerprint(keyBase64);
+    const accepted = await showHostKeyPrompt(host, port, fingerprint, status);
+
+    if (accepted) {
+      await this.hostKeyManager.trust(host, port, keyBase64);
+    }
+    return accepted;
   }
 
   async listDirectory(remotePath: string): Promise<FileEntry[]> {

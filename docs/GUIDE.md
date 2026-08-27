@@ -259,6 +259,20 @@ Features:
 - Use `FileFerry: Go to Remote Path` to jump to a specific directory
 - Use `FileFerry: Disconnect Remote Browser` to close the connection — the panel shows a **Disconnected** row and stays offline until you click it (or navigate/refresh explicitly); internal refreshes never reconnect behind your back
 
+### Host key verification
+
+The Remote File Browser verifies the server's SSH host key the way OpenSSH does — *trust on first use*:
+
+- **First connection to a host** — a modal shows the key's SHA-256 fingerprint (`The authenticity of host 'example.com:22' can't be established…`). Compare it with the fingerprint your hosting provider published (or run `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` on the server) and click **Trust** to save it. Closing the dialog rejects the connection.
+- **Every later connection** — the presented key is compared with the saved one; a match connects silently, no prompt.
+- **`WARNING: HOST KEY FOR … HAS CHANGED!`** — the server presented a *different* key than the one you trusted. Either the server was legitimately reinstalled / its keys rotated, or something between you and the server is impersonating it (a man-in-the-middle). If you didn't expect a change, click **Cancel** — the connection is refused and nothing is sent. **Trust Anyway** replaces the saved key.
+
+Trusted keys live in `known_hosts.json` in the extension's global storage (`~/.config/Code/User/globalStorage/esidevlabs.fileferry/` on Linux, `~/Library/Application Support/Code/User/globalStorage/esidevlabs.fileferry/` on macOS, `%APPDATA%\Code\User\globalStorage\esidevlabs.fileferry\` on Windows). Delete an entry there to re-prompt for that host. Keys are matched on the key material alone, so entries saved by older versions keep working.
+
+Only the Remote File Browser's connection is verified today; deploys, Test Connection, and the other one-shot connections don't check host keys yet (planned for the v0.15 SSH work). FTP/FTPS servers have no SSH host key — they use TLS certificates instead.
+
+> **Note (0.14.1 security fix):** in versions up to 0.14.0 the prompt was shown but did **not** block the connection — an unknown or changed host key was accepted before you answered. If you rely on host-key verification, update.
+
 ### Servers Panel
 
 See all configured servers at a glance. The active server shows a filled circle indicator.
@@ -609,6 +623,10 @@ chmod 600 ~/.ssh/id_rsa
 ```
 
 SSH rejects keys with loose permissions. FileFerry will warn you when saving a key credential with incorrect permissions.
+
+### "WARNING: HOST KEY FOR … HAS CHANGED!"
+
+The server's SSH host key differs from the one saved on first connection. See [Host key verification](#host-key-verification) — if you didn't expect the change (server reinstall, key rotation), click **Cancel** and check with whoever runs the server before trusting the new key.
 
 ### Remote File Browser shows an error
 

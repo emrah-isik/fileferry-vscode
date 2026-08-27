@@ -66,7 +66,12 @@ export class SftpService implements TransferService, RemoteCommandRunner {
     server: ServerConfig,
     credentials: { password?: string; passphrase?: string },
     options?: {
-      hostVerifier?: (key: Buffer | string) => boolean | Promise<boolean>;
+      /**
+       * ssh2 callback form ONLY. Must return `undefined` and deliver the verdict
+       * through `verify(permitted)`; ssh2 treats any non-undefined return value
+       * (including a Promise from an `async` function) as an immediate verdict.
+       */
+      hostVerifier?: (key: Buffer, verify: (permitted: boolean) => void) => void;
       keyboardInteractiveHandler?: (prompts: Array<{ prompt: string; echo: boolean }>) => Promise<string[]>;
     }
   ): Promise<void> {

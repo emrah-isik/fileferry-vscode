@@ -47,7 +47,7 @@ Passwords and passphrases never touch the filesystem.
 - **Blank = keep existing**: Saving a credential with an empty password/passphrase string passes `undefined` to `CredentialManager.save()`, which skips the keychain write — leaving the previously stored secret intact.
 - **Agent auth**: When `authMethod` is `agent`, no secrets are stored or requested at all. The SSH agent socket handles authentication.
 - **Keyboard-interactive auth**: When `authMethod` is `keyboard-interactive`, no secrets are stored. The server sends challenges at connection time and the user responds via VS Code input prompts.
-- **Host key verification**: Trusted host keys are stored in `globalStorageUri/known_hosts.json` as `{ "[host]:port": { type, key, addedAt } }`. On first connection, the user is prompted to trust the key. If a key changes, a critical warning is shown. The `HostKeyManager` class handles storage; `hostKeyPrompt` handles the VS Code modal UI.
+- **Host key verification**: Trusted host keys are stored in `globalStorageUri/known_hosts.json` as `{ "[host]:port": { type, key, addedAt } }` — `key` is the base64 host-key blob ssh2 hands to `hostVerifier`, `type` is `ssh2.utils.parseKey(key).type` (`ssh-unknown` when unparseable, and on every entry written before 0.14.1). **Matching is on `key` alone; `type` is informational.** On first connection the user is prompted to trust the key; if a key changes, a critical warning is shown. `HostKeyManager` handles storage (writes are serialised through an in-process promise chain); `hostKeyPrompt` handles the VS Code modal UI. **The `hostVerifier` passed to ssh2 must be the callback form** `(key, verify) => void` — ssh2 (`lib/client.js`) treats any non-`undefined` return value, a Promise included, as the verdict, so an `async` verifier auto-accepts before the prompt resolves (the 0.14.1 fix); `TransferService.connect`'s option type admits only that shape. Errors during the check fail closed (`verify(false)`).
 
 ---
 
@@ -205,7 +205,7 @@ interface TransferService {
 **Protocol-specific constraints**:
 
 - FTP/FTPS only supports password authentication. The Deployment Settings webview filters the credential dropdown to password-only credentials when an FTP protocol is selected. The backend also validates this before connecting.
-- Host key verification only applies to SFTP connections. FTP/FTPS connections skip the `hostVerifier` option.
+- Host key verification only applies to SFTP connections. FTP/FTPS connections skip the `hostVerifier` option. Today only `RemoteBrowserConnection` passes one — the other connect sites do not verify host keys (the v0.15 SSH work centralises this in `SftpService.connect()`).
 - `FileEntry` is a protocol-agnostic type (`{ name, type, size, modifyTime, mode? }`) that replaces the ssh2-specific `SftpClient.FileInfo` across the codebase. `mode` is the listing-derived octal permission string (`"644"`) — always present on SFTP, only for unix-style listings on FTP; consumers must not assume it.
 - FTP `mkdir` is basic-ftp's `ensureDir`: it always creates missing parents *and* changes the client's working directory — acceptable only because every FileFerry remote path is absolute and callers pre-check collisions with `exists()`.
 - Honest failures: `FtpService.chmod` propagates `SITE CHMOD` rejections (the deploy path best-efforts at its own call site), and an **empty** FTP listing is verified with a `cd` probe — some servers report permission-denied directories as empty, which would otherwise let a recursive copy silently skip a subtree.

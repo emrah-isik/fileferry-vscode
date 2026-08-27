@@ -83,6 +83,43 @@ const fakeConfig = {
   servers: { Production: fakeServer },
 };
 
+/**
+ * Drives a `hostVerifier` exactly the way ssh2 does, so a test fails if the
+ * verifier's *shape* is wrong — not just its eventual value.
+ *
+ * Reproduces `node_modules/ssh2/lib/client.js:281-286`:
+ *
+ *     const ret = hashCb(key, verify);
+ *     if (ret !== undefined) verify(ret);
+ *
+ * and the verdict rule in `lib/protocol/kex.js:1200-1204`: the handshake is
+ * rejected only when `permitted === false`. Any other value — including a
+ * pending Promise returned by an `async` verifier — is truthy and accepts the
+ * host immediately, before the prompt has resolved.
+ */
+function driveSsh2HostVerifier(
+  hostVerifier: (key: Buffer, verify: (permitted: unknown) => void) => unknown,
+  key: Buffer
+): Promise<boolean> {
+  return new Promise((resolve) => {
+    const verify = (permitted: unknown) => resolve(permitted !== false);
+    const ret = hostVerifier(key, verify);
+    if (ret !== undefined) {
+      verify(ret);
+    }
+  });
+}
+
+/** Runs ensureConnected() and returns the hostVerifier it handed to connect(). */
+async function captureHostVerifier(connection: RemoteBrowserConnection) {
+  let captured: any;
+  mockSftp.connect.mockImplementation(async (_cfg: any, _creds: any, opts: any) => {
+    captured = opts.hostVerifier;
+  });
+  await connection.ensureConnected();
+  return captured as (key: Buffer, verify: (permitted: unknown) => void) => unknown;
+}
+
 describe('RemoteBrowserConnection', () => {
   let connection: RemoteBrowserConnection;
 
@@ -623,7 +660,7 @@ describe('RemoteBrowserConnection', () => {
     });
   });
 
-  describe('host key verification', () => {
+  describe('host key verification — driven the way ssh2 drives it (regression for the async-verifier bug)', () => {
     it('passes a hostVerifier callback to SftpService.connect', async () => {
       await connection.ensureConnected();
       expect(mockSftp.connect).toHaveBeenCalledWith(
@@ -633,52 +670,96 @@ describe('RemoteBrowserConnection', () => {
       );
     });
 
-    it('hostVerifier accepts trusted keys without prompting', async () => {
+    it('REJECTS an unknown host when the user declines the prompt', async () => {
+      mockHostKeyManager.check.mockResolvedValue('unknown');
+      (hostKeyPrompt.showHostKeyPrompt as jest.Mock).mockResolvedValue(false);
+      const hostVerifier = await captureHostVerifier(connection);
+
+      const verdict = await driveSsh2HostVerifier(hostVerifier, Buffer.from('newkey'));
+
+      expect(verdict).toBe(false);
+      expect(mockHostKeyManager.trust).not.toHaveBeenCalled();
+    });
+
+    it('REJECTS a changed host key when the user declines the MITM warning', async () => {
+      mockHostKeyManager.check.mockResolvedValue('changed');
+      (hostKeyPrompt.showHostKeyPrompt as jest.Mock).mockResolvedValue(false);
+      const hostVerifier = await captureHostVerifier(connection);
+
+      const verdict = await driveSsh2HostVerifier(hostVerifier, Buffer.from('changedkey'));
+
+      expect(verdict).toBe(false);
+    });
+
+    it('delivers no verdict at all while the prompt is still open', async () => {
+      mockHostKeyManager.check.mockResolvedValue('unknown');
+      let resolvePrompt!: (accepted: boolean) => void;
+      (hostKeyPrompt.showHostKeyPrompt as jest.Mock).mockReturnValue(
+        new Promise<boolean>((resolve) => { resolvePrompt = resolve; })
+      );
+      const hostVerifier = await captureHostVerifier(connection);
+
+      // The suite runs on fake timers, so flush microtasks by hand
+      const flushMicrotasks = async () => { for (let i = 0; i < 10; i++) { await Promise.resolve(); } };
+
+      const verify = jest.fn();
+      const ret = hostVerifier(Buffer.from('newkey'), verify);
+      await flushMicrotasks(); // lets check() resolve and the prompt open
+
+      // ssh2 treats a non-undefined return as the verdict — a Promise would auto-accept
+      expect(ret).toBeUndefined();
+      expect(verify).not.toHaveBeenCalled();
+
+      resolvePrompt(true);
+      await flushMicrotasks();
+      expect(verify).toHaveBeenCalledWith(true);
+    });
+
+    it('ACCEPTS a trusted host without prompting', async () => {
       mockHostKeyManager.check.mockResolvedValue('trusted');
-      mockSftp.connect.mockImplementation(async (_cfg: any, _creds: any, opts: any) => {
-        const result = await opts.hostVerifier(Buffer.from('fakekey'));
-        expect(result).toBe(true);
-      });
-      await connection.ensureConnected();
+      const hostVerifier = await captureHostVerifier(connection);
+
+      const verdict = await driveSsh2HostVerifier(hostVerifier, Buffer.from('fakekey'));
+
+      expect(verdict).toBe(true);
       expect(hostKeyPrompt.showHostKeyPrompt).not.toHaveBeenCalled();
     });
 
-    it('hostVerifier prompts for unknown keys and trusts on accept', async () => {
+    it('prompts with the MITM warning (status "changed") and accepts on Trust Anyway', async () => {
+      mockHostKeyManager.check.mockResolvedValue('changed');
+      (hostKeyPrompt.showHostKeyPrompt as jest.Mock).mockResolvedValue(true);
+      const hostVerifier = await captureHostVerifier(connection);
+
+      const verdict = await driveSsh2HostVerifier(hostVerifier, Buffer.from('changedkey'));
+
+      expect(verdict).toBe(true);
+      expect(hostKeyPrompt.showHostKeyPrompt).toHaveBeenCalledWith(
+        'example.com', 22, expect.any(String), 'changed'
+      );
+    });
+
+    it('REJECTS (fails closed) when the check or prompt throws', async () => {
+      mockHostKeyManager.check.mockRejectedValue(new Error('disk on fire'));
+      const hostVerifier = await captureHostVerifier(connection);
+
+      const verdict = await driveSsh2HostVerifier(hostVerifier, Buffer.from('newkey'));
+
+      expect(verdict).toBe(false);
+      expect(mockOutput.appendLine).toHaveBeenCalledWith(expect.stringContaining('disk on fire'));
+    });
+
+    it('ACCEPTS and trusts an unknown host when the user accepts the prompt', async () => {
       mockHostKeyManager.check.mockResolvedValue('unknown');
       (hostKeyPrompt.showHostKeyPrompt as jest.Mock).mockResolvedValue(true);
-      mockSftp.connect.mockImplementation(async (_cfg: any, _creds: any, opts: any) => {
-        const result = await opts.hostVerifier(Buffer.from('newkey'));
-        expect(result).toBe(true);
-      });
-      await connection.ensureConnected();
+      const hostVerifier = await captureHostVerifier(connection);
+
+      const verdict = await driveSsh2HostVerifier(hostVerifier, Buffer.from('newkey'));
+
+      expect(verdict).toBe(true);
       expect(hostKeyPrompt.showHostKeyPrompt).toHaveBeenCalledWith(
         'example.com', 22, expect.any(String), 'unknown'
       );
       expect(mockHostKeyManager.trust).toHaveBeenCalled();
-    });
-
-    it('hostVerifier rejects unknown keys when user declines', async () => {
-      mockHostKeyManager.check.mockResolvedValue('unknown');
-      (hostKeyPrompt.showHostKeyPrompt as jest.Mock).mockResolvedValue(false);
-      mockSftp.connect.mockImplementation(async (_cfg: any, _creds: any, opts: any) => {
-        const result = await opts.hostVerifier(Buffer.from('newkey'));
-        expect(result).toBe(false);
-      });
-      await connection.ensureConnected();
-      expect(mockHostKeyManager.trust).not.toHaveBeenCalled();
-    });
-
-    it('hostVerifier prompts with warning for changed keys', async () => {
-      mockHostKeyManager.check.mockResolvedValue('changed');
-      (hostKeyPrompt.showHostKeyPrompt as jest.Mock).mockResolvedValue(true);
-      mockSftp.connect.mockImplementation(async (_cfg: any, _creds: any, opts: any) => {
-        const result = await opts.hostVerifier(Buffer.from('changedkey'));
-        expect(result).toBe(true);
-      });
-      await connection.ensureConnected();
-      expect(hostKeyPrompt.showHostKeyPrompt).toHaveBeenCalledWith(
-        'example.com', 22, expect.any(String), 'changed'
-      );
     });
   });
 
