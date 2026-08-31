@@ -28,14 +28,14 @@ describe('showKeyboardInteractivePrompts', () => {
     expect(result).toEqual(['my-otp-code', 'my-pin']);
   });
 
-  it('returns empty strings when user dismisses prompt', async () => {
+  it('returns null when the user dismisses a prompt (cancel)', async () => {
     (vscode.window.showInputBox as jest.Mock).mockResolvedValue(undefined);
 
     const result = await showKeyboardInteractivePrompts([
       { prompt: 'Verification code: ', echo: false },
     ]);
 
-    expect(result).toEqual(['']);
+    expect(result).toBeNull();
   });
 
   it('handles empty prompts array', async () => {

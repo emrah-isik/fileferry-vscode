@@ -4,6 +4,15 @@ import * as os from 'os';
 import * as path from 'path';
 import { ServerConfig, UploadPair, UploadResult } from './types';
 import { resolveAgentSocket } from './ssh/agentResolver';
+import { getRawClient } from './ssh/rawClient';
+import {
+  connectProviderRegistry,
+  createKeyboardInteractiveListener,
+  KeyboardInteractiveProvider,
+  PrePromptTimer,
+  PromptContext,
+  PRE_PROMPT_TIMEOUT_MS,
+} from './ssh/connectProviders';
 import { resolveHostAlias, applySshConfig } from './ssh/SshConfigResolver';
 import { TransferService, RemoteCommandResult, RemoteCommandRunner, FileEntry } from './transferService';
 
@@ -62,6 +71,19 @@ export class SftpService implements TransferService, RemoteCommandRunner {
     return this.client !== null;
   }
 
+  /**
+   * Opens the SFTP session.
+   *
+   * Prompt providers come from `options` when given (explicit wins) and from
+   * the `connectProviderRegistry` otherwise, so every SSH connect in the
+   * extension verifies host keys and answers keyboard-interactive challenges
+   * without each call site wiring UI. A connect is *interactive* when either
+   * provider is present: then `tryKeyboard` is on for every auth method (a
+   * `publickey,keyboard-interactive` server can't authenticate otherwise) and
+   * ssh2's `readyTimeout` — which would time out a prompt the user takes
+   * longer than 20 s to answer — is replaced by a 20 s timer that only guards
+   * the stretch before the first prompt opens.
+   */
   async connect(
     server: ServerConfig,
     credentials: { password?: string; passphrase?: string },
@@ -70,18 +92,71 @@ export class SftpService implements TransferService, RemoteCommandRunner {
        * ssh2 callback form ONLY. Must return `undefined` and deliver the verdict
        * through `verify(permitted)`; ssh2 treats any non-undefined return value
        * (including a Promise from an `async` function) as an immediate verdict.
+       * An explicit verifier bypasses the registry's `HostKeyProvider`.
        */
       hostVerifier?: (key: Buffer, verify: (permitted: boolean) => void) => void;
-      keyboardInteractiveHandler?: (prompts: Array<{ prompt: string; echo: boolean }>) => Promise<string[]>;
+      /** Answers keyboard-interactive challenges; bypasses the registry's provider. */
+      keyboardInteractive?: KeyboardInteractiveProvider;
     }
   ): Promise<void> {
-    this.client = new SftpClient();
+    const firstAttempt = { keychainAnswerUsed: false, userPrompted: false };
+    try {
+      await this.connectAttempt(server, credentials, options, true, firstAttempt);
+    } catch (err: unknown) {
+      // ssh2's default authHandler offers keyboard-interactive exactly once per
+      // connection, so a keychain auto-answer with a stale password consumes
+      // the only attempt before the user ever sees a prompt. Reconnect once
+      // with the auto-answer disabled — R5's "then asks the user".
+      const authFailed = /authentication methods failed/i.test((err as Error).message ?? '');
+      if (!authFailed || !firstAttempt.keychainAnswerUsed || firstAttempt.userPrompted) {
+        throw err;
+      }
+      connectProviderRegistry.get().log(
+        `keychain answer for ${server.username}@${server.host}:${server.port} was rejected — reconnecting to ask interactively`
+      );
+      await this.connectAttempt(server, credentials, options, false, { keychainAnswerUsed: false, userPrompted: false });
+    }
+  }
+
+  private async connectAttempt(
+    server: ServerConfig,
+    credentials: { password?: string; passphrase?: string },
+    options: Parameters<TransferService['connect']>[2],
+    allowKeychainAutoAnswer: boolean,
+    attempt: { keychainAnswerUsed: boolean; userPrompted: boolean }
+  ): Promise<void> {
+    const client = new SftpClient();
+    this.client = client;
 
     // When the credential opts in, treat `host` as an ~/.ssh/config Host alias
     // and resolve HostName/Port/User/IdentityFile from the user's SSH config.
     if (server.useSshConfig) {
       server = applySshConfig(server, resolveHostAlias(server.host));
     }
+
+    const providers = connectProviderRegistry.get();
+    const configuredProvider = options?.keyboardInteractive ?? providers.keyboardInteractive;
+    // Tracked so a failed auth can tell "the keychain silently consumed the
+    // one keyboard-interactive attempt" from "the user already typed".
+    const keyboardInteractive: KeyboardInteractiveProvider | undefined = configuredProvider && {
+      prompt: (request, context) => {
+        attempt.userPrompted = true;
+        return configuredProvider.prompt(request, context);
+      },
+    };
+    const target = { username: server.username, host: server.host, port: server.port };
+
+    let timer: PrePromptTimer | undefined;
+    const context: PromptContext = { promptOpened: () => timer?.promptOpened() };
+
+    const hostVerifier = options?.hostVerifier
+      ?? (providers.hostKey
+        ? (key: Buffer, verify: (permitted: boolean) => void): void => {
+          providers.hostKey!.verify({ host: target.host, port: target.port }, key, context, verify);
+        }
+        : undefined);
+
+    const interactive = keyboardInteractive !== undefined || hostVerifier !== undefined;
 
     // Build the connection config based on auth method. ssh2-sftp-client's
     // ConnectOptions has optional fields that vary by auth method, so we
@@ -94,11 +169,19 @@ export class SftpService implements TransferService, RemoteCommandRunner {
       // values are plain string arrays validated at runtime, so narrow to the
       // library's expected shape here.
       algorithms: (server.algorithms ?? DEFAULT_ALGORITHMS) as SftpClient.ConnectOptions['algorithms'],
-      ...(options?.hostVerifier ? { hostVerifier: options.hostVerifier } : {}),
+      tryKeyboard: keyboardInteractive !== undefined,
+      ...(hostVerifier ? { hostVerifier } : {}),
+      ...(interactive ? { readyTimeout: 0 } : {}),
     };
 
     if (server.authMethod === 'password') {
-      connectConfig.password = credentials.password;
+      // On the retry after a rejected keychain answer the password is
+      // known-wrong; offering it again is pointless — and stock Ubuntu sshd
+      // (UsePAM) kills the connection post-auth when a successful
+      // keyboard-interactive follows a failed password auth. Retry KI-only.
+      if (allowKeychainAutoAnswer) {
+        connectConfig.password = credentials.password;
+      }
     } else if (server.authMethod === 'key') {
       const keyPath = server.privateKeyPath!.replace('~', os.homedir());
       try {
@@ -111,49 +194,56 @@ export class SftpService implements TransferService, RemoteCommandRunner {
       }
     } else if (server.authMethod === 'agent') {
       connectConfig.agent = resolveAgentSocket(server.agentSocketPath);
-    } else if (server.authMethod === 'keyboard-interactive') {
-      connectConfig.tryKeyboard = true;
     }
 
-    // Register keyboard-interactive handler on the underlying ssh2 Client
-    // before calling connect, so it's ready when the server sends a challenge.
-    if (server.authMethod === 'keyboard-interactive' && options?.keyboardInteractiveHandler) {
-      const handler = options.keyboardInteractiveHandler;
-      // ssh2-sftp-client exposes the underlying ssh2 Client as `.client`, which
-      // is not part of its published type surface. Reach through with a minimal
-      // shape so we can register the keyboard-interactive challenge listener.
-      const underlyingClient = (this.client as unknown as {
-        client: {
-          on(
-            event: 'keyboard-interactive',
-            listener: (
-              name: string,
-              instructions: string,
-              lang: string,
-              prompts: Array<{ prompt: string; echo: boolean }>,
-              finish: (responses: string[]) => void
-            ) => void
-          ): void;
-        };
-      }).client;
-      underlyingClient.on('keyboard-interactive',
-        async (_name: string, _instructions: string, _lang: string,
-          prompts: Array<{ prompt: string; echo: boolean }>,
-          finish: (responses: string[]) => void) => {
-          const responses = await handler(prompts);
-          finish(responses);
-        }
-      );
+    // A cancelled prompt or an expired pre-prompt timer must fail the connect
+    // even though ssh2 is still waiting on the wire: race the connect against
+    // an abort promise and tear the client down.
+    let rejectAbort!: (error: Error) => void;
+    const aborted = new Promise<never>((_resolve, reject) => { rejectAbort = reject; });
+    const abort = (reason: string): void => {
+      rejectAbort(new Error(reason));
+      void client.end().catch(() => undefined);
+      if (this.client === client) {
+        this.client = null;
+      }
+    };
+
+    if (keyboardInteractive) {
+      // Register before connect, so the listener is ready for the first challenge.
+      getRawClient(client).on('keyboard-interactive', createKeyboardInteractiveListener(connectProviderRegistry.coordinator, {
+        target,
+        authMethod: server.authMethod,
+        password: credentials.password,
+        provider: keyboardInteractive,
+        allowKeychainAutoAnswer,
+        onKeychainAutoAnswer: () => { attempt.keychainAnswerUsed = true; },
+        context,
+        log: providers.log,
+        abort,
+      }));
+    }
+
+    if (interactive) {
+      timer = new PrePromptTimer(PRE_PROMPT_TIMEOUT_MS, () => {
+        providers.log(`connect to ${target.username}@${target.host}:${target.port}: no prompt opened within 20 s — giving up`);
+        abort('Timed out waiting for the SSH handshake (20 s) before any prompt opened');
+      });
     }
 
     try {
-      await this.client.connect(connectConfig);
+      await Promise.race([client.connect(connectConfig), aborted]);
     } catch (err: unknown) {
+      if (this.client === client) {
+        this.client = null;
+      }
       const msg = (err as Error).message ?? '';
       if (msg.includes('parse') && msg.toLowerCase().includes('privatekey')) {
         throw new Error('Could not parse private key file. Supported formats: OpenSSH, PEM, PPK');
       }
       throw err;
+    } finally {
+      timer?.dispose();
     }
   }
 
@@ -366,18 +456,7 @@ export class SftpService implements TransferService, RemoteCommandRunner {
       throw new Error('Not connected. Call connect() before running remote commands.');
     }
 
-    // ssh2-sftp-client exposes the underlying ssh2 Client as `.client`, which is
-    // not part of its published type surface. Reach through with a minimal shape
-    // (same accessor the keyboard-interactive handler uses) to call `.exec()`.
-    const underlyingClient = (this.client as unknown as {
-      client: {
-        exec(
-          command: string,
-          options: { pty: boolean },
-          callback: (error: Error | undefined, channel: RemoteExecChannel) => void
-        ): void;
-      };
-    }).client;
+    const underlyingClient = getRawClient(this.client);
 
     return new Promise<RemoteCommandResult>((resolve, reject) => {
       // Deliberately pty:false — a PTY merges stdout+stderr and invites
@@ -451,14 +530,4 @@ function rightsToOctalMode(
     (/[sS]/.test(user) ? 4 : 0) + (/[sS]/.test(group) ? 2 : 0) + (/[tT]/.test(other) ? 1 : 0);
   const base = `${triadDigit(user)}${triadDigit(group)}${triadDigit(other)}`;
   return specialDigit > 0 ? `${specialDigit}${base}` : base;
-}
-
-// Minimal shape of the ssh2 exec channel we consume: a stdout stream emitting
-// 'data'/'exit'/'close', a separate `stderr` stream, and `destroy()` for timeout.
-interface RemoteExecChannel {
-  on(event: 'data', listener: (data: Buffer) => void): void;
-  on(event: 'exit', listener: (code: number | null) => void): void;
-  on(event: 'close', listener: () => void): void;
-  stderr: { on(event: 'data', listener: (data: Buffer) => void): void };
-  destroy(): void;
 }

@@ -10,7 +10,7 @@ module.exports = {
   modulePathIgnorePatterns: ['/.claude/worktrees/'],
   moduleNameMapper: {
     // Mock the vscode module since it's only available inside VSCode
-    vscode: '<rootDir>/src/test/__mocks__/vscode.ts'
+    '^vscode$': '<rootDir>/src/test/__mocks__/vscode.ts'
   },
   collectCoverageFrom: ['src/**/*.ts', '!src/test/**', '!.claude/**']
 };

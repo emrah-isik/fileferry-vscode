@@ -47,6 +47,9 @@ import { GitService } from './gitService';
 import { ChangedFilesView } from './changedFiles/ChangedFilesView';
 import { uploadChangedFilesSelection } from './commands/uploadChangedFilesSelection';
 import { uploadChangedFilesOnlyNewer } from './commands/uploadChangedFilesOnlyNewer';
+import { connectProviderRegistry } from './ssh/connectProviders';
+import { HostKeyManager } from './ssh/HostKeyManager';
+import { VscodeHostKeyProvider, VscodeKeyboardInteractiveProvider } from './ssh/vscodeConnectProviders';
 
 let output: vscode.OutputChannel;
 
@@ -81,6 +84,17 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const credentialManager = new CredentialManager(context);
   const configManager = new ProjectConfigManager();
+
+  // Every SSH connect (deploys, Test Connection, Remote Files, …) reads these
+  // providers from the registry unless the caller passes its own. The log
+  // goes to the plain (unmasked) channel — callers never pass secrets.
+  const sshLog = (line: string): void => output.appendLine(`[ssh] ${line}`);
+  connectProviderRegistry.set({
+    keyboardInteractive: new VscodeKeyboardInteractiveProvider(),
+    hostKey: new VscodeHostKeyProvider(new HostKeyManager(context.globalStorageUri.fsPath), sshLog),
+    log: sshLog,
+  });
+  context.subscriptions.push({ dispose: () => connectProviderRegistry.clear() });
 
   // Migrate old servers.json + project binding → new fileferry.json on first activation
   const oldServersPath = path.join(context.globalStorageUri.fsPath, 'servers.json');
@@ -316,10 +330,7 @@ export function activate(context: vscode.ExtensionContext): void {
   updateHasServersContext();
 
   // Remote File Browser
-  const browserConnection = new RemoteBrowserConnection(
-    credentialManager, configManager, output,
-    context.globalStorageUri.fsPath
-  );
+  const browserConnection = new RemoteBrowserConnection(credentialManager, configManager, output);
   const browserProvider = new RemoteBrowserProvider(browserConnection);
   const remoteEditSessionRegistry = new RemoteEditSessionRegistry();
   const remoteEditSaveListener = new RemoteEditSaveListener({

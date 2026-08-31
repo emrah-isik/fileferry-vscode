@@ -1,8 +1,13 @@
 import * as vscode from 'vscode';
 
+/**
+ * Shows one input box per prompt. Resolves `null` as soon as the user
+ * dismisses one — a cancelled challenge must abort the connect, not be
+ * answered with empty strings.
+ */
 export async function showKeyboardInteractivePrompts(
   prompts: Array<{ prompt: string; echo: boolean }>
-): Promise<string[]> {
+): Promise<string[] | null> {
   const responses: string[] = [];
 
   for (const p of prompts) {
@@ -11,7 +16,10 @@ export async function showKeyboardInteractivePrompts(
       password: !p.echo,
       ignoreFocusOut: true,
     });
-    responses.push(value ?? '');
+    if (value === undefined) {
+      return null;
+    }
+    responses.push(value);
   }
 
   return responses;
