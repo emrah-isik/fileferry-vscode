@@ -21,6 +21,13 @@ export interface TransferService {
       hostVerifier?: (key: Buffer, verify: (permitted: boolean) => void) => void;
       /** Answers keyboard-interactive challenges; bypasses the registry's provider. */
       keyboardInteractive?: KeyboardInteractiveProvider;
+      /**
+       * `false` = background connect: never prompt, still verify — fails fast
+       * with a typed `InteractionRequiredError` (src/ssh/connectErrors.ts)
+       * when verification would need the user. Default `true`. FTP/FTPS
+       * transports ignore it (they never prompt).
+       */
+      interactive?: boolean;
     }
   ): Promise<void>;
 
