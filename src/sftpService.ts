@@ -141,9 +141,6 @@ export class SftpService implements TransferService, RemoteCommandRunner {
     allowKeychainAutoAnswer: boolean,
     attempt: { keychainAnswerUsed: boolean; userPrompted: boolean }
   ): Promise<void> {
-    const client = new SftpClient();
-    this.client = client;
-
     // When the credential opts in, treat `host` as an ~/.ssh/config Host alias
     // and resolve HostName/Port/User/IdentityFile from the user's SSH config.
     if (server.useSshConfig) {
@@ -156,9 +153,13 @@ export class SftpService implements TransferService, RemoteCommandRunner {
 
     if (!interactiveAllowed && server.authMethod === 'keyboard-interactive') {
       // The credential's whole auth method is answering prompts — there is
-      // nothing a background connect could even attempt. Fail before dialing.
+      // nothing a background connect could even attempt. Fail before dialing
+      // (and before this.client is set, so `connected` stays false).
       throw new VerificationRequiredError(target.host, target.port);
     }
+
+    const client = new SftpClient();
+    this.client = client;
 
     const configuredProvider = interactiveAllowed
       ? options?.keyboardInteractive ?? providers.keyboardInteractive

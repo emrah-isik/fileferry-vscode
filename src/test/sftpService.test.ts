@@ -630,6 +630,7 @@ describe('SftpService', () => {
         await expect(service.connect(kiOnlyServer, {}, { interactive: false }))
           .rejects.toThrow(VerificationRequiredError);
         expect(mockMethods.connect).not.toHaveBeenCalled();
+        expect(service.connected).toBe(false);
       });
     });
 
