@@ -3,6 +3,7 @@ import * as path from 'path';
 import { CredentialManager } from '../storage/CredentialManager';
 import { ProjectConfigManager } from '../storage/ProjectConfigManager';
 import { autoUploadFile } from './autoUpload';
+import { showVerificationRequiredWarning } from '../ui/verificationRequiredWarning';
 
 interface Dependencies {
   credentialManager: CredentialManager;
@@ -59,6 +60,13 @@ export class UploadOnSaveService {
           `FileFerry: ${outcome.fileName} is newer on the remote — upload skipped. Use Alt+U to overwrite.`
         );
       }
+      return;
+    }
+
+    if (outcome.status === 'verification-required') {
+      // Background connects never prompt (18a-1b): tell the user how to
+      // unblock instead of a generic failure.
+      showVerificationRequiredWarning(outcome.serverName, outcome.serverId);
       return;
     }
 

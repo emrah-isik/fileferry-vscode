@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import { CredentialManager } from '../storage/CredentialManager';
 import { ProjectConfigManager } from '../storage/ProjectConfigManager';
 import { autoUploadFile } from './autoUpload';
+import { showVerificationRequiredWarning } from '../ui/verificationRequiredWarning';
 
 interface Dependencies {
   credentialManager: CredentialManager;
@@ -119,6 +120,9 @@ export class FileWatcherService {
 
     const uploaded: string[] = [];
     const failed: string[] = [];
+    // One warning per flush, not one per file — a burst of build outputs
+    // against an unverified host must not stack notifications.
+    let verificationRequired: { serverId: string; serverName: string } | null = null;
 
     for (const file of batch) {
       const outcome = await autoUploadFile(
@@ -134,10 +138,17 @@ export class FileWatcherService {
         uploaded.push(file);
       } else if (outcome.status === 'skipped') {
         this.dependencies.output.appendLine(`FileFerry (watch): skipped ${file} (${outcome.reason})`);
+      } else if (outcome.status === 'verification-required') {
+        this.dependencies.output.appendLine(`FileFerry (watch): skipped ${file} — ${outcome.error}`);
+        verificationRequired = { serverId: outcome.serverId, serverName: outcome.serverName };
       } else {
         const detail = outcome.status === 'error' ? outcome.error : 'upload failed';
         failed.push(`${file} (${detail})`);
       }
+    }
+
+    if (verificationRequired) {
+      showVerificationRequiredWarning(verificationRequired.serverName, verificationRequired.serverId);
     }
 
     if (uploaded.length > 0) {

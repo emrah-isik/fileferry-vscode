@@ -112,6 +112,25 @@ describe('FileWatcherService', () => {
     expect(mockAutoUpload.mock.calls[0][5]).toEqual({ applyGitIgnore: false });
   });
 
+  it('shows ONE verification-required warning per flush and logs each skipped file (18a-1b)', async () => {
+    mockAutoUpload.mockResolvedValue({
+      status: 'verification-required', serverId: 'srv-1', serverName: 'Production', fileName: 'a.js',
+    });
+    await startWith(watchConfig(['dist/**']));
+    changeCallbacks[0](uri('/workspace/dist/a.js'));
+    changeCallbacks[0](uri('/workspace/dist/b.js'));
+    await jest.advanceTimersByTimeAsync(400);
+
+    expect(vscode.window.showWarningMessage).toHaveBeenCalledTimes(1);
+    expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+      expect.stringMatching(/not yet trusted|verification required/i),
+      'Test Connection'
+    );
+    expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
+    expect(mockOutput.appendLine).toHaveBeenCalledWith(expect.stringContaining('/workspace/dist/a.js'));
+    expect(mockOutput.appendLine).toHaveBeenCalledWith(expect.stringContaining('/workspace/dist/b.js'));
+  });
+
   it('coalesces rapid repeated writes to the same file into one upload', async () => {
     await startWith(watchConfig(['dist/**']));
     changeCallbacks[0](uri('/workspace/dist/a.js'));

@@ -14,6 +14,7 @@ import { FileDateGuard } from '../../../services/FileDateGuard';
 import { UploadHistoryService } from '../../../services/UploadHistoryService';
 import { summaryToHistoryEntries } from '../../../services/summaryToHistoryEntries';
 import { UploadOnSaveService } from '../../../services/UploadOnSaveService';
+import { HostNotTrustedError } from '../../../ssh/connectErrors';
 import type { CredentialManager } from '../../../storage/CredentialManager';
 import type { ProjectConfigManager } from '../../../storage/ProjectConfigManager';
 
@@ -216,6 +217,9 @@ describe('UploadOnSaveService', () => {
       expect.objectContaining({ password: 'secret' }),
       expect.any(Object),
       [],
+      undefined,
+      undefined,
+      { interactive: false },
     );
   });
 
@@ -257,6 +261,21 @@ describe('UploadOnSaveService', () => {
     expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
       expect.stringContaining('Connection refused'),
     );
+  });
+
+  it('shows the verification-required warning (not an error) when the background connect is refused (18a-1b)', async () => {
+    mockDateGuardCheck.mockRejectedValue(new HostNotTrustedError('example.com', 22, 'unknown'));
+    const service = createService();
+    service.register();
+
+    await saveCallback(makeSavedDoc('/workspace/src/app.php'));
+
+    expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+      expect.stringMatching(/not yet trusted|verification required/i),
+      'Test Connection'
+    );
+    expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
+    expect(mockUpload).not.toHaveBeenCalled();
   });
 
   it('skips fileferry.json saves to avoid recursive triggers', async () => {

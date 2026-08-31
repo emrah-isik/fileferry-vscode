@@ -15,6 +15,7 @@ import { FileDateGuard } from '../../../services/FileDateGuard';
 import { UploadHistoryService } from '../../../services/UploadHistoryService';
 import { summaryToHistoryEntries } from '../../../services/summaryToHistoryEntries';
 import { autoUploadFile } from '../../../services/autoUpload';
+import { HostNotTrustedError, VerificationRequiredError } from '../../../ssh/connectErrors';
 import type { CredentialManager } from '../../../storage/CredentialManager';
 import type { ProjectConfigManager } from '../../../storage/ProjectConfigManager';
 import type { ProjectConfig } from '../../../models/ProjectConfig';
@@ -141,5 +142,55 @@ describe('autoUploadFile', () => {
   it('does not log history when historyMaxEntries is 0', async () => {
     await autoUploadFile('/workspace/dist/app.js', '/workspace', { ...config, historyMaxEntries: 0 }, deps(), 'watch', { applyGitIgnore: false });
     expect(mockHistoryLog).not.toHaveBeenCalled();
+  });
+
+  describe('background connects never prompt (18a-1b, Q32/H2)', () => {
+    it('runs the date guard with interactive:false — the first of the two connections', async () => {
+      await autoUploadFile('/workspace/dist/app.js', '/workspace', config, deps(), 'save', { applyGitIgnore: false });
+
+      expect(mockDateGuardCheck).toHaveBeenCalledWith(
+        expect.any(Array), expect.anything(), undefined, { interactive: false }
+      );
+    });
+
+    it('runs the orchestrator with interactive:false — the second connection', async () => {
+      await autoUploadFile('/workspace/dist/app.js', '/workspace', config, deps(), 'watch', { applyGitIgnore: false });
+
+      expect(mockUpload).toHaveBeenCalledWith(
+        expect.any(Array), expect.anything(), null, [], undefined, undefined, { interactive: false }
+      );
+    });
+
+    it('a guard refusal fails fast with a verification-required outcome — never silently skips the guard (H2)', async () => {
+      mockDateGuardCheck.mockRejectedValue(new HostNotTrustedError('example.com', 22, 'unknown'));
+
+      const outcome = await autoUploadFile('/workspace/dist/app.js', '/workspace', config, deps(), 'save', { applyGitIgnore: false });
+
+      expect(outcome).toMatchObject({
+        status: 'verification-required',
+        serverId: 'srv-1',
+        serverName: 'Production',
+        fileName: 'app.js',
+      });
+      expect(mockUpload).not.toHaveBeenCalled();
+    });
+
+    it('an orchestrator refusal maps to verification-required too (guard disabled path)', async () => {
+      mockUpload.mockRejectedValue(new VerificationRequiredError('example.com', 22));
+
+      const outcome = await autoUploadFile(
+        '/workspace/dist/app.js', '/workspace', { ...config, fileDateGuard: false }, deps(), 'watch', { applyGitIgnore: false }
+      );
+
+      expect(outcome).toMatchObject({ status: 'verification-required', serverId: 'srv-1' });
+    });
+
+    it('other guard failures stay non-blocking — the upload still runs', async () => {
+      mockDateGuardCheck.mockRejectedValue(new Error('read ECONNRESET'));
+
+      const outcome = await autoUploadFile('/workspace/dist/app.js', '/workspace', config, deps(), 'watch', { applyGitIgnore: false });
+
+      expect(outcome.status).toBe('uploaded');
+    });
   });
 });
