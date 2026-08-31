@@ -53,7 +53,8 @@ export class BackupService {
     items: ResolvedUploadItem[],
     credential: SshCredentialWithSecret,
     serverName: string,
-    workspaceRoot: string
+    workspaceRoot: string,
+    options?: { interactive?: boolean }
   ): Promise<void> {
     if (items.length === 0) {
       return;
@@ -67,7 +68,7 @@ export class BackupService {
     await this.sftp.connect(credential, {
       password: credential.password,
       passphrase: credential.passphrase,
-    });
+    }, { interactive: options?.interactive !== false });
 
     try {
       const backupRoot = BackupService.createBackupRoot(workspaceRoot, serverName);

@@ -56,6 +56,22 @@ describe('UploadOrchestratorV2 — cancellation', () => {
     expect(result.cancelled).toBeUndefined();
   });
 
+  it('defaults to an interactive connect (18a-1b)', async () => {
+    await orchestrator.upload([item('a.php')], credential, server);
+
+    expect(mockSftp.connect).toHaveBeenCalledWith(
+      credential, expect.anything(), { interactive: true }
+    );
+  });
+
+  it('forwards interactive:false to the connect (18a-1b)', async () => {
+    await orchestrator.upload([item('a.php')], credential, server, [], undefined, undefined, { interactive: false });
+
+    expect(mockSftp.connect).toHaveBeenCalledWith(
+      credential, expect.anything(), { interactive: false }
+    );
+  });
+
   it('uploads all files when token is not cancelled', async () => {
     const token = makeCancellationToken(false);
     const items = [item('a.php'), item('b.php')];

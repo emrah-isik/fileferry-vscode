@@ -49,7 +49,10 @@ export class UploadOrchestratorV2 {
     server: ServerWithHooks | null,
     deleteRemotePaths: string[] = [],
     token?: CancellationToken,
-    hookContext?: HookExecutionContext
+    hookContext?: HookExecutionContext,
+    // interactive:false = background trigger (upload-on-save / watch): the
+    // connect never prompts and fails fast with InteractionRequiredError.
+    options?: { interactive?: boolean }
   ): Promise<UploadSummaryV2> {
     const result: UploadSummaryV2 = { succeeded: [], failed: [], deleted: [], deleteFailed: [] };
 
@@ -120,7 +123,7 @@ export class UploadOrchestratorV2 {
     await this.sftp.connect(credential, {
       password: credential.password,
       passphrase: credential.passphrase,
-    });
+    }, { interactive: options?.interactive !== false });
 
     // Remote hooks run over the deploy's own connection — SFTP only. On FTP/FTPS
     // the transfer can't exec, so the runner gets null and skips them with a warning.

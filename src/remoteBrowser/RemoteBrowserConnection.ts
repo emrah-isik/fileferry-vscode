@@ -65,7 +65,12 @@ export class RemoteBrowserConnection {
     }
   }
 
-  async ensureConnected(): Promise<void> {
+  // interactive:false = no-gesture path (tree render while the view becomes
+  // visible, files.autoSave-driven remote-edit saves): the connect never
+  // prompts and fails fast with a typed InteractionRequiredError, which the
+  // callers turn into the "Host not verified" placeholder row or the
+  // non-modal verification warning.
+  async ensureConnected(options?: { interactive?: boolean }): Promise<void> {
     const config = await this.configManager.getConfig();
     if (!config || !config.defaultServerId) {
       throw new Error('No server configured. Open Deployment Settings to add one.');
@@ -114,7 +119,7 @@ export class RemoteBrowserConnection {
     await this.sftp.connect(serverConfig, {
       password: credential.password,
       passphrase: credential.passphrase,
-    });
+    }, { interactive: options?.interactive !== false });
 
     this.currentServerId = server.id;
     this.currentCredentialId = server.credentialId;
@@ -146,20 +151,20 @@ export class RemoteBrowserConnection {
     return result;
   }
 
-  async downloadFile(remotePath: string): Promise<Buffer> {
-    await this.ensureConnected();
+  async downloadFile(remotePath: string, options?: { interactive?: boolean }): Promise<Buffer> {
+    await this.ensureConnected(options);
     this.resetIdleTimer();
     return this.sftp.get(remotePath);
   }
 
-  async uploadFile(localPath: string, remotePath: string): Promise<void> {
-    await this.ensureConnected();
+  async uploadFile(localPath: string, remotePath: string, options?: { interactive?: boolean }): Promise<void> {
+    await this.ensureConnected(options);
     this.resetIdleTimer();
     await this.sftp.uploadFile(localPath, remotePath);
   }
 
-  async statRemote(remotePath: string): Promise<{ mtime: Date } | null> {
-    await this.ensureConnected();
+  async statRemote(remotePath: string, options?: { interactive?: boolean }): Promise<{ mtime: Date } | null> {
+    await this.ensureConnected(options);
     this.resetIdleTimer();
     return this.sftp.stat(remotePath);
   }
