@@ -135,6 +135,10 @@ export interface KeyboardInteractiveSessionOptions {
   authMethod: AuthMethod;
   /** Keychain password, used to auto-answer one `/password/i` prompt when `authMethod === 'password'`. */
   password?: string;
+  /** Set false on a retry after a rejected keychain answer — every prompt then goes to the user. */
+  allowKeychainAutoAnswer?: boolean;
+  /** Called when a prompt was answered from the keychain without the user seeing it. */
+  onKeychainAutoAnswer?: () => void;
   provider: KeyboardInteractiveProvider;
   context: PromptContext;
   log: (line: string) => void;
@@ -183,9 +187,13 @@ export function createKeyboardInteractiveListener(
     options.log(`keyboard-interactive round ${round} for ${route}: ${prompts.length} prompt(s)`);
 
     const isPasswordOnly = prompts.length > 0 && prompts.every((p) => /password/i.test(p.prompt));
-    if (options.authMethod === 'password' && options.password !== undefined && !keychainAnswerUsed && isPasswordOnly) {
+    if (
+      options.authMethod === 'password' && options.password !== undefined
+      && options.allowKeychainAutoAnswer !== false && !keychainAnswerUsed && isPasswordOnly
+    ) {
       keychainAnswerUsed = true;
       options.log(`round ${round} for ${route}: answered from the keychain`);
+      options.onKeychainAutoAnswer?.();
       finish(prompts.map(() => options.password as string));
       return;
     }

@@ -367,6 +367,33 @@ describe('createKeyboardInteractiveListener', () => {
       expect(provider.prompt).toHaveBeenCalledTimes(1);
     });
 
+    it('never auto-answers when allowKeychainAutoAnswer is false (retry after a rejected keychain answer)', async () => {
+      const provider: KeyboardInteractiveProvider = { prompt: jest.fn().mockResolvedValue(['typed']) };
+      const { listener } = makeListener(coordinator, provider, {
+        authMethod: 'password', password: 's3cret', allowKeychainAutoAnswer: false,
+      });
+      const finish = jest.fn();
+
+      await listener('', '', '', passwordPrompts, finish);
+
+      expect(provider.prompt).toHaveBeenCalledTimes(1);
+      expect(finish).toHaveBeenCalledWith(['typed']);
+    });
+
+    it('reports the auto-answer through onKeychainAutoAnswer so the connect can retry interactively', async () => {
+      const provider: KeyboardInteractiveProvider = { prompt: jest.fn().mockResolvedValue(['typed']) };
+      const onKeychainAutoAnswer = jest.fn();
+      const { listener } = makeListener(coordinator, provider, {
+        authMethod: 'password', password: 's3cret', onKeychainAutoAnswer,
+      });
+
+      await listener('', '', '', passwordPrompts, jest.fn());
+      expect(onKeychainAutoAnswer).toHaveBeenCalledTimes(1);
+
+      await listener('', '', '', otpPrompts, jest.fn());
+      expect(onKeychainAutoAnswer).toHaveBeenCalledTimes(1); // only the keychain answer reports
+    });
+
     it('never auto-answers when no password is stored', async () => {
       const provider: KeyboardInteractiveProvider = { prompt: jest.fn().mockResolvedValue(['typed']) };
       const { listener } = makeListener(coordinator, provider, { authMethod: 'password', password: undefined });

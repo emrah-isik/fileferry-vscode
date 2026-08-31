@@ -398,6 +398,105 @@ describe('SftpService', () => {
       });
     });
 
+    describe('retry after a rejected keychain auto-answer (F8)', () => {
+      // ssh2's default authHandler offers keyboard-interactive exactly ONCE per
+      // connection (makeSimpleAuthHandler walks the method list once), so a
+      // keychain auto-answer with a wrong password consumes the only attempt.
+      // connect() must then reconnect once with the auto-answer disabled so the
+      // user gets a prompt.
+      const authFailure = () => Object.assign(new Error('getConnection: All configured authentication methods failed'), { level: 'client-authentication' });
+
+      function latestKiListener() {
+        const calls = mockSsh2Client.on.mock.calls.filter((c: any[]) => c[0] === 'keyboard-interactive');
+        return calls[calls.length - 1]?.[1] as (...args: any[]) => Promise<void>;
+      }
+
+      it('reconnects once without the auto-answer: the user gets exactly one prompt and the connect succeeds', async () => {
+        const provider = kiProvider(['right-password']);
+        connectProviderRegistry.set({ keyboardInteractive: provider });
+        const finishes: string[][] = [];
+        mockMethods.connect
+          .mockImplementationOnce(async () => {
+            await latestKiListener()('', '', '', [{ prompt: 'Password: ', echo: false }], (r: string[]) => finishes.push(r));
+            throw authFailure();
+          })
+          .mockImplementationOnce(async () => {
+            await latestKiListener()('', '', '', [{ prompt: 'Password: ', echo: false }], (r: string[]) => finishes.push(r));
+          });
+
+        await service.connect(serverConfig, { password: 'wrong-keychain' });
+
+        expect(mockMethods.connect).toHaveBeenCalledTimes(2);
+        expect(finishes).toEqual([['wrong-keychain'], ['right-password']]);
+        expect(provider.prompt).toHaveBeenCalledTimes(1);
+        expect(service.connected).toBe(true);
+      });
+
+      it('does NOT retry when no keychain answer was consumed (plain wrong password, no KI challenge)', async () => {
+        connectProviderRegistry.set({ keyboardInteractive: kiProvider() });
+        mockMethods.connect.mockRejectedValueOnce(authFailure());
+
+        await expect(service.connect(serverConfig, { password: 'wrong' }))
+          .rejects.toThrow(/authentication methods failed/i);
+        expect(mockMethods.connect).toHaveBeenCalledTimes(1);
+      });
+
+      it('does NOT retry when the user was already prompted in the first attempt', async () => {
+        const provider = kiProvider(['typed-wrong']);
+        connectProviderRegistry.set({ keyboardInteractive: provider });
+        mockMethods.connect.mockImplementation(async () => {
+          await latestKiListener()('', '', '', otpPrompts, jest.fn());
+          throw authFailure();
+        });
+
+        await expect(service.connect(serverConfig, { password: 'secret' }))
+          .rejects.toThrow(/authentication methods failed/i);
+        expect(mockMethods.connect).toHaveBeenCalledTimes(1);
+      });
+
+      it('retries at most once — a second auth failure propagates', async () => {
+        const provider = kiProvider(['still-wrong']);
+        connectProviderRegistry.set({ keyboardInteractive: provider });
+        mockMethods.connect.mockImplementation(async () => {
+          await latestKiListener()('', '', '', [{ prompt: 'Password: ', echo: false }], jest.fn());
+          throw authFailure();
+        });
+
+        await expect(service.connect(serverConfig, { password: 'wrong' }))
+          .rejects.toThrow(/authentication methods failed/i);
+        expect(mockMethods.connect).toHaveBeenCalledTimes(2);
+        expect(provider.prompt).toHaveBeenCalledTimes(1);
+      });
+
+      it('does NOT retry on non-auth failures even after an auto-answer', async () => {
+        connectProviderRegistry.set({ keyboardInteractive: kiProvider() });
+        mockMethods.connect.mockImplementation(async () => {
+          await latestKiListener()('', '', '', [{ prompt: 'Password: ', echo: false }], jest.fn());
+          throw new Error('read ECONNRESET');
+        });
+
+        await expect(service.connect(serverConfig, { password: 'secret' }))
+          .rejects.toThrow('read ECONNRESET');
+        expect(mockMethods.connect).toHaveBeenCalledTimes(1);
+      });
+
+      it('logs the retry without the password', async () => {
+        const log = jest.fn();
+        connectProviderRegistry.set({ keyboardInteractive: kiProvider(['pw']), log });
+        mockMethods.connect
+          .mockImplementationOnce(async () => {
+            await latestKiListener()('', '', '', [{ prompt: 'Password: ', echo: false }], jest.fn());
+            throw authFailure();
+          })
+          .mockImplementationOnce(async () => undefined);
+
+        await service.connect(serverConfig, { password: 'wrong-keychain' });
+
+        expect(log).toHaveBeenCalledWith(expect.stringMatching(/keychain.*rejected|asking interactively/i));
+        for (const call of log.mock.calls) { expect(String(call[0])).not.toContain('wrong-keychain'); }
+      });
+    });
+
     describe('cancel and keychain auto-answer through the listener', () => {
       it('a cancelled KI prompt rejects connect with a "cancelled" error and ends the client', async () => {
         connectProviderRegistry.set({ keyboardInteractive: kiProvider(null) });

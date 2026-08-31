@@ -99,6 +99,32 @@ export class SftpService implements TransferService, RemoteCommandRunner {
       keyboardInteractive?: KeyboardInteractiveProvider;
     }
   ): Promise<void> {
+    const firstAttempt = { keychainAnswerUsed: false, userPrompted: false };
+    try {
+      await this.connectAttempt(server, credentials, options, true, firstAttempt);
+    } catch (err: unknown) {
+      // ssh2's default authHandler offers keyboard-interactive exactly once per
+      // connection, so a keychain auto-answer with a stale password consumes
+      // the only attempt before the user ever sees a prompt. Reconnect once
+      // with the auto-answer disabled — R5's "then asks the user".
+      const authFailed = /authentication methods failed/i.test((err as Error).message ?? '');
+      if (!authFailed || !firstAttempt.keychainAnswerUsed || firstAttempt.userPrompted) {
+        throw err;
+      }
+      connectProviderRegistry.get().log(
+        `keychain answer for ${server.username}@${server.host}:${server.port} was rejected — reconnecting to ask interactively`
+      );
+      await this.connectAttempt(server, credentials, options, false, { keychainAnswerUsed: false, userPrompted: false });
+    }
+  }
+
+  private async connectAttempt(
+    server: ServerConfig,
+    credentials: { password?: string; passphrase?: string },
+    options: Parameters<TransferService['connect']>[2],
+    allowKeychainAutoAnswer: boolean,
+    attempt: { keychainAnswerUsed: boolean; userPrompted: boolean }
+  ): Promise<void> {
     const client = new SftpClient();
     this.client = client;
 
@@ -109,7 +135,15 @@ export class SftpService implements TransferService, RemoteCommandRunner {
     }
 
     const providers = connectProviderRegistry.get();
-    const keyboardInteractive = options?.keyboardInteractive ?? providers.keyboardInteractive;
+    const configuredProvider = options?.keyboardInteractive ?? providers.keyboardInteractive;
+    // Tracked so a failed auth can tell "the keychain silently consumed the
+    // one keyboard-interactive attempt" from "the user already typed".
+    const keyboardInteractive: KeyboardInteractiveProvider | undefined = configuredProvider && {
+      prompt: (request, context) => {
+        attempt.userPrompted = true;
+        return configuredProvider.prompt(request, context);
+      },
+    };
     const target = { username: server.username, host: server.host, port: server.port };
 
     let timer: PrePromptTimer | undefined;
@@ -176,6 +210,8 @@ export class SftpService implements TransferService, RemoteCommandRunner {
         authMethod: server.authMethod,
         password: credentials.password,
         provider: keyboardInteractive,
+        allowKeychainAutoAnswer,
+        onKeychainAutoAnswer: () => { attempt.keychainAnswerUsed = true; },
         context,
         log: providers.log,
         abort,

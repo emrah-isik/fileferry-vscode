@@ -45,7 +45,7 @@ Click **Add Credential** and fill in the details:
 | SSH Agent | Host, port, username (uses your running `ssh-agent`) | SFTP only |
 | Keyboard Interactive | Host, port, username (server sends 2FA challenges) | SFTP only |
 
-**2FA / keyboard-interactive note:** challenges are not limited to the *Keyboard Interactive* method. If your server asks for a verification code after a key or password step (OpenSSH `AuthenticationMethods publickey,keyboard-interactive`), FileFerry shows the same input prompts for any credential type; for password credentials a plain `Password:` challenge is answered from your keychain first. Dismissing a prompt cancels the connection.
+**2FA / keyboard-interactive note:** challenges are not limited to the *Keyboard Interactive* method. If your server asks for a verification code after a key or password step (OpenSSH `AuthenticationMethods publickey,keyboard-interactive`), FileFerry shows the same input prompts for any credential type; for password credentials a plain `Password:` challenge is answered from your keychain first — and if the server rejects that stored password, FileFerry reconnects once and asks you directly. Dismissing a prompt cancels the connection.
 
 **FTP/FTPS note:** FTP and FTPS protocols only support password authentication. When you select an FTP protocol in Deployment Settings, the credential dropdown automatically filters to show only password-auth credentials.
 
