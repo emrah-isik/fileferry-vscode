@@ -175,7 +175,13 @@ export class SftpService implements TransferService, RemoteCommandRunner {
     };
 
     if (server.authMethod === 'password') {
-      connectConfig.password = credentials.password;
+      // On the retry after a rejected keychain answer the password is
+      // known-wrong; offering it again is pointless — and stock Ubuntu sshd
+      // (UsePAM) kills the connection post-auth when a successful
+      // keyboard-interactive follows a failed password auth. Retry KI-only.
+      if (allowKeychainAutoAnswer) {
+        connectConfig.password = credentials.password;
+      }
     } else if (server.authMethod === 'key') {
       const keyPath = server.privateKeyPath!.replace('~', os.homedir());
       try {

@@ -432,6 +432,28 @@ describe('SftpService', () => {
         expect(service.connected).toBe(true);
       });
 
+      it('the retry attempt drops password auth — keyboard-interactive only', async () => {
+        // Stock Ubuntu 24.04 sshd (UsePAM) closes the connection after a
+        // successful keyboard-interactive auth that follows a FAILED password
+        // auth on the same connection (reproduced with the OpenSSH CLI, not
+        // just ssh2). The password is known-rejected when we retry, so the
+        // retry must not offer it.
+        connectProviderRegistry.set({ keyboardInteractive: kiProvider(['right']) });
+        mockMethods.connect
+          .mockImplementationOnce(async () => {
+            await latestKiListener()('', '', '', [{ prompt: 'Password: ', echo: false }], jest.fn());
+            throw authFailure();
+          })
+          .mockImplementationOnce(async () => undefined);
+
+        await service.connect(serverConfig, { password: 'wrong-keychain' });
+
+        expect(mockMethods.connect.mock.calls[0][0].password).toBe('wrong-keychain');
+        const retryConfig = mockMethods.connect.mock.calls[1][0];
+        expect(retryConfig.password).toBeUndefined();
+        expect(retryConfig.tryKeyboard).toBe(true);
+      });
+
       it('does NOT retry when no keychain answer was consumed (plain wrong password, no KI challenge)', async () => {
         connectProviderRegistry.set({ keyboardInteractive: kiProvider() });
         mockMethods.connect.mockRejectedValueOnce(authFailure());
