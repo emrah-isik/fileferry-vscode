@@ -1,5 +1,6 @@
 import { RemoteBrowserProvider } from '../../../remoteBrowser/RemoteBrowserProvider';
 import { RemoteFileItem, RemoteEntry } from '../../../remoteBrowser/RemoteFileItem';
+import { HostNotTrustedError } from '../../../ssh/connectErrors';
 
 const mockConnection = {
   ensureConnected: jest.fn(),
@@ -31,6 +32,64 @@ describe('RemoteBrowserProvider', () => {
       };
       const item = new RemoteFileItem(entry);
       expect(provider.getTreeItem(item)).toBe(item);
+    });
+  });
+
+  describe('render interactivity (18a-1b)', () => {
+    // A root render with no preceding gesture is a background connect: it
+    // must never prompt. resume() (refresh command, placeholder click, set
+    // default server) and navigateTo() mark the NEXT root render as a
+    // gesture; the mark is consumed by that one render.
+    it('a background root render connects with interactive:false', async () => {
+      mockConnection.listDirectory.mockResolvedValue([]);
+
+      await provider.getChildren();
+
+      expect(mockConnection.ensureConnected).toHaveBeenCalledWith({ interactive: false });
+    });
+
+    it('resume() makes the next root render interactive — once', async () => {
+      mockConnection.listDirectory.mockResolvedValue([]);
+
+      provider.resume();
+      await provider.getChildren();
+      expect(mockConnection.ensureConnected).toHaveBeenCalledWith({ interactive: true });
+
+      mockConnection.ensureConnected.mockClear();
+      await provider.getChildren();
+      expect(mockConnection.ensureConnected).toHaveBeenCalledWith({ interactive: false });
+    });
+
+    it('navigateTo() counts as a gesture too', async () => {
+      mockConnection.listDirectory.mockResolvedValue([]);
+
+      provider.navigateTo('/var/www/html');
+      await provider.getChildren();
+
+      expect(mockConnection.ensureConnected).toHaveBeenCalledWith({ interactive: true });
+      expect(mockConnection.listDirectory).toHaveBeenCalledWith('/var/www/html');
+    });
+
+    it('renders the "Host not verified — click to connect" placeholder when the background connect is refused', async () => {
+      mockConnection.ensureConnected.mockRejectedValueOnce(new HostNotTrustedError('example.com', 22, 'unknown'));
+
+      const children = await provider.getChildren();
+
+      expect(children).toHaveLength(1);
+      const row = children![0];
+      expect(row.entry.name).toBe('Host not verified');
+      expect(row.description).toBe('Click to connect');
+      expect(row.contextValue).toBe('remotePlaceholder');
+      expect(row.command?.command).toBe('fileferry.remoteBrowser.refresh');
+      expect(row.entry.remotePath).toBe(''); // not a real entry — multi-target commands filter it
+    });
+
+    it('keeps the generic error row for other connect failures', async () => {
+      mockConnection.ensureConnected.mockRejectedValueOnce(new Error('read ECONNRESET'));
+
+      const children = await provider.getChildren();
+
+      expect(children![0].entry.name).toBe('Connection failed');
     });
   });
 

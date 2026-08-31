@@ -9,6 +9,8 @@ import { ProjectConfig } from '../models/ProjectConfig';
 import { UploadHistoryService } from './UploadHistoryService';
 import { UploadHistoryEntry } from '../models/UploadHistoryEntry';
 import { BackupService } from './BackupService';
+import { InteractionRequiredError } from '../ssh/connectErrors';
+import { showVerificationRequiredWarning } from '../ui/verificationRequiredWarning';
 
 interface Dependencies {
   registry: RemoteEditSessionRegistry;
@@ -35,9 +37,17 @@ interface ConflictCheckResult {
 // There is no silent return past the registry lookup — an editor that shows
 // "saved" while the bytes went nowhere is this feature's worst failure mode.
 export class RemoteEditSaveListener {
+  // The save reason arrives on onWillSaveTextDocument, but the upload runs on
+  // onDidSaveTextDocument — record it here between the two. Consumed (and
+  // cleared) by every save, registered or not, so the map cannot grow.
+  private readonly pendingSaveReasons = new Map<string, vscode.TextDocumentSaveReason>();
+
   constructor(private readonly dependencies: Dependencies) {}
 
   register(): vscode.Disposable {
+    const willSaveSubscription = vscode.workspace.onWillSaveTextDocument(
+      event => this.pendingSaveReasons.set(event.document.uri.fsPath, event.reason)
+    );
     const saveSubscription = vscode.workspace.onDidSaveTextDocument(
       document => this.handleSave(document)
     );
@@ -47,6 +57,7 @@ export class RemoteEditSaveListener {
     );
     return {
       dispose: () => {
+        willSaveSubscription.dispose();
         saveSubscription.dispose();
         closeSubscription.dispose();
       },
@@ -54,15 +65,35 @@ export class RemoteEditSaveListener {
   }
 
   private async handleSave(document: vscode.TextDocument): Promise<void> {
+    const reason = this.pendingSaveReasons.get(document.uri.fsPath);
+    this.pendingSaveReasons.delete(document.uri.fsPath);
+
     const session = this.dependencies.registry.get(document.uri.fsPath);
     if (!session) {
       return; // not opened from the Remote Files panel
     }
 
+    // Only a Manual save is a user gesture; files.autoSave saves (AfterDelay,
+    // FocusOut) are background triggers whose connects must never prompt
+    // (18a-1b). An unrecorded reason is treated as manual — failing open to
+    // interactive only risks a prompt, never a silent background one.
+    const interactive = reason === undefined || reason === vscode.TextDocumentSaveReason.Manual;
+
     const fileName = path.basename(session.remotePath);
     try {
-      await this.uploadBack(document, session, fileName);
+      await this.uploadBack(document, session, fileName, interactive);
     } catch (err: unknown) {
+      if (err instanceof InteractionRequiredError) {
+        // Background save against an unverified host: fail fast with the
+        // shared warning instead of a generic upload error (H2).
+        const server = await this.dependencies.configManager.getServerById(session.serverId);
+        showVerificationRequiredWarning(
+          server?.name ?? 'the server',
+          session.serverId,
+          `Your edits are saved locally at ${document.uri.fsPath}.`
+        );
+        return;
+      }
       const message = err instanceof Error ? err.message : String(err);
       vscode.window.showErrorMessage(
         `FileFerry: Upload of ${fileName} failed — ${message}. Your edits are saved locally at ${document.uri.fsPath}.`
@@ -73,7 +104,8 @@ export class RemoteEditSaveListener {
   private async uploadBack(
     document: vscode.TextDocument,
     session: RemoteEditSession,
-    fileName: string
+    fileName: string,
+    interactive: boolean
   ): Promise<void> {
     const { connection, configManager, output } = this.dependencies;
 
@@ -116,7 +148,7 @@ export class RemoteEditSaveListener {
       return;
     }
 
-    const conflict = await this.checkForConflict(document, session, serverName, fileName);
+    const conflict = await this.checkForConflict(document, session, serverName, fileName, interactive);
     if (conflict.outcome !== 'proceed') {
       await this.logHistory(config, session, serverName, document, 'cancelled');
       return;
@@ -125,7 +157,7 @@ export class RemoteEditSaveListener {
     if (config.backupBeforeOverwrite && conflict.remoteExists) {
       // A failure here propagates and aborts the upload: overwriting after
       // silently skipping the promised backup would defeat the setting.
-      const remoteBytes = conflict.remoteBytes ?? await connection.downloadFile(session.remotePath);
+      const remoteBytes = conflict.remoteBytes ?? await connection.downloadFile(session.remotePath, { interactive });
       const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
       if (workspaceRoot) {
         await BackupService.writeBackup(session.remotePath, remoteBytes, serverName, workspaceRoot);
@@ -138,7 +170,7 @@ export class RemoteEditSaveListener {
           location: vscode.ProgressLocation.Notification,
           title: `Uploading ${fileName} to ${serverName}...`,
         },
-        () => connection.uploadFile(document.uri.fsPath, session.remotePath)
+        () => connection.uploadFile(document.uri.fsPath, session.remotePath, { interactive })
       );
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
@@ -155,19 +187,25 @@ export class RemoteEditSaveListener {
     document: vscode.TextDocument,
     session: RemoteEditSession,
     serverName: string,
-    fileName: string
+    fileName: string,
+    interactive: boolean
   ): Promise<ConflictCheckResult> {
     const { connection } = this.dependencies;
 
     // Fail closed (D4): an unreadable mtime is a suspected conflict, never
     // "no conflict". Precedent: the v0.9.0 NaN-mtime bug silently disabled
     // the file-date guard. NaN never compares equal, so it lands on the
-    // suspected path below.
+    // suspected path below. A verification refusal is NOT a suspected
+    // conflict though — it must propagate to the fail-fast warning, not
+    // raise the conflict modal from a background save.
     let remoteStat: { mtime: Date } | null = null;
     let statFailed = false;
     try {
-      remoteStat = await connection.statRemote(session.remotePath);
-    } catch {
+      remoteStat = await connection.statRemote(session.remotePath, { interactive });
+    } catch (statError: unknown) {
+      if (statError instanceof InteractionRequiredError) {
+        throw statError;
+      }
       statFailed = true;
     }
 
@@ -209,12 +247,15 @@ export class RemoteEditSaveListener {
     // This is also what keeps FTP's coarse mtime workable.
     let remoteBytes: Buffer | undefined;
     try {
-      remoteBytes = await connection.downloadFile(session.remotePath);
+      remoteBytes = await connection.downloadFile(session.remotePath, { interactive });
       const remoteSha256 = crypto.createHash('sha256').update(remoteBytes).digest('hex');
       if (remoteSha256 === session.sha256) {
         return { outcome: 'proceed', remoteExists: true, remoteBytes };
       }
-    } catch {
+    } catch (downloadError: unknown) {
+      if (downloadError instanceof InteractionRequiredError) {
+        throw downloadError;
+      }
       // content unreadable too — prompt without a diff option
     }
 

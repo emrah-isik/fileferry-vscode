@@ -155,7 +155,7 @@ describe('rename → save interplay (C2)', () => {
     );
     await saveCallback(makeDoc());
 
-    expect(mockConnection.uploadFile).toHaveBeenCalledWith(TEMP_PATH, '/var/www/home.php');
+    expect(mockConnection.uploadFile).toHaveBeenCalledWith(TEMP_PATH, '/var/www/home.php', { interactive: true });
     // The old path must never be consulted — a stat there would report
     // "deleted on server" and recreate the file under the old name.
     for (const call of mockConnection.statRemote.mock.calls) {
@@ -176,7 +176,7 @@ describe('rename → save interplay (C2)', () => {
     );
     await saveCallback(makeDoc(tempPath));
 
-    expect(mockConnection.uploadFile).toHaveBeenCalledWith(tempPath, '/var/www/site/config.php');
+    expect(mockConnection.uploadFile).toHaveBeenCalledWith(tempPath, '/var/www/site/config.php', { interactive: true });
     for (const call of mockConnection.statRemote.mock.calls) {
       expect(call[0]).not.toBe('/var/www/app/config.php');
     }
@@ -194,6 +194,6 @@ describe('rename → save interplay (C2)', () => {
     );
     await saveCallback(makeDoc(tempPath));
 
-    expect(mockConnection.uploadFile).toHaveBeenCalledWith(tempPath, '/var/www/other.php');
+    expect(mockConnection.uploadFile).toHaveBeenCalledWith(tempPath, '/var/www/other.php', { interactive: true });
   });
 });

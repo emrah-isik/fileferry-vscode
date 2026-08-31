@@ -12,6 +12,7 @@ jest.mock('../../../services/BackupService', () => ({
 import { UploadHistoryService } from '../../../services/UploadHistoryService';
 import { BackupService } from '../../../services/BackupService';
 import { RemoteEditSaveListener } from '../../../services/RemoteEditSaveListener';
+import { HostNotTrustedError } from '../../../ssh/connectErrors';
 import { RemoteEditSessionRegistry, RemoteEditSession } from '../../../services/RemoteEditSessionRegistry';
 
 const TEMP_PATH = path.join('/tmp', 'fileferry-browse', 'index.remote.abc123.php');
@@ -52,6 +53,7 @@ const baseConfig = { defaultServerId: 'server-1', servers: { Production: server 
 
 let saveCallback: (doc: unknown) => Promise<void>;
 let closeCallback: (doc: unknown) => void;
+let willSaveCallback: (event: { document: unknown; reason: number }) => void;
 
 function makeDoc(fsPath: string = TEMP_PATH) {
   return { uri: { fsPath } };
@@ -81,6 +83,10 @@ describe('RemoteEditSaveListener', () => {
     });
     (vscode.workspace.onDidCloseTextDocument as jest.Mock).mockImplementation((callback: any) => {
       closeCallback = callback;
+      return { dispose: jest.fn() };
+    });
+    (vscode.workspace.onWillSaveTextDocument as jest.Mock).mockImplementation((callback: any) => {
+      willSaveCallback = callback;
       return { dispose: jest.fn() };
     });
     (vscode.workspace as any).workspaceFolders = [{ uri: { fsPath: '/workspace' } }];
@@ -129,7 +135,7 @@ describe('RemoteEditSaveListener', () => {
 
       await saveCallback(makeDoc());
 
-      expect(mockConnection.uploadFile).toHaveBeenCalledWith(TEMP_PATH, REMOTE_PATH);
+      expect(mockConnection.uploadFile).toHaveBeenCalledWith(TEMP_PATH, REMOTE_PATH, { interactive: true });
       expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
       expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
     });
@@ -300,7 +306,7 @@ describe('RemoteEditSaveListener', () => {
 
       await saveCallback(makeDoc());
 
-      expect(mockConnection.uploadFile).toHaveBeenCalledWith(TEMP_PATH, REMOTE_PATH);
+      expect(mockConnection.uploadFile).toHaveBeenCalledWith(TEMP_PATH, REMOTE_PATH, { interactive: true });
     });
 
     it('writes the remote version to a temp file and opens a diff when the user chooses Show Diff', async () => {
@@ -432,6 +438,90 @@ describe('RemoteEditSaveListener', () => {
       closeCallback(makeDoc());
 
       expect(registry.get(TEMP_PATH)).toBeUndefined();
+    });
+  });
+
+  describe('autosave vs manual saves (18a-1b)', () => {
+    // files.autoSave-driven saves are background triggers: their connects must
+    // never prompt (interactive:false). Only a Manual save is a user gesture.
+    function willSave(reason: number) {
+      willSaveCallback({ document: makeDoc(), reason });
+    }
+
+    it('an AfterDelay (files.autoSave) save connects with interactive:false', async () => {
+      registry.register(TEMP_PATH, session());
+      willSave(vscode.TextDocumentSaveReason.AfterDelay);
+
+      await saveCallback(makeDoc());
+
+      expect(mockConnection.statRemote).toHaveBeenCalledWith(REMOTE_PATH, { interactive: false });
+      expect(mockConnection.uploadFile).toHaveBeenCalledWith(TEMP_PATH, REMOTE_PATH, { interactive: false });
+    });
+
+    it('a FocusOut autosave connects with interactive:false too', async () => {
+      registry.register(TEMP_PATH, session());
+      willSave(vscode.TextDocumentSaveReason.FocusOut);
+
+      await saveCallback(makeDoc());
+
+      expect(mockConnection.statRemote).toHaveBeenCalledWith(REMOTE_PATH, { interactive: false });
+    });
+
+    it('a Manual save stays interactive', async () => {
+      registry.register(TEMP_PATH, session());
+      willSave(vscode.TextDocumentSaveReason.Manual);
+
+      await saveCallback(makeDoc());
+
+      expect(mockConnection.statRemote).toHaveBeenCalledWith(REMOTE_PATH, { interactive: true });
+    });
+
+    it('a save with no recorded will-save reason is treated as manual', async () => {
+      registry.register(TEMP_PATH, session());
+
+      await saveCallback(makeDoc());
+
+      expect(mockConnection.statRemote).toHaveBeenCalledWith(REMOTE_PATH, { interactive: true });
+    });
+
+    it('the recorded reason is consumed — the next save falls back to manual', async () => {
+      registry.register(TEMP_PATH, session());
+      willSave(vscode.TextDocumentSaveReason.AfterDelay);
+
+      await saveCallback(makeDoc());
+      mockConnection.statRemote.mockClear();
+      mockConnection.statRemote.mockResolvedValue({ mtime: new Date(BASE_MTIME_MS) });
+      await saveCallback(makeDoc());
+
+      expect(mockConnection.statRemote).toHaveBeenCalledWith(REMOTE_PATH, { interactive: true });
+    });
+
+    it('an autosave against an unverified host shows the verification warning, not a generic error (H2)', async () => {
+      mockConnection.statRemote.mockRejectedValue(new HostNotTrustedError('example.com', 22, 'unknown'));
+      registry.register(TEMP_PATH, session());
+      willSave(vscode.TextDocumentSaveReason.AfterDelay);
+
+      await saveCallback(makeDoc());
+
+      expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+        expect.stringMatching(/not yet trusted|verification required/i),
+        'Test Connection'
+      );
+      expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
+      expect(mockConnection.uploadFile).not.toHaveBeenCalled();
+    });
+
+    it('the verification warning names where the unsaved edits live', async () => {
+      mockConnection.statRemote.mockRejectedValue(new HostNotTrustedError('example.com', 22, 'unknown'));
+      registry.register(TEMP_PATH, session());
+      willSave(vscode.TextDocumentSaveReason.AfterDelay);
+
+      await saveCallback(makeDoc());
+
+      expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+        expect.stringContaining(TEMP_PATH),
+        expect.anything()
+      );
     });
   });
 });
