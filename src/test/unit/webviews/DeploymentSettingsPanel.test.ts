@@ -316,6 +316,45 @@ describe('DeploymentSettingsPanel message handling', () => {
     }));
   });
 
+  it('testConnection disconnects even when time-offset detection throws — no leaked session (L5)', async () => {
+    const mockConnect = jest.fn().mockResolvedValue(undefined);
+    const mockDisconnect = jest.fn().mockResolvedValue(undefined);
+    (createTransferService as jest.Mock).mockImplementation(() => ({
+      connect: mockConnect,
+      disconnect: mockDisconnect,
+    }));
+    mockDetect.mockRejectedValueOnce(new Error('clock probe failed'));
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+
+    await messageHandler({ command: 'testConnection', server: { id: 'srv-1', type: 'sftp', credentialId: 'cred-1', rootPath: '/var/www' } });
+
+    expect(mockDisconnect).toHaveBeenCalled();
+    expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      command: 'testResult',
+      success: false,
+      message: expect.stringContaining('clock probe failed'),
+    }));
+  });
+
+  it('detectTimeOffset disconnects even when detection throws — no leaked session (L5)', async () => {
+    const mockConnect = jest.fn().mockResolvedValue(undefined);
+    const mockDisconnect = jest.fn().mockResolvedValue(undefined);
+    (createTransferService as jest.Mock).mockImplementation(() => ({
+      connect: mockConnect,
+      disconnect: mockDisconnect,
+    }));
+    mockDetect.mockRejectedValueOnce(new Error('clock probe failed'));
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+
+    await messageHandler({ command: 'detectTimeOffset', server: { id: 'srv-1', type: 'sftp', credentialId: 'cred-1', rootPath: '/var/www' } });
+
+    expect(mockDisconnect).toHaveBeenCalled();
+    expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      command: 'testResult',
+      success: false,
+    }));
+  });
+
   it('posts validation error back if saveServer payload is invalid', async () => {
     DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
     await messageHandler({ command: 'saveServer', payload: { name: '', type: 'sftp', credentialId: '', rootPath: '/var/www' } });
