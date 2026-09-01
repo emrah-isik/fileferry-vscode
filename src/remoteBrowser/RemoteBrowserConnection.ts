@@ -107,7 +107,9 @@ export class RemoteBrowserConnection {
       username: credential.username,
       authMethod: credential.authMethod,
       privateKeyPath: credential.privateKeyPath,
+      agentSocketPath: credential.agentSocketPath,
       useSshConfig: credential.useSshConfig,
+      jumpHosts: credential.jumpHosts,
       mappings: [],
       excludedPaths: [],
     };

@@ -114,6 +114,24 @@ describe('RemoteBrowserConnection', () => {
       );
     });
 
+    it('rebuild carries agentSocketPath and jumpHosts through to the ServerConfig (18a-2a, C4/R8-17)', async () => {
+      mockCredentialManager.getWithSecret.mockResolvedValue({
+        ...fakeCredential,
+        authMethod: 'agent' as const,
+        agentSocketPath: '/run/user/1000/custom-agent.sock',
+        jumpHosts: ['cred-bastion'],
+      });
+      await connection.ensureConnected();
+      expect(mockSftp.connect).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agentSocketPath: '/run/user/1000/custom-agent.sock',
+          jumpHosts: ['cred-bastion'],
+        }),
+        expect.anything(),
+        expect.anything()
+      );
+    });
+
     it('forwards interactive:false to the connect (18a-1b)', async () => {
       await connection.ensureConnected({ interactive: false });
       expect(mockSftp.connect).toHaveBeenCalledWith(

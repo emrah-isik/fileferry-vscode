@@ -142,7 +142,9 @@ export class SshCredentialPanel {
       username: credential.username!.trim(),
       authMethod: credential.authMethod!,
       privateKeyPath: credential.privateKeyPath?.trim() || undefined,
+      agentSocketPath: credential.agentSocketPath?.trim() || undefined,
       useSshConfig: credential.useSshConfig || undefined,
+      jumpHosts: credential.jumpHosts && credential.jumpHosts.length > 0 ? credential.jumpHosts : undefined,
     };
 
     // Empty string → undefined → CredentialManager.save() skips the keychain write
@@ -277,6 +279,7 @@ export class SshCredentialPanel {
       privateKeyPath: original.privateKeyPath,
       agentSocketPath: original.agentSocketPath,
       useSshConfig: original.useSshConfig,
+      jumpHosts: original.jumpHosts,
     };
     await this.deps.credentialManager.save(clone, original.password, original.passphrase);
     await this.sendInitialState();
