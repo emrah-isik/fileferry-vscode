@@ -9,8 +9,11 @@ import {
   KeyboardInteractiveProvider,
   PRE_PROMPT_TIMEOUT_MS,
 } from '../ssh/connectProviders';
-import { HostNotTrustedError, VerificationRequiredError } from '../ssh/connectErrors';
+import { HopConnectError, HostNotTrustedError, VerificationRequiredError } from '../ssh/connectErrors';
+import { chainConnect } from '../ssh/chainConnect';
 import { driveSsh2HostVerifier } from './helpers/driveSsh2HostVerifier';
+
+const mockChainConnect = chainConnect as jest.Mock;
 
 // Mock for the underlying ssh2 Client that ssh2-sftp-client wraps
 const mockSsh2Client = {
@@ -44,6 +47,7 @@ jest.mock('ssh2-sftp-client', () => {
 
 jest.mock('fs');
 jest.mock('../ssh/agentResolver');
+jest.mock('../ssh/chainConnect');
 
 const serverConfig: ServerConfig = {
   id: 'prod',
@@ -708,6 +712,97 @@ describe('SftpService', () => {
 
         expect(mockMethods.connect.mock.calls[0][0].tryKeyboard).toBe(true);
       });
+    });
+  });
+
+  describe('jump hosts (18a-2a)', () => {
+    const chainedServer: ServerConfig = { ...serverConfig, jumpHosts: ['cred-bastion'] };
+    const fakeSock = { fake: 'channel' };
+    let releaseChain: jest.Mock;
+    let resolveCredential: jest.Mock;
+    let fakePool: { acquire: jest.Mock };
+
+    beforeEach(() => {
+      mockMethods.connect.mockResolvedValue(undefined);
+      mockMethods.end.mockResolvedValue(undefined);
+      releaseChain = jest.fn();
+      resolveCredential = jest.fn();
+      fakePool = { acquire: jest.fn() };
+      mockChainConnect.mockResolvedValue({ sock: fakeSock, release: releaseChain });
+      connectProviderRegistry.set({
+        log: jest.fn(),
+        jumpHosts: { pool: fakePool as any, resolveCredential },
+      });
+    });
+
+    it('routes through chainConnect and hands the final channel to ssh2-sftp-client as sock', async () => {
+      await service.connect(chainedServer, { password: 'secret' });
+      expect(mockChainConnect).toHaveBeenCalledWith(
+        { host: 'example.com', port: 22, username: 'deploy' },
+        ['cred-bastion'],
+        { interactive: true },
+        expect.objectContaining({
+          pool: fakePool,
+          resolveHopCredential: expect.any(Function),
+          coordinator: connectProviderRegistry.coordinator,
+        })
+      );
+      // The passed resolver delegates to the registered one.
+      const passedDependencies = mockChainConnect.mock.calls[0][3];
+      await passedDependencies.resolveHopCredential('cred-bastion');
+      expect(resolveCredential).toHaveBeenCalledWith('cred-bastion');
+      expect(mockMethods.connect).toHaveBeenCalledWith(expect.objectContaining({ sock: fakeSock }));
+    });
+
+    it('threads interactive:false into the chain', async () => {
+      await service.connect(chainedServer, { password: 'secret' }, { interactive: false });
+      expect(mockChainConnect).toHaveBeenCalledWith(
+        expect.anything(), expect.anything(), { interactive: false }, expect.anything()
+      );
+    });
+
+    it('a server without jumpHosts never touches the chain', async () => {
+      await service.connect(serverConfig, { password: 'secret' });
+      expect(mockChainConnect).not.toHaveBeenCalled();
+      expect(mockMethods.connect.mock.calls[0][0].sock).toBeUndefined();
+    });
+
+    it('unwraps an InteractionRequiredError cause so 18a-1b background handling keeps working', async () => {
+      const cause = new VerificationRequiredError('bastion.example.com', 2222);
+      mockChainConnect.mockRejectedValue(new HopConnectError(0, 'bastion.example.com', cause));
+      await expect(service.connect(chainedServer, { password: 'secret' }, { interactive: false }))
+        .rejects.toBe(cause);
+      expect(service.connected).toBe(false);
+    });
+
+    it('other hop failures surface as HopConnectError', async () => {
+      mockChainConnect.mockRejectedValue(
+        new HopConnectError(0, 'bastion.example.com', new Error('connect ECONNREFUSED'))
+      );
+      await expect(service.connect(chainedServer, { password: 'secret' }))
+        .rejects.toMatchObject({ name: 'HopConnectError', hopHost: 'bastion.example.com' });
+      expect(service.connected).toBe(false);
+    });
+
+    it('releases the chain when the target connect fails', async () => {
+      mockMethods.connect.mockRejectedValue(new Error('target auth failed'));
+      await expect(service.connect(chainedServer, { password: 'secret' })).rejects.toThrow('target auth failed');
+      expect(releaseChain).toHaveBeenCalled();
+    });
+
+    it('disconnect releases the pool leases', async () => {
+      await service.connect(chainedServer, { password: 'secret' });
+      expect(releaseChain).not.toHaveBeenCalled();
+      await service.disconnect();
+      expect(releaseChain).toHaveBeenCalledTimes(1);
+    });
+
+    it('fails with a clear error when no jump-host support is registered', async () => {
+      connectProviderRegistry.clear();
+      connectProviderRegistry.set({ log: jest.fn() });
+      await expect(service.connect(chainedServer, { password: 'secret' }))
+        .rejects.toThrow(/jump.host/i);
+      expect(mockChainConnect).not.toHaveBeenCalled();
     });
   });
 

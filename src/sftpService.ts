@@ -13,8 +13,9 @@ import {
   PromptContext,
   PRE_PROMPT_TIMEOUT_MS,
 } from './ssh/connectProviders';
-import { HostNotTrustedError, VerificationRequiredError } from './ssh/connectErrors';
+import { HopConnectError, HostNotTrustedError, InteractionRequiredError, VerificationRequiredError } from './ssh/connectErrors';
 import { DEFAULT_ALGORITHMS } from './ssh/defaultAlgorithms';
+import { chainConnect, ChainConnectResult } from './ssh/chainConnect';
 import { resolveHostAlias, applySshConfig } from './ssh/SshConfigResolver';
 import { TransferService, RemoteCommandResult, RemoteCommandRunner, FileEntry } from './transferService';
 
@@ -27,6 +28,9 @@ function isPermissionDenied(err: { code?: string | number; message?: string }): 
 
 export class SftpService implements TransferService, RemoteCommandRunner {
   private client: SftpClient | null = null;
+  // Pool leases held by the current session's jump-host chain (18a-2a).
+  // Released on disconnect and on a failed connect attempt.
+  private chain: ChainConnectResult | null = null;
 
   get connected(): boolean {
     return this.client !== null;
@@ -118,6 +122,40 @@ export class SftpService implements TransferService, RemoteCommandRunner {
       throw new VerificationRequiredError(target.host, target.port);
     }
 
+    // Jump-host chain (18a-2a): lease every hop from the pool and open the
+    // forward to the target BEFORE creating the SFTP client — a hop failure
+    // must leave `connected` false. The chain honours the same interactive
+    // flag per hop (R8-18).
+    let chain: ChainConnectResult | null = null;
+    if (server.jumpHosts && server.jumpHosts.length > 0) {
+      const jumpHostSupport = providers.jumpHosts;
+      if (!jumpHostSupport) {
+        throw new Error('This connection uses jump hosts, but jump-host support is not initialised in this context');
+      }
+      try {
+        chain = await chainConnect(
+          target,
+          server.jumpHosts,
+          { interactive: interactiveAllowed },
+          {
+            pool: jumpHostSupport.pool,
+            resolveHopCredential: (id) => jumpHostSupport.resolveCredential(id),
+            providers,
+            coordinator: connectProviderRegistry.coordinator,
+          }
+        );
+      } catch (error: unknown) {
+        // Background callers detect `instanceof InteractionRequiredError` for
+        // their fail-fast warning (18a-1b) — surface the typed cause (which
+        // names the hop's host:port) instead of hiding it inside the wrapper.
+        if (error instanceof HopConnectError && error.cause instanceof InteractionRequiredError) {
+          throw error.cause;
+        }
+        throw error;
+      }
+    }
+    this.chain = chain;
+
     const client = new SftpClient();
     this.client = client;
 
@@ -186,6 +224,9 @@ export class SftpService implements TransferService, RemoteCommandRunner {
       tryKeyboard: keyboardInteractive !== undefined,
       ...(hostVerifier ? { hostVerifier } : {}),
       ...(interactive ? { readyTimeout: 0 } : {}),
+      // Through a chain, ssh2 dials over the last hop's forward instead of a
+      // TCP socket (pass-through verified — review §1).
+      ...(chain ? { sock: chain.sock } : {}),
     };
 
     if (server.authMethod === 'password') {
@@ -221,6 +262,10 @@ export class SftpService implements TransferService, RemoteCommandRunner {
       if (this.client === client) {
         this.client = null;
       }
+      if (this.chain === chain) {
+        chain?.release();
+        this.chain = null;
+      }
     };
 
     if (keyboardInteractive) {
@@ -250,6 +295,10 @@ export class SftpService implements TransferService, RemoteCommandRunner {
     } catch (err: unknown) {
       if (this.client === client) {
         this.client = null;
+      }
+      if (this.chain === chain) {
+        chain?.release();
+        this.chain = null;
       }
       if (hostKeyRefusal) {
         throw hostKeyRefusal;
@@ -525,6 +574,10 @@ export class SftpService implements TransferService, RemoteCommandRunner {
   async disconnect(): Promise<void> {
     await this.client?.end();
     this.client = null;
+    // Release the jump-host leases AFTER the target session closed — the
+    // close travels over the hop's forward.
+    this.chain?.release();
+    this.chain = null;
   }
 }
 

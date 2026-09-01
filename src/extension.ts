@@ -49,7 +49,9 @@ import { uploadChangedFilesSelection } from './commands/uploadChangedFilesSelect
 import { uploadChangedFilesOnlyNewer } from './commands/uploadChangedFilesOnlyNewer';
 import { connectProviderRegistry } from './ssh/connectProviders';
 import { HostKeyManager } from './ssh/HostKeyManager';
+import { JumpHostPool } from './ssh/JumpHostPool';
 import { VscodeHostKeyProvider, VscodeKeyboardInteractiveProvider } from './ssh/vscodeConnectProviders';
+import { Client as Ssh2Client } from 'ssh2';
 
 let output: vscode.OutputChannel;
 
@@ -89,12 +91,29 @@ export function activate(context: vscode.ExtensionContext): void {
   // providers from the registry unless the caller passes its own. The log
   // goes to the plain (unmasked) channel — callers never pass secrets.
   const sshLog = (line: string): void => output.appendLine(`[ssh] ${line}`);
+  // Extension-level jump-host pool singleton (18a-2a, R8-3): every chain
+  // connect shares live bastion connections through the registry.
+  const jumpHostPool = new JumpHostPool({
+    createClient: () => new Ssh2Client(),
+    log: sshLog,
+  });
   connectProviderRegistry.set({
     keyboardInteractive: new VscodeKeyboardInteractiveProvider(),
     hostKey: new VscodeHostKeyProvider(new HostKeyManager(context.globalStorageUri.fsPath), sshLog),
+    jumpHosts: {
+      pool: jumpHostPool,
+      resolveCredential: async (id) => {
+        try {
+          return await credentialManager.getWithSecret(id);
+        } catch {
+          return null; // deleted credential → chainConnect reports "no longer exists"
+        }
+      },
+    },
     log: sshLog,
   });
   context.subscriptions.push({ dispose: () => connectProviderRegistry.clear() });
+  context.subscriptions.push({ dispose: () => jumpHostPool.dispose() });
 
   // Migrate old servers.json + project binding → new fileferry.json on first activation
   const oldServersPath = path.join(context.globalStorageUri.fsPath, 'servers.json');
