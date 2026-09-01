@@ -60,6 +60,39 @@ export function validateSshCredential(
     errors.push({ field: 'username', message: 'Username must be 64 characters or fewer' });
   }
 
+  // Jump-host chain rules (feature 18a-2a, Q3/R8-16/Q28): chains are flat and
+  // acyclic. Reject self-reference, nesting from BOTH sides (a hop that has
+  // hops of its own; hops on a credential that others already use as a hop),
+  // and ids that no longer resolve. The delete guard is separate (18a-2b) —
+  // this only validates the credential being saved.
+  if (credential.jumpHosts && credential.jumpHosts.length > 0) {
+    const ownId = currentId ?? credential.id;
+    const referencedBy = existingCredentials.filter(
+      c => c.id !== ownId && ownId !== undefined && (c.jumpHosts ?? []).includes(ownId)
+    );
+    if (referencedBy.length > 0) {
+      errors.push({
+        field: 'jumpHosts',
+        message: `This credential is used as a jump host by ${referencedBy.map(c => `"${c.name}"`).join(', ')} — a jump host cannot have jump hosts of its own`,
+      });
+    }
+    for (const hopId of credential.jumpHosts) {
+      if (ownId !== undefined && hopId === ownId) {
+        errors.push({ field: 'jumpHosts', message: 'A credential cannot use itself as a jump host' });
+        continue;
+      }
+      const hop = existingCredentials.find(c => c.id === hopId);
+      if (!hop) {
+        errors.push({ field: 'jumpHosts', message: `Jump host credential ${hopId} no longer exists` });
+      } else if (hop.jumpHosts && hop.jumpHosts.length > 0) {
+        errors.push({
+          field: 'jumpHosts',
+          message: `"${hop.name}" has jump hosts of its own — chains cannot be nested`,
+        });
+      }
+    }
+  }
+
   if (credential.authMethod === 'password') {
     // Only require password for new credentials — edits can leave it blank to keep existing
     if (isNew && !credential.password?.trim()) {

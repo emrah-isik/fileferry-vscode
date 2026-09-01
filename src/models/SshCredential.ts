@@ -10,6 +10,10 @@ export interface SshCredential {
   privateKeyPath?: string; // only when authMethod === 'key'
   agentSocketPath?: string; // only when authMethod === 'agent' — custom socket override
   useSshConfig?: boolean; // when true, `host` is an ~/.ssh/config Host alias resolved at connect time (SFTP only)
+  // Ordered credential ids to hop through, first-hop → last-hop-before-target
+  // (feature 18a-2a, Q2/Q3). A credential referenced here must itself have no
+  // jumpHosts — chains are flat, validation rejects nesting from both sides.
+  jumpHosts?: string[];
 }
 
 // SshCredentialWithSecret is used only internally when establishing a connection.
