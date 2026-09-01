@@ -76,9 +76,42 @@ describe('FileDateGuard', () => {
 
     expect(mockSftp.connect).toHaveBeenCalledWith(
       credential,
-      { password: credential.password, passphrase: credential.passphrase }
+      { password: credential.password, passphrase: credential.passphrase },
+      { interactive: true }
     );
     expect(mockSftp.disconnect).toHaveBeenCalled();
+  });
+
+  describe('interactive flag threading (18a-1b)', () => {
+    it('check forwards interactive:false to the connect', async () => {
+      mockSftp.stat.mockResolvedValueOnce(null);
+
+      await guard.check([item('a.php')], credential, undefined, { interactive: false });
+
+      expect(mockSftp.connect).toHaveBeenCalledWith(
+        credential, expect.anything(), { interactive: false }
+      );
+    });
+
+    it('partitionByNewerLocal forwards interactive:false to the connect', async () => {
+      mockSftp.stat.mockResolvedValueOnce(null);
+
+      await guard.partitionByNewerLocal([item('a.php')], credential, undefined, { interactive: false });
+
+      expect(mockSftp.connect).toHaveBeenCalledWith(
+        credential, expect.anything(), { interactive: false }
+      );
+    });
+
+    it('partitionByNewerLocal defaults to an interactive connect', async () => {
+      mockSftp.stat.mockResolvedValueOnce(null);
+
+      await guard.partitionByNewerLocal([item('a.php')], credential);
+
+      expect(mockSftp.connect).toHaveBeenCalledWith(
+        credential, expect.anything(), { interactive: true }
+      );
+    });
   });
 
   it('disconnects even when stat throws', async () => {
@@ -222,7 +255,8 @@ describe('FileDateGuard', () => {
 
       expect(mockSftp.connect).toHaveBeenCalledWith(
         credential,
-        { password: credential.password, passphrase: credential.passphrase }
+        { password: credential.password, passphrase: credential.passphrase },
+        { interactive: true }
       );
       expect(mockSftp.disconnect).toHaveBeenCalled();
     });

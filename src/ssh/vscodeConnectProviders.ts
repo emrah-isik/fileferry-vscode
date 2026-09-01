@@ -7,6 +7,7 @@ import {
   KeyboardInteractiveProvider,
   KeyboardInteractiveRequest,
   PromptContext,
+  StoredHostKeyStatus,
 } from './connectProviders';
 
 /** Answers keyboard-interactive challenges with VS Code input boxes. */
@@ -28,6 +29,10 @@ export class VscodeHostKeyProvider implements HostKeyProvider {
     private readonly hostKeyManager: HostKeyManager,
     private readonly log: (line: string) => void
   ) {}
+
+  checkStored(target: Pick<ConnectTarget, 'host' | 'port'>, key: Buffer): Promise<StoredHostKeyStatus> {
+    return this.hostKeyManager.check(target.host, target.port, key.toString('base64'));
+  }
 
   verify(
     target: Pick<ConnectTarget, 'host' | 'port'>,

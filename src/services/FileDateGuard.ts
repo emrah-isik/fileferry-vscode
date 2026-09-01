@@ -23,7 +23,8 @@ export class FileDateGuard {
   async check(
     items: ResolvedUploadItem[],
     credential: SshCredentialWithSecret,
-    timeOffsetMs?: number
+    timeOffsetMs?: number,
+    options?: { interactive?: boolean }
   ): Promise<ResolvedUploadItem[]> {
     if (items.length === 0) {
       return [];
@@ -32,7 +33,7 @@ export class FileDateGuard {
     await this.sftp.connect(credential, {
       password: credential.password,
       passphrase: credential.passphrase,
-    });
+    }, { interactive: options?.interactive !== false });
 
     try {
       const newerOnRemote: ResolvedUploadItem[] = [];
@@ -65,7 +66,8 @@ export class FileDateGuard {
   async partitionByNewerLocal(
     items: ResolvedUploadItem[],
     credential: SshCredentialWithSecret,
-    timeOffsetMs?: number
+    timeOffsetMs?: number,
+    options?: { interactive?: boolean }
   ): Promise<NewerPartition> {
     if (items.length === 0) {
       return { toUpload: [], skipped: [] };
@@ -74,7 +76,7 @@ export class FileDateGuard {
     await this.sftp.connect(credential, {
       password: credential.password,
       passphrase: credential.passphrase,
-    });
+    }, { interactive: options?.interactive !== false });
 
     try {
       const toUpload: ResolvedUploadItem[] = [];

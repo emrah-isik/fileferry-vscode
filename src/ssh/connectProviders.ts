@@ -39,6 +39,9 @@ export interface KeyboardInteractiveProvider {
   prompt(request: KeyboardInteractiveRequest, context: PromptContext): Promise<string[] | null>;
 }
 
+/** Verdict of a store-only host-key lookup — mirrors `HostKeyManager`'s statuses. */
+export type StoredHostKeyStatus = 'trusted' | 'unknown' | 'changed';
+
 export interface HostKeyProvider {
   /**
    * ssh2 callback form ONLY: must return `undefined` and deliver the verdict
@@ -52,6 +55,16 @@ export interface HostKeyProvider {
     context: PromptContext,
     verdict: (permitted: boolean) => void
   ): void;
+
+  /**
+   * Store-only verdict for non-interactive connects (`interactive: false`):
+   * never prompts and never writes to the store. The caller fails the connect
+   * closed on 'unknown' and 'changed' (HostNotTrustedError).
+   */
+  checkStored(
+    target: Pick<ConnectTarget, 'host' | 'port'>,
+    key: Buffer
+  ): Promise<StoredHostKeyStatus>;
 }
 
 export interface ConnectProviders {

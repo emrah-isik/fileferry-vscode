@@ -482,22 +482,29 @@ export class DeploymentSettingsPanel {
     try {
       await service.connect(credential, { password: credential.password, passphrase: credential.passphrase });
 
-      const timeOffsetMs = await new TimeOffsetDetector().detect(service);
-
-      // Probe the configured Root Path so the user finds out it's wrong here,
-      // not on the next upload. Non-blocking: connection succeeded, this is a
-      // warning. Skip when the field is empty (Save validation handles that).
+      // The session must not outlive this handler: a throw out of detect()
+      // (reachable via a cancelled prompt since 18a-1) or the probe would
+      // otherwise leak it (L5). Disconnect failures are swallowed — the test
+      // verdict is decided by what happened before teardown.
+      let timeOffsetMs: number;
       let warning: string | undefined;
-      const trimmedRoot = server.rootPath?.trim();
-      if (trimmedRoot) {
-        try {
-          await service.listDirectory(trimmedRoot);
-        } catch (probeErr: unknown) {
-          warning = `Root Path "${trimmedRoot}" not accessible on remote: ${(probeErr as Error).message}. Use Browse to pick a valid folder.`;
-        }
-      }
+      try {
+        timeOffsetMs = await new TimeOffsetDetector().detect(service);
 
-      await service.disconnect();
+        // Probe the configured Root Path so the user finds out it's wrong here,
+        // not on the next upload. Non-blocking: connection succeeded, this is a
+        // warning. Skip when the field is empty (Save validation handles that).
+        const trimmedRoot = server.rootPath?.trim();
+        if (trimmedRoot) {
+          try {
+            await service.listDirectory(trimmedRoot);
+          } catch (probeErr: unknown) {
+            warning = `Root Path "${trimmedRoot}" not accessible on remote: ${(probeErr as Error).message}. Use Browse to pick a valid folder.`;
+          }
+        }
+      } finally {
+        await service.disconnect().catch(() => undefined);
+      }
 
       // Only persist the offset when the server is already saved (has an id)
       if (server.id) {
@@ -530,8 +537,13 @@ export class DeploymentSettingsPanel {
     try {
       await service.connect(credential, { password: credential.password, passphrase: credential.passphrase });
 
-      const timeOffsetMs = await new TimeOffsetDetector().detect(service);
-      await service.disconnect();
+      // Same leak guard as handleTestConnection (L5).
+      let timeOffsetMs: number;
+      try {
+        timeOffsetMs = await new TimeOffsetDetector().detect(service);
+      } finally {
+        await service.disconnect().catch(() => undefined);
+      }
 
       // Only persist the offset when the server is already saved (has an id)
       if (server.id) {

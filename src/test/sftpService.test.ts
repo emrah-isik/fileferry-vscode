@@ -9,6 +9,7 @@ import {
   KeyboardInteractiveProvider,
   PRE_PROMPT_TIMEOUT_MS,
 } from '../ssh/connectProviders';
+import { HostNotTrustedError, VerificationRequiredError } from '../ssh/connectErrors';
 import { driveSsh2HostVerifier } from './helpers/driveSsh2HostVerifier';
 
 // Mock for the underlying ssh2 Client that ssh2-sftp-client wraps
@@ -283,6 +284,7 @@ describe('SftpService', () => {
       it('uses the registry HostKeyProvider when the options carry no hostVerifier', async () => {
         const hostKey: HostKeyProvider = {
           verify: jest.fn((_target, _key, _context, verdict: (permitted: boolean) => void) => { verdict(true); }),
+          checkStored: jest.fn().mockResolvedValue('trusted'),
         };
         connectProviderRegistry.set({ hostKey });
         await service.connect(serverConfig, { password: 'secret' });
@@ -296,7 +298,7 @@ describe('SftpService', () => {
       });
 
       it('an explicit hostVerifier wins over the registry HostKeyProvider', async () => {
-        const hostKey: HostKeyProvider = { verify: jest.fn() };
+        const hostKey: HostKeyProvider = { verify: jest.fn(), checkStored: jest.fn().mockResolvedValue('trusted') };
         connectProviderRegistry.set({ hostKey });
         const hostVerifier = jest.fn((_key: Buffer, verify: (permitted: boolean) => void) => { verify(false); });
         await service.connect(serverConfig, { password: 'secret' }, { hostVerifier });
@@ -343,7 +345,7 @@ describe('SftpService', () => {
       });
 
       it('interactive (host-key provider present) → readyTimeout 0', async () => {
-        connectProviderRegistry.set({ hostKey: { verify: jest.fn() } });
+        connectProviderRegistry.set({ hostKey: { verify: jest.fn(), checkStored: jest.fn().mockResolvedValue('trusted') } });
         await service.connect(serverConfig, { password: 'secret' });
         expect(mockMethods.connect.mock.calls[0][0].readyTimeout).toBe(0);
       });
@@ -375,7 +377,10 @@ describe('SftpService', () => {
         let resolveConnect!: () => void;
         mockMethods.connect.mockReturnValue(new Promise<void>((resolve) => { resolveConnect = resolve; }));
         connectProviderRegistry.set({
-          hostKey: { verify: (_t, _k, context, verdict) => { context.promptOpened(); setTimeout(() => verdict(true), 30_000); } },
+          hostKey: {
+            verify: (_t, _k, context, verdict) => { context.promptOpened(); setTimeout(() => verdict(true), 30_000); },
+            checkStored: jest.fn().mockResolvedValue('trusted'),
+          },
         });
 
         const pending = service.connect(serverConfig, { password: 'secret' });
@@ -552,6 +557,156 @@ describe('SftpService', () => {
         await registeredKiListener()!('', '', '', [{ prompt: 'Password: ', echo: false }], jest.fn());
         expect(log).toHaveBeenCalledWith(expect.stringContaining('deploy@example.com:22'));
         for (const call of log.mock.calls) { expect(String(call[0])).not.toContain('secret'); }
+      });
+    });
+  });
+
+  describe('interactive flag (18a-1b)', () => {
+    // interactive:false = background connect: NEVER prompt, still verify.
+    // The explicit flag replaces 18a-1a's "a provider is present" derivation.
+    const kiOnlyServer: ServerConfig = { ...serverConfig, authMethod: 'keyboard-interactive' };
+
+    function kiProvider(answers: string[] | null = ['123456']): KeyboardInteractiveProvider {
+      return { prompt: jest.fn().mockResolvedValue(answers) };
+    }
+
+    function storeOnlyHostKey(status: 'trusted' | 'unknown' | 'changed'): HostKeyProvider {
+      return {
+        verify: jest.fn(),
+        checkStored: jest.fn().mockResolvedValue(status),
+      };
+    }
+
+    function registeredKiListener() {
+      const call = mockSsh2Client.on.mock.calls.find((c: any[]) => c[0] === 'keyboard-interactive');
+      return call?.[1] as ((...args: any[]) => Promise<void>) | undefined;
+    }
+
+    // Drives the hostVerifier the way ssh2 does: verify(false) fails the handshake.
+    function connectEnforcingHostVerifier() {
+      mockMethods.connect.mockImplementation(async (config: any) => {
+        if (config.hostVerifier) {
+          const permitted = await driveSsh2HostVerifier(config.hostVerifier, Buffer.from('host-key'));
+          if (!permitted) {
+            throw new Error('Host denied (verification failed)');
+          }
+        }
+      });
+    }
+
+    beforeEach(() => {
+      mockMethods.connect.mockResolvedValue(undefined);
+    });
+
+    describe('never prompts', () => {
+      it('suppresses keyboard-interactive despite a registered provider: no listener, tryKeyboard false', async () => {
+        connectProviderRegistry.set({ keyboardInteractive: kiProvider() });
+        await service.connect(serverConfig, { password: 'secret' }, { interactive: false });
+
+        expect(mockMethods.connect.mock.calls[0][0].tryKeyboard).toBe(false);
+        expect(registeredKiListener()).toBeUndefined();
+      });
+
+      it('ignores an explicit keyboardInteractive option too — the flag wins', async () => {
+        const explicit = kiProvider();
+        await service.connect(serverConfig, { password: 'secret' }, { interactive: false, keyboardInteractive: explicit });
+
+        expect(mockMethods.connect.mock.calls[0][0].tryKeyboard).toBe(false);
+        expect(registeredKiListener()).toBeUndefined();
+        expect(explicit.prompt).not.toHaveBeenCalled();
+      });
+
+      it('keeps ssh2\'s default readyTimeout (no pre-prompt timer) even with both providers registered', async () => {
+        connectProviderRegistry.set({ keyboardInteractive: kiProvider(), hostKey: storeOnlyHostKey('trusted') });
+        connectEnforcingHostVerifier();
+        await service.connect(serverConfig, { password: 'secret' }, { interactive: false });
+
+        expect(mockMethods.connect.mock.calls[0][0].readyTimeout).toBeUndefined();
+      });
+
+      it('a keyboard-interactive credential fails fast with VerificationRequiredError — without dialing', async () => {
+        connectProviderRegistry.set({ keyboardInteractive: kiProvider() });
+
+        await expect(service.connect(kiOnlyServer, {}, { interactive: false }))
+          .rejects.toThrow(VerificationRequiredError);
+        expect(mockMethods.connect).not.toHaveBeenCalled();
+        expect(service.connected).toBe(false);
+      });
+    });
+
+    describe('still verifies host keys — against the store only', () => {
+      it('a trusted stored key connects silently; the prompting verify() is never called', async () => {
+        const hostKey = storeOnlyHostKey('trusted');
+        connectProviderRegistry.set({ hostKey });
+        connectEnforcingHostVerifier();
+
+        await service.connect(serverConfig, { password: 'secret' }, { interactive: false });
+
+        expect(hostKey.checkStored).toHaveBeenCalledWith(
+          { host: 'example.com', port: 22 }, Buffer.from('host-key')
+        );
+        expect(hostKey.verify).not.toHaveBeenCalled();
+        expect(service.connected).toBe(true);
+      });
+
+      it('an unknown host fails closed with HostNotTrustedError (status "unknown"), no prompt', async () => {
+        const hostKey = storeOnlyHostKey('unknown');
+        connectProviderRegistry.set({ hostKey });
+        connectEnforcingHostVerifier();
+
+        const pending = service.connect(serverConfig, { password: 'secret' }, { interactive: false });
+        await expect(pending).rejects.toThrow(HostNotTrustedError);
+        await pending.catch((error: HostNotTrustedError) => {
+          expect(error.status).toBe('unknown');
+          expect(error.host).toBe('example.com');
+        });
+        expect(hostKey.verify).not.toHaveBeenCalled();
+      });
+
+      it('a changed key fails closed with HostNotTrustedError (status "changed")', async () => {
+        connectProviderRegistry.set({ hostKey: storeOnlyHostKey('changed') });
+        connectEnforcingHostVerifier();
+
+        const pending = service.connect(serverConfig, { password: 'secret' }, { interactive: false });
+        await expect(pending).rejects.toThrow(HostNotTrustedError);
+        await pending.catch((error: HostNotTrustedError) => {
+          expect(error.status).toBe('changed');
+        });
+      });
+
+      it('a failing store check fails closed too — an error is never a "yes"', async () => {
+        const hostKey: HostKeyProvider = {
+          verify: jest.fn(),
+          checkStored: jest.fn().mockRejectedValue(new Error('storage unreadable')),
+        };
+        connectProviderRegistry.set({ hostKey });
+        connectEnforcingHostVerifier();
+
+        await expect(service.connect(serverConfig, { password: 'secret' }, { interactive: false }))
+          .rejects.toThrow(HostNotTrustedError);
+      });
+
+      it('with no host-key provider registered there is nothing to check against — no verifier is set', async () => {
+        await service.connect(serverConfig, { password: 'secret' }, { interactive: false });
+        expect(mockMethods.connect.mock.calls[0][0].hostVerifier).toBeUndefined();
+      });
+    });
+
+    describe('the explicit flag beats provider presence', () => {
+      it('interactive:true keeps today\'s provider-derived behaviour (tryKeyboard, readyTimeout 0)', async () => {
+        connectProviderRegistry.set({ keyboardInteractive: kiProvider() });
+        await service.connect(serverConfig, { password: 'secret' }, { interactive: true });
+
+        const config = mockMethods.connect.mock.calls[0][0];
+        expect(config.tryKeyboard).toBe(true);
+        expect(config.readyTimeout).toBe(0);
+      });
+
+      it('omitting the flag defaults to interactive (backwards compatible)', async () => {
+        connectProviderRegistry.set({ keyboardInteractive: kiProvider() });
+        await service.connect(serverConfig, { password: 'secret' }, {});
+
+        expect(mockMethods.connect.mock.calls[0][0].tryKeyboard).toBe(true);
       });
     });
   });

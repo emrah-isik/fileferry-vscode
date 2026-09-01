@@ -13,6 +13,7 @@ const vscode = {
     isTrusted: true,
     workspaceFolders: [{ uri: { fsPath: '/tmp/workspace' } }],
     onDidSaveTextDocument: jest.fn().mockReturnValue({ dispose: jest.fn() }),
+    onWillSaveTextDocument: jest.fn().mockReturnValue({ dispose: jest.fn() }),
     onDidCloseTextDocument: jest.fn().mockReturnValue({ dispose: jest.fn() }),
     createFileSystemWatcher: jest.fn().mockReturnValue({
       onDidCreate: jest.fn().mockReturnValue({ dispose: jest.fn() }),
@@ -56,6 +57,11 @@ const vscode = {
     };
     fire = (...args: any[]) => { this.listeners.forEach(l => l(...args)); };
     dispose = () => { this.listeners = []; };
+  },
+  TextDocumentSaveReason: {
+    Manual: 1,
+    AfterDelay: 2,
+    FocusOut: 3,
   },
   TreeItemCollapsibleState: {
     None: 0,

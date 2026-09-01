@@ -118,4 +118,23 @@ describe('VscodeHostKeyProvider — driven the way ssh2 drives it', () => {
     expect(await verify(Buffer.from('k'))).toBe(false);
     expect(log).toHaveBeenCalledWith(expect.stringContaining('disk on fire'));
   });
+
+  describe('checkStored — the non-interactive path (18a-1b)', () => {
+    it('returns the store verdict without prompting and without writing', async () => {
+      mockHostKeyManager.check.mockResolvedValue('trusted');
+
+      const status = await provider.checkStored(target, Buffer.from('k'));
+
+      expect(status).toBe('trusted');
+      expect(mockHostKeyManager.check).toHaveBeenCalledWith('example.com', 22, Buffer.from('k').toString('base64'));
+      expect(hostKeyPrompt.showHostKeyPrompt).not.toHaveBeenCalled();
+      expect(mockHostKeyManager.trust).not.toHaveBeenCalled();
+    });
+
+    it.each(['unknown', 'changed'] as const)('passes "%s" through untouched — the caller fails closed', async (verdict) => {
+      mockHostKeyManager.check.mockResolvedValue(verdict);
+      expect(await provider.checkStored(target, Buffer.from('k'))).toBe(verdict);
+      expect(hostKeyPrompt.showHostKeyPrompt).not.toHaveBeenCalled();
+    });
+  });
 });

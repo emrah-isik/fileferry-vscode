@@ -13,6 +13,7 @@ import {
   PromptContext,
   PRE_PROMPT_TIMEOUT_MS,
 } from './ssh/connectProviders';
+import { HostNotTrustedError, VerificationRequiredError } from './ssh/connectErrors';
 import { resolveHostAlias, applySshConfig } from './ssh/SshConfigResolver';
 import { TransferService, RemoteCommandResult, RemoteCommandRunner, FileEntry } from './transferService';
 
@@ -77,12 +78,20 @@ export class SftpService implements TransferService, RemoteCommandRunner {
    * Prompt providers come from `options` when given (explicit wins) and from
    * the `connectProviderRegistry` otherwise, so every SSH connect in the
    * extension verifies host keys and answers keyboard-interactive challenges
-   * without each call site wiring UI. A connect is *interactive* when either
-   * provider is present: then `tryKeyboard` is on for every auth method (a
-   * `publickey,keyboard-interactive` server can't authenticate otherwise) and
-   * ssh2's `readyTimeout` — which would time out a prompt the user takes
+   * without each call site wiring UI.
+   *
+   * `options.interactive` (default `true`) decides whether this connect may
+   * raise UI at all. Interactive: when a keyboard-interactive provider is
+   * present `tryKeyboard` is on for every auth method (a
+   * `publickey,keyboard-interactive` server can't authenticate otherwise),
+   * and ssh2's `readyTimeout` — which would time out a prompt the user takes
    * longer than 20 s to answer — is replaced by a 20 s timer that only guards
-   * the stretch before the first prompt opens.
+   * the stretch before the first prompt opens. Non-interactive (background
+   * triggers): NEVER prompts, but still verifies — the host key is checked
+   * against the trust store only ('unknown'/'changed' fail closed with
+   * `HostNotTrustedError`), a keyboard-interactive credential fails fast with
+   * `VerificationRequiredError`, `tryKeyboard` is off, and ssh2 keeps its
+   * default `readyTimeout`.
    */
   async connect(
     server: ServerConfig,
@@ -97,6 +106,13 @@ export class SftpService implements TransferService, RemoteCommandRunner {
       hostVerifier?: (key: Buffer, verify: (permitted: boolean) => void) => void;
       /** Answers keyboard-interactive challenges; bypasses the registry's provider. */
       keyboardInteractive?: KeyboardInteractiveProvider;
+      /**
+       * `false` = background connect: never prompt (the explicit prompt
+       * options above are ignored too), fail fast with a typed
+       * `InteractionRequiredError` when verification would need the user.
+       * Default `true`.
+       */
+      interactive?: boolean;
     }
   ): Promise<void> {
     const firstAttempt = { keychainAnswerUsed: false, userPrompted: false };
@@ -125,9 +141,6 @@ export class SftpService implements TransferService, RemoteCommandRunner {
     allowKeychainAutoAnswer: boolean,
     attempt: { keychainAnswerUsed: boolean; userPrompted: boolean }
   ): Promise<void> {
-    const client = new SftpClient();
-    this.client = client;
-
     // When the credential opts in, treat `host` as an ~/.ssh/config Host alias
     // and resolve HostName/Port/User/IdentityFile from the user's SSH config.
     if (server.useSshConfig) {
@@ -135,7 +148,22 @@ export class SftpService implements TransferService, RemoteCommandRunner {
     }
 
     const providers = connectProviderRegistry.get();
-    const configuredProvider = options?.keyboardInteractive ?? providers.keyboardInteractive;
+    const target = { username: server.username, host: server.host, port: server.port };
+    const interactiveAllowed = options?.interactive !== false;
+
+    if (!interactiveAllowed && server.authMethod === 'keyboard-interactive') {
+      // The credential's whole auth method is answering prompts — there is
+      // nothing a background connect could even attempt. Fail before dialing
+      // (and before this.client is set, so `connected` stays false).
+      throw new VerificationRequiredError(target.host, target.port);
+    }
+
+    const client = new SftpClient();
+    this.client = client;
+
+    const configuredProvider = interactiveAllowed
+      ? options?.keyboardInteractive ?? providers.keyboardInteractive
+      : undefined;
     // Tracked so a failed auth can tell "the keychain silently consumed the
     // one keyboard-interactive attempt" from "the user already typed".
     const keyboardInteractive: KeyboardInteractiveProvider | undefined = configuredProvider && {
@@ -144,19 +172,45 @@ export class SftpService implements TransferService, RemoteCommandRunner {
         return configuredProvider.prompt(request, context);
       },
     };
-    const target = { username: server.username, host: server.host, port: server.port };
 
     let timer: PrePromptTimer | undefined;
     const context: PromptContext = { promptOpened: () => timer?.promptOpened() };
 
-    const hostVerifier = options?.hostVerifier
-      ?? (providers.hostKey
+    // Set when the store-only check refuses the host; thrown in place of
+    // ssh2's generic handshake error so callers get a recognisable type.
+    let hostKeyRefusal: HostNotTrustedError | undefined;
+
+    const hostVerifier = interactiveAllowed
+      ? options?.hostVerifier
+        ?? (providers.hostKey
+          ? (key: Buffer, verify: (permitted: boolean) => void): void => {
+            providers.hostKey!.verify({ host: target.host, port: target.port }, key, context, verify);
+          }
+          : undefined)
+      : (providers.hostKey
         ? (key: Buffer, verify: (permitted: boolean) => void): void => {
-          providers.hostKey!.verify({ host: target.host, port: target.port }, key, context, verify);
+          providers.hostKey!.checkStored({ host: target.host, port: target.port }, key).then(
+            (status) => {
+              if (status === 'trusted') {
+                verify(true);
+                return;
+              }
+              hostKeyRefusal = new HostNotTrustedError(target.host, target.port, status);
+              verify(false);
+            },
+            (error: unknown) => {
+              // Fail closed: an unreadable store is never a "yes".
+              const message = error instanceof Error ? error.message : String(error);
+              providers.log(`host key store check for ${target.host}:${target.port} failed: ${message}`);
+              hostKeyRefusal = new HostNotTrustedError(target.host, target.port, 'unknown');
+              verify(false);
+            }
+          );
         }
         : undefined);
 
-    const interactive = keyboardInteractive !== undefined || hostVerifier !== undefined;
+    const interactive = interactiveAllowed
+      && (keyboardInteractive !== undefined || hostVerifier !== undefined);
 
     // Build the connection config based on auth method. ssh2-sftp-client's
     // ConnectOptions has optional fields that vary by auth method, so we
@@ -236,6 +290,9 @@ export class SftpService implements TransferService, RemoteCommandRunner {
     } catch (err: unknown) {
       if (this.client === client) {
         this.client = null;
+      }
+      if (hostKeyRefusal) {
+        throw hostKeyRefusal;
       }
       const msg = (err as Error).message ?? '';
       if (msg.includes('parse') && msg.toLowerCase().includes('privatekey')) {

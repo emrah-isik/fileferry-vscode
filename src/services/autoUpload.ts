@@ -6,6 +6,7 @@ import { createTransferService } from '../transferServiceFactory';
 import { FileDateGuard } from './FileDateGuard';
 import { UploadHistoryService } from './UploadHistoryService';
 import { summaryToHistoryEntries } from './summaryToHistoryEntries';
+import { InteractionRequiredError } from '../ssh/connectErrors';
 import { CredentialManager } from '../storage/CredentialManager';
 import { ProjectConfigManager } from '../storage/ProjectConfigManager';
 import { ProjectConfig } from '../models/ProjectConfig';
@@ -22,7 +23,11 @@ export type AutoUploadSkipReason = 'no-server' | 'gitignored' | 'excluded' | 're
 export type AutoUploadOutcome =
   | { status: 'skipped'; reason: AutoUploadSkipReason; fileName: string }
   | { status: 'uploaded'; summary: UploadSummaryV2; serverName: string; fileName: string }
-  | { status: 'error'; error: string; fileName: string };
+  | { status: 'error'; error: string; fileName: string }
+  // The background connect was refused because verification would need the
+  // user (host not yet trusted, or auth requires prompts). Renderers show the
+  // shared non-modal warning with a Test Connection button (18a-1b, Q32/H2).
+  | { status: 'verification-required'; error: string; serverId: string; serverName: string; fileName: string };
 
 /**
  * Shared core for trigger-driven single-file auto-upload (on-save and watch).
@@ -73,17 +78,31 @@ export async function autoUploadFile(
   try {
     const credential = await dependencies.credentialManager.getWithSecret(server.credentialId);
 
-    // File date guard — skip if the remote is newer. Non-blocking on errors.
+    // File date guard — skip if the remote is newer. Non-blocking on errors,
+    // EXCEPT a verification refusal: that would hit the orchestrator's
+    // connect identically, so silently skipping the guard and then failing
+    // the upload would hide the real problem (H2). Both connections here are
+    // background triggers, so neither may prompt (interactive: false).
     const fileDateGuardEnabled = config.fileDateGuard !== false;
     try {
       const newerOnRemote = fileDateGuardEnabled
-        ? await new FileDateGuard(createTransferService(server.type)).check([resolved], credential, server.timeOffsetMs)
+        ? await new FileDateGuard(createTransferService(server.type))
+          .check([resolved], credential, server.timeOffsetMs, { interactive: false })
         : [];
       if (newerOnRemote.length > 0) {
         return { status: 'skipped', reason: 'remote-newer', fileName };
       }
-    } catch {
-      // A date-guard failure must not block the upload.
+    } catch (guardError: unknown) {
+      if (guardError instanceof InteractionRequiredError) {
+        return {
+          status: 'verification-required',
+          error: guardError.message,
+          serverId: server.id,
+          serverName,
+          fileName,
+        };
+      }
+      // Any other date-guard failure must not block the upload.
     }
 
     const orchestrator = new UploadOrchestratorV2(createTransferService(server.type));
@@ -92,7 +111,9 @@ export async function autoUploadFile(
     // server. Passing no hook context — like the null server — keeps this path
     // hook-free; only deliberate deploys (uploadSelected / uploadToServers / sync)
     // supply a hook context.
-    const summary = await orchestrator.upload([resolved], credential, null, []);
+    const summary = await orchestrator.upload(
+      [resolved], credential, null, [], undefined, undefined, { interactive: false }
+    );
 
     const historyMaxEntries = config.historyMaxEntries ?? 10000;
     if (historyMaxEntries > 0) {
@@ -105,6 +126,9 @@ export async function autoUploadFile(
     return { status: 'uploaded', summary, serverName, fileName };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
+    if (err instanceof InteractionRequiredError) {
+      return { status: 'verification-required', error: message, serverId: server.id, serverName, fileName };
+    }
     return { status: 'error', error: message, fileName };
   }
 }

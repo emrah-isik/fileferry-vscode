@@ -109,7 +109,31 @@ describe('RemoteBrowserConnection', () => {
           username: 'deploy',
           authMethod: 'password',
         }),
-        expect.objectContaining({ password: 'secret' })
+        expect.objectContaining({ password: 'secret' }),
+        { interactive: true }
+      );
+    });
+
+    it('forwards interactive:false to the connect (18a-1b)', async () => {
+      await connection.ensureConnected({ interactive: false });
+      expect(mockSftp.connect).toHaveBeenCalledWith(
+        expect.anything(), expect.anything(), { interactive: false }
+      );
+    });
+
+    it.each([
+      ['statRemote', () => connection.statRemote('/var/www/x', { interactive: false })],
+      ['downloadFile', () => connection.downloadFile('/var/www/x', { interactive: false })],
+      ['uploadFile', () => connection.uploadFile('/tmp/x', '/var/www/x', { interactive: false })],
+    ] as const)('%s forwards interactive:false to the connect it triggers (18a-1b)', async (_name, run) => {
+      mockSftp.stat.mockResolvedValue(null);
+      mockSftp.get.mockResolvedValue(Buffer.from(''));
+      mockSftp.uploadFile.mockResolvedValue(undefined);
+
+      await run();
+
+      expect(mockSftp.connect).toHaveBeenCalledWith(
+        expect.anything(), expect.anything(), { interactive: false }
       );
     });
 
@@ -118,6 +142,7 @@ describe('RemoteBrowserConnection', () => {
       await connection.ensureConnected();
       expect(mockSftp.connect).toHaveBeenCalledWith(
         expect.objectContaining({ host: 'prod', useSshConfig: true }),
+        expect.anything(),
         expect.anything()
       );
     });

@@ -3,6 +3,7 @@ import * as path from 'path';
 import { RemoteFileItem, RemoteEntry } from './RemoteFileItem';
 import { RemoteBrowserConnection } from './RemoteBrowserConnection';
 import { FileEntry } from '../transferService';
+import { InteractionRequiredError } from '../ssh/connectErrors';
 
 export class RemoteBrowserProvider implements vscode.TreeDataProvider<RemoteFileItem> {
   private userNavigatedPath: string | null = null;
@@ -17,6 +18,12 @@ export class RemoteBrowserProvider implements vscode.TreeDataProvider<RemoteFile
   // (the "…in Current Path" create commands) can tell "not connected yet"
   // apart from a real location.
   private currentPath: string | null = null;
+  // Set by resume()/navigateTo() — the gestures that request a render — and
+  // consumed by the next root render. A root render without it (the view
+  // becoming visible, background refreshes) is a background connect: it must
+  // never prompt (18a-1b), and an unverified host shows the "Host not
+  // verified" placeholder instead.
+  private interactiveRenderPending = false;
 
   private readonly _onDidChangeTreeData = new vscode.EventEmitter<RemoteFileItem | undefined | void>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
@@ -50,14 +57,18 @@ export class RemoteBrowserProvider implements vscode.TreeDataProvider<RemoteFile
     try {
       let targetPath: string;
       if (element) {
+        // Expanding a folder is itself a click; if the session lapsed, the
+        // reconnect inside listDirectory may prompt (default interactive).
         targetPath = element.entry.remotePath;
-      } else if (this.userNavigatedPath) {
-        targetPath = this.userNavigatedPath;
       } else {
-        // Ensure connection is established so getRootPath() returns the
-        // server's configured root instead of the pre-connection default '/'.
-        await this.connection.ensureConnected();
-        targetPath = this.connection.getRootPath();
+        // Every root render connects here with an explicit interactivity —
+        // also when a navigated path is set, so a later background render
+        // (view becomes visible after an idle disconnect) cannot ride
+        // listDirectory's interactive default into an unwanted prompt.
+        const interactive = this.interactiveRenderPending;
+        this.interactiveRenderPending = false;
+        await this.connection.ensureConnected({ interactive });
+        targetPath = this.userNavigatedPath ?? this.connection.getRootPath();
       }
 
       const entries = await this.connection.listDirectory(targetPath);
@@ -70,6 +81,9 @@ export class RemoteBrowserProvider implements vscode.TreeDataProvider<RemoteFile
       if (!element) {
         this.currentPath = null;
         this._onDidChangePath.fire('');
+        if (err instanceof InteractionRequiredError) {
+          return [this.createNotVerifiedItem()];
+        }
       }
       return [this.createErrorItem(err)];
     }
@@ -91,11 +105,13 @@ export class RemoteBrowserProvider implements vscode.TreeDataProvider<RemoteFile
 
   resume(): void {
     this.suspended = false;
+    this.interactiveRenderPending = true;
     this.refresh();
   }
 
   navigateTo(remotePath: string): void {
     this.suspended = false;
+    this.interactiveRenderPending = true;
     this.userNavigatedPath = remotePath;
     this.refresh();
   }
@@ -148,6 +164,27 @@ export class RemoteBrowserProvider implements vscode.TreeDataProvider<RemoteFile
     item.description = 'Click to reconnect';
     item.iconPath = new vscode.ThemeIcon('debug-disconnect');
     item.command = { command: 'fileferry.remoteBrowser.refresh', title: 'Reconnect' };
+    return item;
+  }
+
+  // Shown when a background render was refused because the host is not yet
+  // trusted (or verification would need prompts). A click IS a gesture: the
+  // refresh command goes through resume(), which marks the next render
+  // interactive, so clicking this row raises the verification prompts.
+  private createNotVerifiedItem(): RemoteFileItem {
+    const notVerifiedEntry: RemoteEntry = {
+      name: 'Host not verified',
+      type: '-',
+      size: 0,
+      modifyTime: 0,
+      remotePath: '', // not a real entry — multi-target commands filter it
+    };
+
+    const item = new RemoteFileItem(notVerifiedEntry);
+    item.contextValue = 'remotePlaceholder'; // same reasoning as the Disconnected row
+    item.description = 'Click to connect';
+    item.iconPath = new vscode.ThemeIcon('shield');
+    item.command = { command: 'fileferry.remoteBrowser.refresh', title: 'Connect and verify' };
     return item;
   }
 

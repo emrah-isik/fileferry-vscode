@@ -39,12 +39,23 @@ describe('BackupService.backup', () => {
 
     await service.backup(items, credential, 'Production', '/workspace');
 
-    expect(mockSftp.connect).toHaveBeenCalledWith(credential, {
-      password: credential.password,
-      passphrase: credential.passphrase,
-    });
+    expect(mockSftp.connect).toHaveBeenCalledWith(
+      credential,
+      { password: credential.password, passphrase: credential.passphrase },
+      { interactive: true }
+    );
     expect(mockSftp.get).toHaveBeenCalledWith('/var/www/index.php');
     expect(mockSftp.disconnect).toHaveBeenCalled();
+  });
+
+  it('forwards interactive:false to the connect (18a-1b)', async () => {
+    mockSftp.stat.mockResolvedValueOnce(null);
+
+    await service.backup([item('a.php')], credential, 'Production', '/workspace', { interactive: false });
+
+    expect(mockSftp.connect).toHaveBeenCalledWith(
+      credential, expect.anything(), { interactive: false }
+    );
   });
 
   it('skips files that do not exist on remote', async () => {

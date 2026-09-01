@@ -47,6 +47,8 @@ Click **Add Credential** and fill in the details:
 
 **2FA / keyboard-interactive note:** challenges are not limited to the *Keyboard Interactive* method. If your server asks for a verification code after a key or password step (OpenSSH `AuthenticationMethods publickey,keyboard-interactive`), FileFerry shows the same input prompts for any credential type; for password credentials a plain `Password:` challenge is answered from your keychain first — and if the server rejects that stored password, FileFerry reconnects once and asks you directly. Dismissing a prompt cancels the connection.
 
+Prompts only appear for connections you start yourself (a deploy, **Test Connection**, browsing, a manual save of a remote edit). Background connections — upload on save, the file watcher, the Remote Files panel drawing itself, `files.autoSave`-triggered remote-edit saves — never prompt: when they would need one they fail fast with a warning instead (see [Host key verification](#host-key-verification)). A keyboard-interactive credential therefore cannot be used by background uploads at all — those always need your answer.
+
 **FTP/FTPS note:** FTP and FTPS protocols only support password authentication. When you select an FTP protocol in Deployment Settings, the credential dropdown automatically filters to show only password-auth credentials.
 
 Passwords and passphrases are stored in your OS keychain (macOS Keychain / Windows Credential Manager / Linux libsecret). They are never written to disk or included in project files.
@@ -136,6 +138,8 @@ Enable this in **Project Settings** (`FileFerry: Project Settings`) to automatic
 
 Toggle it quickly from the status bar without opening settings.
 
+Upload on save runs in the background, so it never shows connection prompts. If the server's host key isn't trusted yet — or the connection would need a 2FA/verification prompt — the save is not uploaded; instead a warning appears (*host not yet trusted or verification required*) with a **Test Connection** button. Verify the host once (Test Connection, or any manual deploy) and later saves upload silently. Other connection failures show a regular error notification.
+
 ### Upload All Changed Files
 
 `Ctrl+Alt+U` (or **FileFerry: Upload All Changed Files** from the palette) deploys everything git considers changed to the default server — no selection needed.
@@ -151,6 +155,8 @@ Toggle it quickly from the status bar without opening settings.
 ### Watch & Auto-Upload
 
 For build outputs and other generated files that never fire an editor save, enable the opt-in file-system watcher in **Project Settings**: turn on **Watch & auto-upload** and list workspace-relative glob patterns (e.g. `dist/**`). Files matching the globs upload automatically when they change on disk — an explicit allowlist, so they upload **even when git-ignored** (unlike upload-on-save). Changes are debounced and batched, `excludedPaths` and the file date guard still apply, and watch uploads appear in Upload History under the **Watch** source. Watch uploads never run deploy hooks.
+
+Like upload on save, the watcher never shows connection prompts: against a host that isn't trusted yet (or one that would need a verification prompt) the batch is skipped — each file is listed in the output channel, and one *host not yet trusted or verification required* warning with a **Test Connection** button appears per batch. Verify the host once and watching resumes silently.
 
 ### Upload Confirmation
 
@@ -270,6 +276,8 @@ Every SFTP connection — deploys, **Test Connection**, the Remote File Browser,
 - **`WARNING: HOST KEY FOR … HAS CHANGED!`** — the server presented a *different* key than the one you trusted. Either the server was legitimately reinstalled / its keys rotated, or something between you and the server is impersonating it (a man-in-the-middle). If you didn't expect a change, click **Cancel** — the connection is refused and nothing is sent. **Trust Anyway** replaces the saved key.
 
 Trusted keys live in `known_hosts.json` in the extension's global storage (`~/.config/Code/User/globalStorage/esidevlabs.fileferry/` on Linux, `~/Library/Application Support/Code/User/globalStorage/esidevlabs.fileferry/` on macOS, `%APPDATA%\Code\User\globalStorage\esidevlabs.fileferry\` on Windows). Delete an entry there to re-prompt for that host. Keys are matched on the key material alone, so entries saved by older versions keep working.
+
+**Background connections never prompt.** Upload on save, the file watcher, the Remote Files panel rendering itself when it becomes visible, and `files.autoSave`-triggered remote-edit saves connect without any UI: the presented key is checked against the saved ones only. A trusted host connects silently; an unknown or changed key makes the connection fail fast instead of raising the modal — the upload paths show a non-modal *host not yet trusted or verification required* warning with a **Test Connection** button, and the Remote Files panel shows a **Host not verified — click to connect** row (clicking it is a normal, prompting connection). Trust the host once and background connections proceed silently from then on.
 
 FTP/FTPS servers have no SSH host key — they use TLS certificates instead.
 
@@ -635,6 +643,10 @@ The server's SSH host key differs from the one saved on first connection. See [H
 ### "Connection cancelled" / "Timed out waiting for the SSH handshake"
 
 *Connection cancelled* means you dismissed a host-key or 2FA prompt — run the command again and answer it. *Timed out waiting for the SSH handshake (20 s) before any prompt opened* means the server never got as far as asking anything: check host, port, and firewall, then **Test Connection** from the Servers panel.
+
+### "Host not yet trusted or verification required"
+
+A background connection (upload on save, the file watcher, an autosave-triggered remote-edit save) needed a host-key or 2FA prompt it is not allowed to show. Click **Test Connection** in the warning — or run any manual deploy — and answer the prompts once; background uploads then work. The Remote Files panel shows the same situation as a **Host not verified — click to connect** row: click it to connect with the prompts.
 
 ### Remote File Browser shows an error
 
