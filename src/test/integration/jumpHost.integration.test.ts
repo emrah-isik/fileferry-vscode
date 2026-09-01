@@ -203,12 +203,21 @@ describeIntegration('jump-host chain (compose fixture)', () => {
     await service.disconnect().catch(() => undefined);
   });
 
-  it('mfauser logs in through MULTI-ROUND keyboard-interactive (fixed OTP, then password)', async () => {
-    keyboardAnswers = (request) => (request.round === 1 ? ['123456'] : ['mfapass']);
+  it('mfauser logs in through MULTI-ROUND keyboard-interactive (password, then TOTP)', async () => {
+    // Two genuine USERAUTH_INFO_REQUESTs: pam_unix asks for the password,
+    // pam_google_authenticator asks for the verification code through its
+    // own conversation. (A fixed-OTP second round via pam_exec is not
+    // possible — pam_get_authtok caches the round-1 answer.) mfauser's
+    // secret has no DISALLOW_REUSE, so repeated runs in one window pass.
+    keyboardAnswers = (request) =>
+      /verification/i.test(request.prompts.map(prompt => prompt.prompt).join(' '))
+        ? [totpCode(TOTP_SECRET)]
+        : ['mfapass'];
     const service = new SftpService();
     await service.connect(directBastionServer('mfauser', 'keyboard-interactive'), {});
     expect(service.connected).toBe(true);
-    expect(recordedRounds.length).toBeGreaterThanOrEqual(2); // pam_exec round + pam_unix round
+    expect(recordedRounds.length).toBeGreaterThanOrEqual(2);
+    expect(recordedRounds.some(round => round.prompts.some(prompt => /verification/i.test(prompt.prompt)))).toBe(true);
     await service.disconnect();
   });
 

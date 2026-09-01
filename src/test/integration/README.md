@@ -41,7 +41,7 @@ writable — everything the pre-compose suites used — plus:
 | User | Auth | Purpose |
 | --- | --- | --- |
 | `testuser` / `testpass` | password | the six pre-existing suites; bastion hop |
-| `mfauser` / `mfapass` | keyboard-interactive only, TWO rounds: fixed OTP `123456`, then the password | multi-round KI |
+| `mfauser` / `mfapass` | keyboard-interactive only, TWO rounds: password, then a TOTP code (same secret as totpuser, **no** reuse limit) | multi-round KI |
 | `mfakeyuser` / `mfakeypass` | `publickey,keyboard-interactive` (key: `dev/ssh-test/bastion/mfakeyuser_ed25519`, test-only) | the C3 case |
 | `totpuser` / `totppass` | keyboard-interactive: password, then a real TOTP code (secret `JBSWY3DPEHPK3PXP`, `DISALLOW_REUSE`) | code-reuse rejection |
 
