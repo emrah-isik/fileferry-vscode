@@ -71,6 +71,20 @@ Tick **Resolve from `~/.ssh/config`** on the credential, then enter the alias (`
 - **You always see what happened.** On **Save** and **Test Connection**, a summary shows the resolved target — e.g. `✓ Resolved "prod" → deploy@203.0.113.10:2222 · key ~/.ssh/prod_ed25519` — or warns when no `~/.ssh/config` exists or no `Host` block matched (in which case your entered values are used as-is). If a catch-all `Host *` block overrides a value you typed, that's called out too.
 - **Supported directives:** `HostName`, `Port`, `User`, `IdentityFile`, with `*`/`?` wildcard `Host` patterns. `ProxyJump`/`ProxyCommand` are not resolved yet. SFTP only — FTP/FTPS ignore this setting.
 
+#### Jump hosts (SFTP only)
+
+If a server is only reachable through a bastion (jump host), configure the chain on the **target's credential**: each hop is itself a normal credential (host, user, auth method — password, key, agent, or keyboard-interactive), and the target credential lists the hops in order, first hop → last hop before the target. Chains are flat: a credential used as a hop cannot have hops of its own, and validation rejects such nesting when you save.
+
+At connect time FileFerry logs in to each hop in turn and tunnels the SFTP session through it (`[ssh] route: local → you@bastion:22 → you@target:22` in the output channel). Everything that opens an SSH connection uses the chain automatically — deploys, Test Connection, the Remote Files panel, remote-edit saves.
+
+**MFA and the chain — what to expect.** Hop connections are *pooled*: the bastion login is kept alive and shared, so its password/OTP prompt is asked **once per idle window** (the pooled connection closes after 5 minutes unused), no matter how many sessions a deploy opens through it. The *target* still authenticates once per session — a deploy opens several sequential sessions, so a target that itself demands a one-time code will prompt for each (TOTP servers reject code reuse, so FileFerry cannot replay one code for you). Putting the MFA on the bastion is therefore the pleasant setup; MFA on the target works, but prompts more.
+
+Every host in the chain gets the same [host key verification](#host-key-verification) as a direct connection — expect one trust prompt per hop on first use. Background connections (upload on save, the watcher) never prompt through a chain either: an unverified hop fails fast with the usual warning.
+
+**Server-side requirement:** the bastion must allow TCP forwarding (OpenSSH: `AllowTcpForwarding yes`, and any `PermitOpen` rules must include the next host). If the forward is refused, the connection error names the hop that refused it.
+
+FTP/FTPS cannot use jump hosts — a credential with hops is SFTP-only.
+
 ### 2. Add a Deployment Server
 
 Open `FileFerry: Deployment Settings` from the command palette.
