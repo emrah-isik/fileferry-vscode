@@ -3,6 +3,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { SftpService } from '../../sftpService';
 import { ServerConfig } from '../../types';
+import { describeIfFixtureUp, SSH_FIXTURE_START_HINT } from './fixtureProbe';
 
 /**
  * Real-server contract test for SftpService.stat().
@@ -14,13 +15,15 @@ import { ServerConfig } from '../../types';
  *
  * Opt-in only (excluded from `npm test`). Run with: npm run test:integration
  * Requires the SFTP test container — start it with:
- *   docker build -t fileferry-ssh dev/ssh-test
- *   docker run -d --rm -p 2222:22 --name fileferry-ssh fileferry-ssh
+ *   docker compose -f dev/ssh-test/docker-compose.yml up -d --build
  * Connection details can be overridden via FILEFERRY_IT_HOST/PORT/USER/PASS.
  */
 
 const HOST = process.env.FILEFERRY_IT_HOST ?? '127.0.0.1';
 const PORT = Number(process.env.FILEFERRY_IT_PORT ?? '2222');
+
+// R8-15: skip (never throw) when the fixture is down.
+const describeIntegration = describeIfFixtureUp('SSH fixture', HOST, PORT, SSH_FIXTURE_START_HINT);
 const USER = process.env.FILEFERRY_IT_USER ?? 'testuser';
 const PASS = process.env.FILEFERRY_IT_PASS ?? 'testpass';
 
@@ -36,7 +39,7 @@ const server: ServerConfig = {
   excludedPaths: []
 };
 
-describe('SftpService integration (real SFTP server)', () => {
+describeIntegration('SftpService integration (real SFTP server)', () => {
   let service: SftpService;
   let localProbe: string;
   const remoteProbe = `/tmp/.fileferry-it-${process.pid}-${Date.now()}.txt`;
@@ -52,8 +55,7 @@ describe('SftpService integration (real SFTP server)', () => {
       throw new Error(
         `Cannot reach the SFTP test container at ${HOST}:${PORT} (${(err as Error).message}).\n` +
         `Start it with:\n` +
-        `  docker build -t fileferry-ssh dev/ssh-test\n` +
-        `  docker run -d --rm -p ${PORT}:22 --name fileferry-ssh fileferry-ssh`
+        `  docker compose -f dev/ssh-test/docker-compose.yml up -d --build`
       );
     }
   });
