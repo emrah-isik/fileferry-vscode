@@ -238,7 +238,9 @@ export class SftpService implements TransferService, RemoteCommandRunner {
         connectConfig.password = credentials.password;
       }
     } else if (server.authMethod === 'key') {
-      const keyPath = server.privateKeyPath!.replace('~', os.homedir());
+      // Expand ONLY a leading ~ — a ~ elsewhere is part of the path
+      // (Windows 8.3 short names like C:\Users\RUNNER~1 contain one).
+      const keyPath = server.privateKeyPath!.replace(/^~(?=[/\\]|$)/, os.homedir());
       try {
         connectConfig.privateKey = fs.readFileSync(keyPath);
       } catch {

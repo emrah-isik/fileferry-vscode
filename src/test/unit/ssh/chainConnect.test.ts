@@ -328,8 +328,11 @@ describe('chainConnect', () => {
     }
   });
 
-  it('reads the private key file for key-auth hops', async () => {
-    const keyPath = path.join(os.tmpdir(), `fileferry-18a2a-test-key-${process.pid}`);
+  it('reads the private key file for key-auth hops — a mid-path ~ is NOT expanded', async () => {
+    // The directory name contains a literal ~ (as Windows 8.3 short paths
+    // like C:\Users\RUNNER~1 do): only a LEADING ~ may expand to homedir.
+    const keyDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'fileferry~18a2a-'));
+    const keyPath = path.join(keyDirectory, `test-key-${process.pid}`);
     fs.writeFileSync(keyPath, 'FAKE KEY MATERIAL');
     try {
       credentials.set(bastionCredential.id, {
@@ -341,7 +344,7 @@ describe('chainConnect', () => {
       expect(clients[0].connectConfig?.passphrase).toBe('key-passphrase');
       result.release();
     } finally {
-      fs.unlinkSync(keyPath);
+      fs.rmSync(keyDirectory, { recursive: true, force: true });
     }
   });
 

@@ -226,7 +226,9 @@ function createHopDialer(
           config.password = credential.password;
         }
       } else if (credential.authMethod === 'key') {
-        const keyPath = credential.privateKeyPath!.replace('~', os.homedir());
+        // Expand ONLY a leading ~ — a ~ elsewhere is part of the path
+        // (Windows 8.3 short names like C:\Users\RUNNER~1 contain one).
+        const keyPath = credential.privateKeyPath!.replace(/^~(?=[/\\]|$)/, os.homedir());
         try {
           config.privateKey = fs.readFileSync(keyPath);
         } catch {
