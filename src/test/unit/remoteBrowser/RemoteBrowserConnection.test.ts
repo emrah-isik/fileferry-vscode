@@ -23,8 +23,18 @@ const mockSftp = {
 
 (createTransferService as jest.Mock).mockReturnValue(mockSftp);
 
+type CredentialChangeListener = (event: { id: string; kind: 'save' | 'delete' }) => unknown;
+const credentialChangeListeners: CredentialChangeListener[] = [];
+const fireCredentialChange = async (event: { id: string; kind: 'save' | 'delete' }) => {
+  for (const listener of [...credentialChangeListeners]) { await listener(event); }
+};
+
 const mockCredentialManager = {
   getWithSecret: jest.fn(),
+  onDidChange: (listener: CredentialChangeListener) => {
+    credentialChangeListeners.push(listener);
+    return { dispose: () => { const i = credentialChangeListeners.indexOf(listener); if (i >= 0) { credentialChangeListeners.splice(i, 1); } } };
+  },
 };
 
 type SaveListener = () => void;
@@ -78,6 +88,7 @@ describe('RemoteBrowserConnection', () => {
     jest.clearAllMocks();
     jest.useFakeTimers();
     saveListeners.length = 0;
+    credentialChangeListeners.length = 0;
     mockSftp.connected = false;
     mockConfigManager.getConfig.mockResolvedValue(fakeConfig);
     mockConfigManager.getServerById.mockResolvedValue({ name: 'Production', server: fakeServer });
@@ -725,6 +736,53 @@ describe('RemoteBrowserConnection', () => {
 
       expect(mockSftp.disconnect).not.toHaveBeenCalled();
       expect(mockSftp.connect).not.toHaveBeenCalled();
+    });
+  });
+
+  // 18a-2b, H3: fixes the pre-existing staleness where an open Remote Files
+  // session survived editing (or deleting) its own credential — the session
+  // was authenticated with the OLD host/user/auth.
+  describe('credential-change invalidation', () => {
+    it('drops the open session when its own credential is saved', async () => {
+      await connection.ensureConnected();
+      mockSftp.connected = true;
+      mockSftp.disconnect.mockClear();
+
+      await fireCredentialChange({ id: 'cred-1', kind: 'save' });
+
+      expect(mockSftp.disconnect).toHaveBeenCalled();
+      expect(connection.getCurrentServerId()).toBeNull();
+    });
+
+    it('drops the open session when its own credential is deleted', async () => {
+      await connection.ensureConnected();
+      mockSftp.connected = true;
+      mockSftp.disconnect.mockClear();
+
+      await fireCredentialChange({ id: 'cred-1', kind: 'delete' });
+
+      expect(mockSftp.disconnect).toHaveBeenCalled();
+    });
+
+    it('ignores changes to a credential the session does not use', async () => {
+      await connection.ensureConnected();
+      mockSftp.connected = true;
+      mockSftp.disconnect.mockClear();
+
+      await fireCredentialChange({ id: 'cred-other', kind: 'save' });
+
+      expect(mockSftp.disconnect).not.toHaveBeenCalled();
+    });
+
+    it('dispose() unsubscribes from credential changes', async () => {
+      await connection.ensureConnected();
+      mockSftp.connected = true;
+      mockSftp.disconnect.mockClear();
+
+      connection.dispose();
+      await fireCredentialChange({ id: 'cred-1', kind: 'save' });
+
+      expect(mockSftp.disconnect).not.toHaveBeenCalled();
     });
   });
 });

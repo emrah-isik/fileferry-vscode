@@ -3,8 +3,21 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { SshCredential, SshCredentialWithSecret } from '../models/SshCredential';
 
+export interface CredentialChangeEvent {
+  id: string;
+  kind: 'save' | 'delete';
+}
+
 export class CredentialManager {
   private readonly filePath: string;
+
+  // 18a-2b, H3/Q14: the manager is the single source of change events — any
+  // save/delete (panel, clone, a future importer) notifies subscribers: the
+  // jump-host pool evicts the hop dialed with the old data, the Remote Files
+  // session drops so the next operation reconnects, and the UI refreshes.
+  // Fired AFTER the write, so listeners reading getAll() see the new state.
+  private readonly changeEmitter = new vscode.EventEmitter<CredentialChangeEvent>();
+  readonly onDidChange = this.changeEmitter.event;
 
   constructor(private readonly context: vscode.ExtensionContext) {
     this.filePath = path.join(context.globalStorageUri.fsPath, 'credentials.json');
@@ -43,6 +56,7 @@ export class CredentialManager {
         `fileferry.credential.${credential.id}.passphrase`, passphrase
       );
     }
+    this.changeEmitter.fire({ id: credential.id, kind: 'save' });
   }
 
   async delete(id: string): Promise<void> {
@@ -50,6 +64,7 @@ export class CredentialManager {
     await this.writeFile(all.filter(c => c.id !== id));
     await this.context.secrets.delete(`fileferry.credential.${id}.password`);
     await this.context.secrets.delete(`fileferry.credential.${id}.passphrase`);
+    this.changeEmitter.fire({ id, kind: 'delete' });
   }
 
   async getWithSecret(id: string): Promise<SshCredentialWithSecret> {

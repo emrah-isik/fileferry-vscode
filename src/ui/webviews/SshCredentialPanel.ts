@@ -9,10 +9,11 @@ import { SshCredential, SshCredentialWithSecret } from '../../models/SshCredenti
 import { validateSshCredential } from '../../utils/validation';
 import { describeResolution } from '../../ssh/SshConfigResolver';
 
+// Change notification is NOT a panel concern (18a-2b): CredentialManager
+// fires onDidChange on every save/delete; subscribers wire up in extension.ts.
 interface Deps {
   credentialManager: CredentialManager;
   configManager: ProjectConfigManager;
-  onCredentialChange?: () => void;
 }
 
 // Messages posted from the webview. `command` selects the handler; the other
@@ -191,7 +192,6 @@ export class SshCredentialPanel {
       this.postSshConfigSummary(saved);
     }
     vscode.window.showInformationMessage(`FileFerry: Credential "${saved.name}" saved.`);
-    this.deps.onCredentialChange?.();
   }
 
   // Surfaces what ~/.ssh/config resolution did for an alias credential, so alias
@@ -249,7 +249,6 @@ export class SshCredentialPanel {
 
     await this.deps.credentialManager.delete(id);
     this.panel.webview.postMessage({ command: 'credentialDeleted', id });
-    this.deps.onCredentialChange?.();
   }
 
   private async handleTestConnection(

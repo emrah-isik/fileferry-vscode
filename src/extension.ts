@@ -145,8 +145,19 @@ export function activate(context: vscode.ExtensionContext): void {
   const fileWatcher = new FileWatcherService({ credentialManager, configManager, output });
   context.subscriptions.push(fileWatcher.register());
 
+  // Thin void adapter over CredentialManager.onDidChange for UI refreshes
+  // (Servers view, Deployment Settings' credential dropdown). Kept separate
+  // from the manager's typed event on purpose (18a-2b decision): consumers
+  // here only need "something changed", and the manager event is the single
+  // source — SshCredentialPanel no longer reports changes itself.
   const credentialsChangedEmitter = new vscode.EventEmitter<void>();
   context.subscriptions.push(credentialsChangedEmitter);
+  context.subscriptions.push(credentialManager.onDidChange((event) => {
+    // Order matters: evict the stale pooled hop BEFORE the UI refresh events
+    // trigger renders that might re-acquire it (H3/Q14).
+    jumpHostPool.evictBySourceId(event.id);
+    credentialsChangedEmitter.fire();
+  }));
 
   context.subscriptions.push(
     vscode.commands.registerCommand(
@@ -218,7 +229,7 @@ export function activate(context: vscode.ExtensionContext): void {
       withErrorHandling('openCredentials', async (credentialId?: unknown) =>
         SshCredentialPanel.createOrShow(
           context,
-          { credentialManager, configManager, onCredentialChange: () => credentialsChangedEmitter.fire() },
+          { credentialManager, configManager },
           typeof credentialId === 'string' && credentialId ? { selectCredentialId: credentialId } : undefined
         )
       )

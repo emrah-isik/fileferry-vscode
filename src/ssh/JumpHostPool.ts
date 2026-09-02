@@ -147,6 +147,26 @@ export class JumpHostPool {
     }
   }
 
+  /**
+   * Credential change (18a-2b, H3/Q14): closes every hop that was dialed with
+   * this credential — the live connection authenticated with the OLD data.
+   * Unlike drain, this fires `onDidEvict`: holders' sessions ride the closed
+   * client, so consumers (Remote Files) must get to react.
+   */
+  evictBySourceId(credentialId: string): void {
+    for (const slot of [...this.slots.values()]) {
+      if (slot.connection?.sourceId !== credentialId) {
+        continue;
+      }
+      this.options.log(`credential for jump host ${slot.key} changed — evicting from the pool`);
+      this.clearIdleTimer(slot);
+      this.closeConnection(slot);
+      for (const listener of [...this.evictListeners]) {
+        listener(slot.key);
+      }
+    }
+  }
+
   /** Test/deactivation teardown: closes everything, held or not. */
   dispose(): void {
     for (const slot of [...this.slots.values()]) {

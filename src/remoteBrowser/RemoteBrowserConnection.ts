@@ -14,6 +14,7 @@ export class RemoteBrowserConnection {
   private currentRootPath: string = '/';
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly configSaveSubscription: vscode.Disposable;
+  private readonly credentialChangeSubscription: vscode.Disposable;
 
   private readonly _onDidDisconnect = new vscode.EventEmitter<void>();
   readonly onDidDisconnect = this._onDidDisconnect.event;
@@ -26,6 +27,15 @@ export class RemoteBrowserConnection {
     this.sftp = createTransferService('sftp');
     this.configSaveSubscription = this.configManager.onDidSaveConfig(() => {
       void this.handleConfigSaved();
+    });
+    // 18a-2b, H3: an open session must not survive editing/deleting its own
+    // credential — it authenticated with the old host/user/auth. Drop it; the
+    // next operation reconnects with the current data.
+    this.credentialChangeSubscription = this.credentialManager.onDidChange((event) => {
+      if (event.id === this.currentCredentialId) {
+        this.output.appendLine('[remote-browser] Session credential changed — disconnecting');
+        return this.disconnect();
+      }
     });
   }
 
@@ -240,6 +250,7 @@ export class RemoteBrowserConnection {
   dispose(): void {
     this.clearIdleTimer();
     this.configSaveSubscription.dispose();
+    this.credentialChangeSubscription.dispose();
     this._onDidDisconnect.dispose();
   }
 
