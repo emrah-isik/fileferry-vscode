@@ -91,6 +91,61 @@ describe('ServerItem', () => {
     });
   });
 
+  // 18a-2b: the tooltip shows the connection route — with a jump-host chain,
+  // every hop in order between local and the target.
+  describe('route tooltip', () => {
+    const bastionCredential: SshCredential = {
+      id: 'cred-bastion', name: 'Bastion', host: 'bastion.example.com', port: 2222,
+      username: 'jump', authMethod: 'password',
+    };
+
+    it('shows local → hop → target for a chained credential', () => {
+      const data: ServerItemData = {
+        serverName: 'Production',
+        server: fakeServer,
+        credential: { ...fakeCredential, jumpHosts: ['cred-bastion'] },
+        hopCredentials: [bastionCredential],
+        isDefault: false,
+      };
+      const item = new ServerItem(data);
+      expect(item.tooltip).toBe('Route: local → jump@bastion.example.com:2222 → deploy@example.com:22');
+    });
+
+    it('shows local → target for a direct credential', () => {
+      const data: ServerItemData = {
+        serverName: 'Production',
+        server: fakeServer,
+        credential: fakeCredential,
+        isDefault: false,
+      };
+      const item = new ServerItem(data);
+      expect(item.tooltip).toBe('Route: local → deploy@example.com:22');
+    });
+
+    it('marks a hop whose credential no longer exists', () => {
+      const data: ServerItemData = {
+        serverName: 'Production',
+        server: fakeServer,
+        credential: { ...fakeCredential, jumpHosts: ['cred-gone'] },
+        hopCredentials: [undefined],
+        isDefault: false,
+      };
+      const item = new ServerItem(data);
+      expect(item.tooltip).toBe('Route: local → (missing jump host) → deploy@example.com:22');
+    });
+
+    it('has no route tooltip when the credential is missing', () => {
+      const data: ServerItemData = {
+        serverName: 'Production',
+        server: fakeServer,
+        credential: undefined,
+        isDefault: false,
+      };
+      const item = new ServerItem(data);
+      expect(item.tooltip).toBeUndefined();
+    });
+  });
+
   describe('command', () => {
     it('has setDefault command with server id', () => {
       const data: ServerItemData = {

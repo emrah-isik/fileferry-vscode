@@ -78,6 +78,23 @@ describe('ServersProvider', () => {
       expect(children[1]).toBeInstanceOf(ServerItem);
     });
 
+    it('resolves hop credentials in chain order for the route tooltip (18a-2b)', async () => {
+      const bastion = { id: 'cred-bastion', name: 'Bastion', host: 'bastion.example.com', port: 2222, username: 'jump', authMethod: 'password' as const };
+      mockCredentialManager.getAll.mockResolvedValue([
+        { ...credA, jumpHosts: ['cred-bastion', 'cred-gone'] },
+        credB,
+        bastion,
+      ]);
+
+      const children = await provider.getChildren();
+      const production = children.find(c => c.data.serverName === 'Production')!;
+
+      expect(production.data.hopCredentials).toEqual([bastion, undefined]);
+      expect(production.tooltip).toBe(
+        'Route: local → jump@bastion.example.com:2222 → (missing jump host) → deploy@example.com:22'
+      );
+    });
+
     it('marks the default server as active', async () => {
       const children = await provider.getChildren();
       const active = children.find(c => c.data.isDefault);
