@@ -10,11 +10,12 @@ import {
   StoredHostKeyStatus,
 } from './connectProviders';
 
-/** Answers keyboard-interactive challenges with VS Code input boxes. */
+/** Answers keyboard-interactive challenges with VS Code input boxes, titled with the asking identity. */
 export class VscodeKeyboardInteractiveProvider implements KeyboardInteractiveProvider {
   prompt(request: KeyboardInteractiveRequest, context: PromptContext): Promise<string[] | null> {
     context.promptOpened();
-    return showKeyboardInteractivePrompts(request.prompts);
+    const { username, host, port } = request.target;
+    return showKeyboardInteractivePrompts(request.prompts, `SSH login: ${username}@${host}:${port}`);
   }
 }
 

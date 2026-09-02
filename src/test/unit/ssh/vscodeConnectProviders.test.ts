@@ -37,6 +37,20 @@ describe('VscodeKeyboardInteractiveProvider', () => {
     expect(vscode.window.showInputBox).toHaveBeenCalledWith(expect.objectContaining({ prompt: 'Verification code: ', password: true }));
   });
 
+  it('titles the input boxes with the asking identity — a chain prompts for hops AND the target (18a-2a)', async () => {
+    (vscode.window.showInputBox as jest.Mock).mockResolvedValue('mfapass');
+    const provider = new VscodeKeyboardInteractiveProvider();
+
+    await provider.prompt({
+      target: { username: 'mfauser', host: '127.0.0.1', port: 2222 }, round: 1, name: '', instructions: '',
+      prompts: [{ prompt: 'Password: ', echo: false }],
+    }, { promptOpened: jest.fn() });
+
+    expect(vscode.window.showInputBox).toHaveBeenCalledWith(expect.objectContaining({
+      title: 'SSH login: mfauser@127.0.0.1:2222',
+    }));
+  });
+
   it('returns null when the user dismisses an input box', async () => {
     (vscode.window.showInputBox as jest.Mock).mockResolvedValue(undefined);
     const provider = new VscodeKeyboardInteractiveProvider();
