@@ -217,15 +217,34 @@ export class SshCredentialPanel {
     const credentials = await this.deps.credentialManager.getAll();
     const credential = credentials.find(c => c.id === id);
     const config = await this.deps.configManager.getConfig();
-    const references = config
+
+    // Delete guard (18a-2b, Q28/H5): a referenced credential cannot be
+    // deleted — neither cascade-delete nor a dangling id is acceptable. Scans
+    // servers AND every other credential's jumpHosts; names are display-only.
+    const serverReferences = config
       ? Object.entries(config.servers).filter(([, s]) => s.credentialId === id).map(([name]) => name)
       : [];
+    const hopReferences = credentials
+      .filter(c => c.id !== id && (c.jumpHosts ?? []).includes(id))
+      .map(c => c.name);
+    if (serverReferences.length > 0 || hopReferences.length > 0) {
+      const reasons: string[] = [];
+      if (serverReferences.length > 0) {
+        reasons.push(`used by server${serverReferences.length > 1 ? 's' : ''}: ${serverReferences.join(', ')}`);
+      }
+      if (hopReferences.length > 0) {
+        reasons.push(`used as a jump host by: ${hopReferences.join(', ')}`);
+      }
+      vscode.window.showErrorMessage(
+        `FileFerry: Cannot delete "${credential?.name ?? 'this credential'}" — ${reasons.join('; ')}. Reassign those first.`
+      );
+      return;
+    }
 
-    const message = references.length > 0
-      ? `Delete "${credential?.name ?? 'this credential'}"? It is used by: ${references.join(', ')}.`
-      : `Delete "${credential?.name ?? 'this credential'}"? This cannot be undone.`;
-
-    const answer = await vscode.window.showWarningMessage(message, 'Delete', 'Cancel');
+    const answer = await vscode.window.showWarningMessage(
+      `Delete "${credential?.name ?? 'this credential'}"? This cannot be undone.`,
+      'Delete', 'Cancel'
+    );
     if (answer !== 'Delete') return;
 
     await this.deps.credentialManager.delete(id);

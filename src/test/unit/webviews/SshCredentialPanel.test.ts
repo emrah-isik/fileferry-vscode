@@ -267,21 +267,72 @@ describe('SshCredentialPanel message handling', () => {
     expect(mockCredentialManager.delete).not.toHaveBeenCalled();
   });
 
-  it('deleteCredential that is referenced by a server shows warning before deleting', async () => {
-    (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({
-      defaultServerId: 'srv-1',
-      servers: {
-        Production: { id: 'srv-1', type: 'sftp', credentialId: 'cred-1', credentialName: 'Prod SSH', rootPath: '/var/www', mappings: [], excludedPaths: [] },
-      },
+  // Delete guard (18a-2b, Q28/H5): a referenced credential cannot be deleted
+  // at all — cascade-delete and warn-but-allow are both explicitly rejected.
+  describe('delete guard (Q28/H5)', () => {
+    const productionServer = {
+      id: 'srv-1', type: 'sftp', credentialId: 'cred-1', credentialName: 'Prod SSH',
+      rootPath: '/var/www', mappings: [], excludedPaths: [],
+    };
+    const chainedCredential = {
+      id: 'cred-chained', name: 'Via Bastion', host: 'internal.example.com',
+      port: 22, username: 'deploy', authMethod: 'password' as const,
+      jumpHosts: ['cred-1'],
+    };
+
+    it('blocks deleting a credential referenced by a server, naming the server', async () => {
+      (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({
+        defaultServerId: 'srv-1',
+        servers: { Production: productionServer },
+      });
+      SshCredentialPanel.createOrShow(mockContext, deps());
+      await messageHandler({ command: 'deleteCredential', id: 'cred-1' });
+      expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+        expect.stringContaining('Production')
+      );
+      expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
+      expect(mockCredentialManager.delete).not.toHaveBeenCalled();
     });
-    (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(undefined); // user cancels
-    SshCredentialPanel.createOrShow(mockContext, deps());
-    await messageHandler({ command: 'deleteCredential', id: 'cred-1' });
-    expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
-      expect.stringContaining('Production'),
-      expect.any(String), expect.any(String)
-    );
-    expect(mockCredentialManager.delete).not.toHaveBeenCalled();
+
+    it('blocks deleting a credential used as a jump host, naming the referencing credential', async () => {
+      (mockCredentialManager.getAll as jest.Mock).mockResolvedValue([
+        credentialFixture, chainedCredential,
+      ]);
+      SshCredentialPanel.createOrShow(mockContext, deps());
+      await messageHandler({ command: 'deleteCredential', id: 'cred-1' });
+      expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+        expect.stringContaining('used as a jump host by: Via Bastion')
+      );
+      expect(mockCredentialManager.delete).not.toHaveBeenCalled();
+    });
+
+    it('blocks deleting a credential referenced by a server AND as a jump host, naming both', async () => {
+      (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({
+        defaultServerId: 'srv-1',
+        servers: { Production: productionServer },
+      });
+      (mockCredentialManager.getAll as jest.Mock).mockResolvedValue([
+        credentialFixture, chainedCredential,
+      ]);
+      SshCredentialPanel.createOrShow(mockContext, deps());
+      await messageHandler({ command: 'deleteCredential', id: 'cred-1' });
+      const message = (vscode.window.showErrorMessage as jest.Mock).mock.calls[0][0];
+      expect(message).toContain('Production');
+      expect(message).toContain('used as a jump host by: Via Bastion');
+      expect(mockCredentialManager.delete).not.toHaveBeenCalled();
+    });
+
+    it('an unreferenced credential still deletes through the existing confirmation', async () => {
+      (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue('Delete');
+      (mockCredentialManager.getAll as jest.Mock).mockResolvedValue([
+        credentialFixture,
+        { ...chainedCredential, jumpHosts: ['cred-other'] },
+      ]);
+      SshCredentialPanel.createOrShow(mockContext, deps());
+      await messageHandler({ command: 'deleteCredential', id: 'cred-1' });
+      expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
+      expect(mockCredentialManager.delete).toHaveBeenCalledWith('cred-1');
+    });
   });
 
   it('testConnection temporarily assembles credential with provided password and tests', async () => {
