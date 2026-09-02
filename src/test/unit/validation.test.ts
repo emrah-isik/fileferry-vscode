@@ -211,6 +211,78 @@ describe('validateSshCredential', () => {
   });
 });
 
+// ─── validateSshCredential — jumpHosts (feature 18a-2a, Q3/R8-16/Q28) ────────
+
+describe('validateSshCredential — jumpHosts', () => {
+  const bastion: SshCredential = {
+    id: 'cred-bastion', name: 'Bastion', host: 'bastion.example.com', port: 22,
+    username: 'jump', authMethod: 'password',
+  };
+  const chained: SshCredential = {
+    id: 'cred-chained', name: 'Chained', host: 'inner.example.com', port: 22,
+    username: 'deploy', authMethod: 'password', jumpHosts: ['cred-bastion'],
+  };
+
+  it('accepts a chain of hop credentials that have no hops of their own', () => {
+    const errors = validateSshCredential(
+      { ...validCredential, jumpHosts: ['cred-bastion', 'cred-existing'] },
+      [...existingCredentials, bastion]
+    );
+    expect(errors).toHaveLength(0);
+  });
+
+  it('accepts an empty jumpHosts array', () => {
+    const errors = validateSshCredential({ ...validCredential, jumpHosts: [] }, existingCredentials);
+    expect(errors).toHaveLength(0);
+  });
+
+  it('rejects a credential that lists itself as a jump host', () => {
+    const errors = validateSshCredential(
+      { ...validCredential, id: 'cred-self', jumpHosts: ['cred-self'] },
+      existingCredentials,
+      'cred-self'
+    );
+    expect(errors.some(e => e.field === 'jumpHosts' && /itself/i.test(e.message))).toBe(true);
+  });
+
+  it('rejects a jump host id that matches no existing credential (dangling)', () => {
+    const errors = validateSshCredential(
+      { ...validCredential, jumpHosts: ['cred-gone'] },
+      existingCredentials
+    );
+    expect(errors.some(e => e.field === 'jumpHosts' && e.message.includes('cred-gone'))).toBe(true);
+  });
+
+  it('rejects a hop that has jump hosts of its own (no nesting, referencing side)', () => {
+    const errors = validateSshCredential(
+      { ...validCredential, jumpHosts: ['cred-chained'] },
+      [...existingCredentials, bastion, chained]
+    );
+    expect(errors.some(e => e.field === 'jumpHosts' && e.message.includes('Chained'))).toBe(true);
+  });
+
+  it('rejects adding hops to a credential that is itself used as a jump host (referenced side)', () => {
+    // "chained" already uses this credential as its hop — giving it hops would nest.
+    const usedAsHop: SshCredential = { ...bastion };
+    const referencing: SshCredential = { ...chained };
+    const errors = validateSshCredential(
+      { ...validCredential, id: 'cred-bastion', jumpHosts: ['cred-existing'] },
+      [...existingCredentials, usedAsHop, referencing],
+      'cred-bastion'
+    );
+    expect(errors.some(e => e.field === 'jumpHosts' && e.message.includes('Chained'))).toBe(true);
+  });
+
+  it('accepts hops on a credential nobody references as a jump host', () => {
+    const errors = validateSshCredential(
+      { ...validCredential, id: 'cred-free', jumpHosts: ['cred-bastion'] },
+      [...existingCredentials, bastion, chained],
+      'cred-free'
+    );
+    expect(errors).toHaveLength(0);
+  });
+});
+
 // ─── validateProjectServer ──────────────────────────────────────────────────
 
 describe('validateProjectServer', () => {

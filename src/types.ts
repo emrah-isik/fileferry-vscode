@@ -18,6 +18,10 @@ export interface ServerConfig {
   privateKeyPath?: string; // only for authMethod: 'key'
   agentSocketPath?: string; // only for authMethod: 'agent' — custom socket override
   useSshConfig?: boolean; // when true, `host` is an ~/.ssh/config Host alias resolved at connect time (SFTP only)
+  // Ordered credential ids to hop through (first-hop → last-hop-before-target),
+  // copied from the credential — SftpService.connect() routes through
+  // chainConnect when present (feature 18a-2a).
+  jumpHosts?: string[];
   algorithms?: {
     kex?: string[];
     cipher?: string[];

@@ -4,6 +4,7 @@ import * as path from 'path';
 import { SftpService } from '../../sftpService';
 import { FtpService } from '../../ftpService';
 import { ServerConfig } from '../../types';
+import { describeIfFixtureUp, SSH_FIXTURE_START_HINT, FTP_FIXTURE_START_HINT } from './fixtureProbe';
 
 /**
  * Real-server contract tests for the remote-edit conflict signal (feature 32a).
@@ -29,6 +30,10 @@ const SFTP_PASS = process.env.FILEFERRY_IT_PASS ?? 'testpass';
 
 const FTP_HOST = process.env.FILEFERRY_FTP_IT_HOST ?? '127.0.0.1';
 const FTP_PORT = Number(process.env.FILEFERRY_FTP_IT_PORT ?? '21');
+
+// R8-15: skip (never throw) when the fixture is down.
+const describeSftp = describeIfFixtureUp('SSH fixture', SFTP_HOST, SFTP_PORT, SSH_FIXTURE_START_HINT);
+const describeFtp = describeIfFixtureUp('FTP fixture', FTP_HOST, FTP_PORT, FTP_FIXTURE_START_HINT);
 const FTP_USER = process.env.FILEFERRY_FTP_IT_USER ?? 'testuser';
 const FTP_PASS = process.env.FILEFERRY_FTP_IT_PASS ?? 'testpass';
 
@@ -60,7 +65,7 @@ function waitMilliseconds(milliseconds: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, milliseconds));
 }
 
-describe('remote-edit conflict signal — SFTP', () => {
+describeSftp('remote-edit conflict signal — SFTP', () => {
   let service: SftpService;
   let localProbe: string;
   const remoteProbe = `/tmp/.fileferry-32a-it-${process.pid}-${Date.now()}.txt`;
@@ -113,7 +118,7 @@ describe('remote-edit conflict signal — SFTP', () => {
   });
 });
 
-describe('remote-edit conflict signal — FTP', () => {
+describeFtp('remote-edit conflict signal — FTP', () => {
   let service: FtpService;
   let localProbe: string;
   const remoteProbe = `/var/www/.fileferry-32a-ftp-it-${process.pid}-${Date.now()}.txt`;

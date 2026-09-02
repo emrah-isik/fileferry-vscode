@@ -43,4 +43,18 @@ describe('showKeyboardInteractivePrompts', () => {
     expect(result).toEqual([]);
     expect(vscode.window.showInputBox).not.toHaveBeenCalled();
   });
+
+  it('titles every input box with the asking host when a title is given (18a-2a — chains prompt for multiple identities)', async () => {
+    (vscode.window.showInputBox as jest.Mock).mockResolvedValue('answer');
+
+    await showKeyboardInteractivePrompts(
+      [{ prompt: 'Password: ', echo: false }],
+      'SSH login: mfauser@127.0.0.1:2222'
+    );
+
+    expect(vscode.window.showInputBox).toHaveBeenCalledWith(expect.objectContaining({
+      title: 'SSH login: mfauser@127.0.0.1:2222',
+      prompt: 'Password: ',
+    }));
+  });
 });

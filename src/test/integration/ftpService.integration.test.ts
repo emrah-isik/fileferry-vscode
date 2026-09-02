@@ -3,6 +3,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { FtpService } from '../../ftpService';
 import { ServerConfig } from '../../types';
+import { describeIfFixtureUp, FTP_FIXTURE_START_HINT } from './fixtureProbe';
 
 /**
  * Real-server contract test for FtpService — the deploy transport for FTP/FTPS
@@ -26,6 +27,9 @@ import { ServerConfig } from '../../types';
 
 const HOST = process.env.FILEFERRY_FTP_IT_HOST ?? '127.0.0.1';
 const PORT = Number(process.env.FILEFERRY_FTP_IT_PORT ?? '21');
+
+// R8-15: skip (never throw) when the fixture is down.
+const describeIntegration = describeIfFixtureUp('FTP fixture', HOST, PORT, FTP_FIXTURE_START_HINT);
 const USER = process.env.FILEFERRY_FTP_IT_USER ?? 'testuser';
 const PASS = process.env.FILEFERRY_FTP_IT_PASS ?? 'testpass';
 
@@ -41,7 +45,7 @@ const server: ServerConfig = {
   excludedPaths: [],
 };
 
-describe('FtpService integration (real FTP server)', () => {
+describeIntegration('FtpService integration (real FTP server)', () => {
   let service: FtpService;
   let localProbe: string;
   const remoteProbe = `/var/www/.fileferry-ftp-it-${process.pid}-${Date.now()}.txt`;

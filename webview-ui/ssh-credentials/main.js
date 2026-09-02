@@ -342,6 +342,10 @@ function renderAuthFields(authMethod) {
 
 function buildPayload(existingId) {
   const authMethod = document.getElementById('f-auth-method')?.value || 'password';
+  // Fields without form controls (agentSocketPath; jumpHosts until the 18a-2b
+  // picker) pass through from the stored credential — a save of an unrelated
+  // field must never drop them.
+  const stored = state.credentials.find(c => c.id === existingId);
   const credential = {
     id: existingId || undefined,
     name: document.getElementById('f-name')?.value || '',
@@ -352,7 +356,9 @@ function buildPayload(existingId) {
     privateKeyPath: authMethod === 'key'
       ? (document.getElementById('f-key-path')?.value || '')
       : undefined,
+    agentSocketPath: stored?.agentSocketPath,
     useSshConfig: document.getElementById('f-use-ssh-config')?.checked || false,
+    jumpHosts: stored?.jumpHosts,
   };
   const password = authMethod === 'password'
     ? (document.getElementById('f-password')?.value || '')

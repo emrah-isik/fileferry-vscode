@@ -4,6 +4,7 @@ import * as path from 'path';
 import { SftpService } from '../../sftpService';
 import { FtpService } from '../../ftpService';
 import { ServerConfig } from '../../types';
+import { describeIfFixtureUp, SSH_FIXTURE_START_HINT, FTP_FIXTURE_START_HINT } from './fixtureProbe';
 
 /**
  * Real-server contract tests for TransferService.mkdir/exists (feature 32b).
@@ -21,7 +22,8 @@ import { ServerConfig } from '../../types';
  *      FtpService.mkdir. Absolute-path operations must keep working after it.
  *
  * Opt-in only (excluded from `npm test`). Run with: npm run test:integration
- * Requires both test containers — docker start fileferry-ssh fileferry-ftp.
+ * Requires the SSH compose fixture (docker compose -f dev/ssh-test/docker-compose.yml
+ * up -d) and the FTP container (docker start fileferry-ftp).
  * Overrides: FILEFERRY_IT_* (SFTP) / FILEFERRY_FTP_IT_* (FTP).
  */
 
@@ -32,6 +34,10 @@ const SFTP_PASS = process.env.FILEFERRY_IT_PASS ?? 'testpass';
 
 const FTP_HOST = process.env.FILEFERRY_FTP_IT_HOST ?? '127.0.0.1';
 const FTP_PORT = Number(process.env.FILEFERRY_FTP_IT_PORT ?? '21');
+
+// R8-15: skip (never throw) when the fixture is down.
+const describeSftp = describeIfFixtureUp('SSH fixture', SFTP_HOST, SFTP_PORT, SSH_FIXTURE_START_HINT);
+const describeFtp = describeIfFixtureUp('FTP fixture', FTP_HOST, FTP_PORT, FTP_FIXTURE_START_HINT);
 const FTP_USER = process.env.FILEFERRY_FTP_IT_USER ?? 'testuser';
 const FTP_PASS = process.env.FILEFERRY_FTP_IT_PASS ?? 'testpass';
 
@@ -59,7 +65,7 @@ const ftpServer: ServerConfig = {
   excludedPaths: [],
 };
 
-describe('mkdir/exists contract — SFTP', () => {
+describeSftp('mkdir/exists contract — SFTP', () => {
   let service: SftpService;
   let localProbe: string;
   const remoteBase = `/tmp/.fileferry-32b-it-${process.pid}-${Date.now()}`;
@@ -118,7 +124,7 @@ describe('mkdir/exists contract — SFTP', () => {
   });
 });
 
-describe('mkdir/exists contract — FTP (basic-ftp ensureDir caveat)', () => {
+describeFtp('mkdir/exists contract — FTP (basic-ftp ensureDir caveat)', () => {
   let service: FtpService;
   let localProbe: string;
   const remoteBase = `/var/www/.fileferry-32b-ftp-it-${process.pid}-${Date.now()}`;

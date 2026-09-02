@@ -333,6 +333,62 @@ describe('SshCredentialPanel message handling', () => {
     }));
   });
 
+  it('saveCredential round-trip: saving an unrelated field preserves jumpHosts and agentSocketPath (18a-2a, C4/R8-17)', async () => {
+    // The webview passes non-form fields through untouched; the save whitelist
+    // must not drop them when the user edits something unrelated (here: name).
+    (mockCredentialManager.getAll as jest.Mock).mockResolvedValue([
+      credentialFixture,
+      { id: 'cred-bastion', name: 'Bastion', host: 'bastion.example.com', port: 22, username: 'jump', authMethod: 'password' },
+    ]);
+    SshCredentialPanel.createOrShow(mockContext, deps());
+    await messageHandler({
+      command: 'saveCredential',
+      payload: {
+        credential: {
+          ...credentialFixture,
+          name: 'Renamed SSH',
+          agentSocketPath: '/run/user/1000/custom-agent.sock',
+          jumpHosts: ['cred-bastion'],
+        },
+        password: undefined,
+      },
+    });
+    expect(mockCredentialManager.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'Renamed SSH',
+        agentSocketPath: '/run/user/1000/custom-agent.sock',
+        jumpHosts: ['cred-bastion'],
+      }),
+      undefined,
+      undefined
+    );
+  });
+
+  it('saveCredential omits jumpHosts when the list is empty', async () => {
+    SshCredentialPanel.createOrShow(mockContext, deps());
+    await messageHandler({
+      command: 'saveCredential',
+      payload: { credential: { ...credentialFixture, jumpHosts: [] }, password: undefined },
+    });
+    const savedCredential = (mockCredentialManager.save as jest.Mock).mock.calls[0][0];
+    expect(savedCredential.jumpHosts).toBeUndefined();
+  });
+
+  it('cloneCredential preserves jumpHosts (18a-2a, C4)', async () => {
+    (mockCredentialManager.getWithSecret as jest.Mock).mockResolvedValue({
+      ...credentialFixture,
+      jumpHosts: ['cred-bastion'],
+      password: 'stored-password',
+    });
+    SshCredentialPanel.createOrShow(mockContext, deps());
+    await messageHandler({ command: 'cloneCredential', id: 'cred-1' });
+    expect(mockCredentialManager.save).toHaveBeenCalledWith(
+      expect.objectContaining({ jumpHosts: ['cred-bastion'] }),
+      'stored-password',
+      undefined
+    );
+  });
+
   it('cloneCredential appends timestamp when "(copy)" name already exists', async () => {
     const existing = [
       credentialFixture,

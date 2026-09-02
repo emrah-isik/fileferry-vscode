@@ -13,50 +13,11 @@ import {
   PromptContext,
   PRE_PROMPT_TIMEOUT_MS,
 } from './ssh/connectProviders';
-import { HostNotTrustedError, VerificationRequiredError } from './ssh/connectErrors';
+import { HopConnectError, HostNotTrustedError, InteractionRequiredError, VerificationRequiredError } from './ssh/connectErrors';
+import { DEFAULT_ALGORITHMS } from './ssh/defaultAlgorithms';
+import { chainConnect, ChainConnectResult } from './ssh/chainConnect';
 import { resolveHostAlias, applySshConfig } from './ssh/SshConfigResolver';
 import { TransferService, RemoteCommandResult, RemoteCommandRunner, FileEntry } from './transferService';
-
-// Default algorithms that ensure compatibility with modern OpenSSH 8.8+ servers.
-// ssh2 1.17.0 supports these natively — we set them explicitly so they can't be
-// accidentally dropped by library updates and so users can override per-server.
-const DEFAULT_ALGORITHMS = {
-  kex: [
-    'curve25519-sha256',
-    'curve25519-sha256@libssh.org',
-    'ecdh-sha2-nistp256',
-    'ecdh-sha2-nistp384',
-    'ecdh-sha2-nistp521',
-    'diffie-hellman-group-exchange-sha256',
-    'diffie-hellman-group14-sha256',
-    'diffie-hellman-group16-sha512',
-    'diffie-hellman-group18-sha512',
-    'diffie-hellman-group14-sha1',
-  ],
-  serverHostKey: [
-    'ssh-ed25519',
-    'ecdsa-sha2-nistp256',
-    'ecdsa-sha2-nistp384',
-    'ecdsa-sha2-nistp521',
-    'rsa-sha2-512',
-    'rsa-sha2-256',
-  ],
-  cipher: [
-    'aes128-gcm',
-    'aes128-gcm@openssh.com',
-    'aes256-gcm',
-    'aes256-gcm@openssh.com',
-    'aes128-ctr',
-    'aes192-ctr',
-    'aes256-ctr',
-  ],
-  hmac: [
-    'hmac-sha2-256-etm@openssh.com',
-    'hmac-sha2-512-etm@openssh.com',
-    'hmac-sha2-256',
-    'hmac-sha2-512',
-  ],
-};
 
 function isPermissionDenied(err: { code?: string | number; message?: string }): boolean {
   if (err.code === 'EACCES' || err.code === 3) {
@@ -67,6 +28,9 @@ function isPermissionDenied(err: { code?: string | number; message?: string }): 
 
 export class SftpService implements TransferService, RemoteCommandRunner {
   private client: SftpClient | null = null;
+  // Pool leases held by the current session's jump-host chain (18a-2a).
+  // Released on disconnect and on a failed connect attempt.
+  private chain: ChainConnectResult | null = null;
 
   get connected(): boolean {
     return this.client !== null;
@@ -158,6 +122,40 @@ export class SftpService implements TransferService, RemoteCommandRunner {
       throw new VerificationRequiredError(target.host, target.port);
     }
 
+    // Jump-host chain (18a-2a): lease every hop from the pool and open the
+    // forward to the target BEFORE creating the SFTP client — a hop failure
+    // must leave `connected` false. The chain honours the same interactive
+    // flag per hop (R8-18).
+    let chain: ChainConnectResult | null = null;
+    if (server.jumpHosts && server.jumpHosts.length > 0) {
+      const jumpHostSupport = providers.jumpHosts;
+      if (!jumpHostSupport) {
+        throw new Error('This connection uses jump hosts, but jump-host support is not initialised in this context');
+      }
+      try {
+        chain = await chainConnect(
+          target,
+          server.jumpHosts,
+          { interactive: interactiveAllowed },
+          {
+            pool: jumpHostSupport.pool,
+            resolveHopCredential: (id) => jumpHostSupport.resolveCredential(id),
+            providers,
+            coordinator: connectProviderRegistry.coordinator,
+          }
+        );
+      } catch (error: unknown) {
+        // Background callers detect `instanceof InteractionRequiredError` for
+        // their fail-fast warning (18a-1b) — surface the typed cause (which
+        // names the hop's host:port) instead of hiding it inside the wrapper.
+        if (error instanceof HopConnectError && error.cause instanceof InteractionRequiredError) {
+          throw error.cause;
+        }
+        throw error;
+      }
+    }
+    this.chain = chain;
+
     const client = new SftpClient();
     this.client = client;
 
@@ -226,6 +224,9 @@ export class SftpService implements TransferService, RemoteCommandRunner {
       tryKeyboard: keyboardInteractive !== undefined,
       ...(hostVerifier ? { hostVerifier } : {}),
       ...(interactive ? { readyTimeout: 0 } : {}),
+      // Through a chain, ssh2 dials over the last hop's forward instead of a
+      // TCP socket (pass-through verified — review §1).
+      ...(chain ? { sock: chain.sock } : {}),
     };
 
     if (server.authMethod === 'password') {
@@ -237,7 +238,9 @@ export class SftpService implements TransferService, RemoteCommandRunner {
         connectConfig.password = credentials.password;
       }
     } else if (server.authMethod === 'key') {
-      const keyPath = server.privateKeyPath!.replace('~', os.homedir());
+      // Expand ONLY a leading ~ — a ~ elsewhere is part of the path
+      // (Windows 8.3 short names like C:\Users\RUNNER~1 contain one).
+      const keyPath = server.privateKeyPath!.replace(/^~(?=[/\\]|$)/, os.homedir());
       try {
         connectConfig.privateKey = fs.readFileSync(keyPath);
       } catch {
@@ -260,6 +263,10 @@ export class SftpService implements TransferService, RemoteCommandRunner {
       void client.end().catch(() => undefined);
       if (this.client === client) {
         this.client = null;
+      }
+      if (this.chain === chain) {
+        chain?.release();
+        this.chain = null;
       }
     };
 
@@ -290,6 +297,10 @@ export class SftpService implements TransferService, RemoteCommandRunner {
     } catch (err: unknown) {
       if (this.client === client) {
         this.client = null;
+      }
+      if (this.chain === chain) {
+        chain?.release();
+        this.chain = null;
       }
       if (hostKeyRefusal) {
         throw hostKeyRefusal;
@@ -565,6 +576,10 @@ export class SftpService implements TransferService, RemoteCommandRunner {
   async disconnect(): Promise<void> {
     await this.client?.end();
     this.client = null;
+    // Release the jump-host leases AFTER the target session closed — the
+    // close travels over the hop's forward.
+    this.chain?.release();
+    this.chain = null;
   }
 }
 

@@ -1,4 +1,6 @@
 import type { AuthMethod } from '../types';
+import type { SshCredentialWithSecret } from '../models/SshCredential';
+import type { JumpHostPool } from './JumpHostPool';
 
 /**
  * SSH connect providers — the UI-free contract every SSH connect goes through.
@@ -67,9 +69,22 @@ export interface HostKeyProvider {
   ): Promise<StoredHostKeyStatus>;
 }
 
+/**
+ * Jump-host chain support (18a-2a, R8-3): the extension-level `JumpHostPool`
+ * singleton plus the credential lookup `chainConnect` needs to resolve hop
+ * ids — both live in `extension.ts` (CredentialManager needs the VS Code
+ * context), so they reach the vscode-free connect path through the registry.
+ */
+export interface JumpHostSupport {
+  pool: JumpHostPool;
+  /** Looks a hop credential up by id, secrets included; `null` when it no longer exists. */
+  resolveCredential(id: string): Promise<SshCredentialWithSecret | null>;
+}
+
 export interface ConnectProviders {
   keyboardInteractive?: KeyboardInteractiveProvider;
   hostKey?: HostKeyProvider;
+  jumpHosts?: JumpHostSupport;
   /** Route/prompt log line sink. Callers never pass secrets. */
   log: (line: string) => void;
 }
@@ -77,6 +92,7 @@ export interface ConnectProviders {
 export interface ConnectProviderInput {
   keyboardInteractive?: KeyboardInteractiveProvider;
   hostKey?: HostKeyProvider;
+  jumpHosts?: JumpHostSupport;
   log?: (line: string) => void;
 }
 
@@ -101,6 +117,7 @@ export class ConnectProviderRegistry {
     return {
       keyboardInteractive: this.providers?.keyboardInteractive,
       hostKey: this.providers?.hostKey,
+      jumpHosts: this.providers?.jumpHosts,
       log: this.providers?.log ?? (() => undefined),
     };
   }

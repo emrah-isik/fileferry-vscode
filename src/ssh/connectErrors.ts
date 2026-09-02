@@ -38,3 +38,22 @@ export class VerificationRequiredError extends InteractionRequiredError {
     this.name = 'VerificationRequiredError';
   }
 }
+
+/**
+ * A jump-host chain failed at a specific hop (feature 18a-2a, Q17). `hopIndex`
+ * is 0-based into the resolved `[hop…, target]` route; a failure while opening
+ * the forward to the target is attributed to the last hop (it is the hop
+ * refusing or failing the forward). When `cause` is an
+ * `InteractionRequiredError`, callers may prefer re-throwing the cause so the
+ * 18a-1b background fail-fast handling keeps working through chains.
+ */
+export class HopConnectError extends Error {
+  constructor(
+    readonly hopIndex: number,
+    readonly hopHost: string,
+    readonly cause: Error
+  ) {
+    super(`Jump host ${hopHost} (hop ${hopIndex + 1}) failed: ${cause.message}`);
+    this.name = 'HopConnectError';
+  }
+}
