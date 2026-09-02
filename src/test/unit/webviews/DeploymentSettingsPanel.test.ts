@@ -110,6 +110,18 @@ describe('DeploymentSettingsPanel message handling', () => {
     }));
   });
 
+  it('openCredentials forwards the selected credential id so the panel opens on it', async () => {
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    await messageHandler({ command: 'openCredentials', credentialId: 'cred-1' });
+    expect(vscode.commands.executeCommand).toHaveBeenCalledWith('fileferry.openCredentials', 'cred-1');
+  });
+
+  it('openCredentials without a selected credential opens the panel plainly', async () => {
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    await messageHandler({ command: 'openCredentials' });
+    expect(vscode.commands.executeCommand).toHaveBeenCalledWith('fileferry.openCredentials', undefined);
+  });
+
   it('handles saveServer message: saves to config, posts configUpdated back', async () => {
     DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
     const payload = { id: 'srv-1', name: 'Production', type: 'sftp', credentialId: 'cred-1', rootPath: '/var/www' };

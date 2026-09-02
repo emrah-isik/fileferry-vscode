@@ -211,7 +211,9 @@ export class DeploymentSettingsPanel {
         break;
 
       case 'openCredentials':
-        vscode.commands.executeCommand('fileferry.openCredentials');
+        // Carries the server form's currently selected credential (may be
+        // undefined for a new server) so the panel opens on it.
+        vscode.commands.executeCommand('fileferry.openCredentials', msg.credentialId || undefined);
         break;
     }
   }

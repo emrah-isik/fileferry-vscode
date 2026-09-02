@@ -24,10 +24,23 @@ window.addEventListener('message', ({ data: msg }) => {
   switch (msg.command) {
     case 'init':
       state.credentials = msg.credentials || [];
-      if (!state.selectedId && state.credentials.length > 0) {
+      if (msg.selectedId && state.credentials.some(c => c.id === msg.selectedId)) {
+        // The opener asked for a specific credential (Manage… from a
+        // server's credential dropdown).
+        state.selectedId = msg.selectedId;
+      } else if (!state.selectedId && state.credentials.length > 0) {
         state.selectedId = state.credentials[0].id;
       }
       render();
+      break;
+
+    case 'selectCredential':
+      if (state.credentials.some(c => c.id === msg.id)) {
+        state.selectedId = msg.id;
+        state.editingNew = false;
+        state.testStatus = null;
+        render();
+      }
       break;
 
     case 'credentialSaved':

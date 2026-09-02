@@ -36,11 +36,23 @@ export class SshCredentialPanel {
   private readonly panel: vscode.WebviewPanel;
   private readonly disposables: vscode.Disposable[] = [];
 
-  static createOrShow(context: vscode.ExtensionContext, deps: Deps): void {
+  static createOrShow(
+    context: vscode.ExtensionContext,
+    deps: Deps,
+    options?: { selectCredentialId?: string }
+  ): void {
     const column = vscode.window.activeTextEditor?.viewColumn ?? vscode.ViewColumn.One;
 
     if (SshCredentialPanel.currentPanel) {
       SshCredentialPanel.currentPanel.panel.reveal(column);
+      if (options?.selectCredentialId) {
+        // Deliberate switch: the caller (e.g. Deployment Settings' Manage…
+        // link) wants THIS credential in front, even if another is selected.
+        SshCredentialPanel.currentPanel.panel.webview.postMessage({
+          command: 'selectCredential',
+          id: options.selectCredentialId,
+        });
+      }
       return;
     }
 
@@ -57,13 +69,14 @@ export class SshCredentialPanel {
       }
     );
 
-    SshCredentialPanel.currentPanel = new SshCredentialPanel(panel, context, deps);
+    SshCredentialPanel.currentPanel = new SshCredentialPanel(panel, context, deps, options?.selectCredentialId);
   }
 
   private constructor(
     panel: vscode.WebviewPanel,
     context: vscode.ExtensionContext,
-    private readonly deps: Deps
+    private readonly deps: Deps,
+    private readonly initialSelectedCredentialId?: string
   ) {
     this.panel = panel;
     this.panel.webview.html = this.buildHtml(context);
@@ -112,7 +125,13 @@ export class SshCredentialPanel {
   private async sendInitialState(): Promise<void> {
     // getAll() returns credentials without secret fields — passwords never go to the webview
     const credentials = await this.deps.credentialManager.getAll();
-    this.panel.webview.postMessage({ command: 'init', credentials });
+    this.panel.webview.postMessage({
+      command: 'init',
+      credentials,
+      // Preselects the credential the opener asked for (Manage… from a
+      // server's credential dropdown); the webview falls back to the first.
+      ...(this.initialSelectedCredentialId ? { selectedId: this.initialSelectedCredentialId } : {}),
+    });
   }
 
   private async handleSaveCredential(payload: {

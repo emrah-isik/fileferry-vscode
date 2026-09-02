@@ -407,7 +407,10 @@ function renderConnectionTab(server) {
   });
 
   document.getElementById('btn-manage-creds')?.addEventListener('click', () => {
-    vscode.postMessage({ command: 'openCredentials' });
+    // Carry the currently selected credential so the panel opens on it
+    // (undefined for a new server with none selected → panel opens plainly).
+    const credentialId = document.getElementById('f-credential')?.value || undefined;
+    vscode.postMessage({ command: 'openCredentials', credentialId });
   });
 
   document.getElementById('btn-save')?.addEventListener('click', () => {
