@@ -124,7 +124,7 @@ Using `ready`→`init` rather than injecting data into the HTML means the webvie
 | Webview → Extension | Deployment Settings | `ready`, `saveServer`, `deleteServer`, `setDefaultServer`, `cloneServer`, `saveMapping`, `deleteMapping`, `testConnection`, `browseDirectory`, `openCredentials` |
 | Extension → Webview | Deployment Settings | `init` (`{ config, credentials }`), `configUpdated` (`{ config }`), `credentialsUpdated`, `testResult`, `validationError`, `directorySelected`, `browseDone`, `browseError` |
 | Webview → Extension | SSH Credentials | `ready`, `saveCredential`, `deleteCredential`, `cloneCredential`, `testConnection`, `browsePrivateKey` |
-| Extension → Webview | SSH Credentials | `init`, `credentialSaved`, `credentialDeleted`, `testResult`, `validationError`, `warning`, `privateKeySelected` |
+| Extension → Webview | SSH Credentials | `init` (optionally `{ selectedId }` to preselect — Deployment Settings' Manage… link passes the server's current credential), `selectCredential` (switches selection when the panel is already open), `credentialSaved`, `credentialDeleted`, `testResult`, `validationError`, `warning`, `privateKeySelected` |
 | Webview → Extension | Project Settings | `ready`, `toggleDryRun`, `toggleUploadOnSave`, `toggleFileDateGuard`, `toggleBackupBeforeOverwrite`, `setBackupRetentionDays`, `setBackupMaxSizeMB` |
 | Extension → Webview | Project Settings | `init` (`{ config }`), `configUpdated` (`{ config }`) |
 | Webview → Extension | Upload History | `ready`, `filter` (`{ serverId?, result?, search? }`), `clear` |

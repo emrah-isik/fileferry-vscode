@@ -99,6 +99,38 @@ describe('SshCredentialPanel message handling', () => {
     );
   });
 
+  it('createOrShow with selectCredentialId preselects that credential in the init message', async () => {
+    SshCredentialPanel.createOrShow(mockContext, deps(), { selectCredentialId: 'cred-1' });
+    await messageHandler({ command: 'ready' });
+    expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      command: 'init',
+      selectedId: 'cred-1',
+    }));
+  });
+
+  it('createOrShow without selectCredentialId sends init with no selectedId (webview falls back to first)', async () => {
+    SshCredentialPanel.createOrShow(mockContext, deps());
+    await messageHandler({ command: 'ready' });
+    const initMessage = (mockWebview.postMessage as jest.Mock).mock.calls.find(c => c[0].command === 'init')[0];
+    expect(initMessage.selectedId).toBeUndefined();
+  });
+
+  it('createOrShow with selectCredentialId while the panel is already open reveals it and switches the selection', async () => {
+    SshCredentialPanel.createOrShow(mockContext, deps());
+    (mockWebview.postMessage as jest.Mock).mockClear();
+    SshCredentialPanel.createOrShow(mockContext, deps(), { selectCredentialId: 'cred-2' });
+    expect(mockPanel.reveal).toHaveBeenCalled();
+    expect(mockWebview.postMessage).toHaveBeenCalledWith({ command: 'selectCredential', id: 'cred-2' });
+  });
+
+  it('createOrShow without selectCredentialId while the panel is already open only reveals — no selection change', async () => {
+    SshCredentialPanel.createOrShow(mockContext, deps());
+    (mockWebview.postMessage as jest.Mock).mockClear();
+    SshCredentialPanel.createOrShow(mockContext, deps());
+    expect(mockPanel.reveal).toHaveBeenCalled();
+    expect(mockWebview.postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ command: 'selectCredential' }));
+  });
+
   it('init message contains credentials without password or passphrase fields', async () => {
     // getAll() returns plain SshCredential — no password/passphrase fields
     SshCredentialPanel.createOrShow(mockContext, deps());

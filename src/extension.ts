@@ -212,8 +212,15 @@ export function activate(context: vscode.ExtensionContext): void {
 
     vscode.commands.registerCommand(
       'fileferry.openCredentials',
-      withErrorHandling('openCredentials', async () =>
-        SshCredentialPanel.createOrShow(context, { credentialManager, configManager, onCredentialChange: () => credentialsChangedEmitter.fire() })
+      // The optional argument preselects a credential (Deployment Settings'
+      // Manage… link passes the server's current one). typeof-guarded: a
+      // palette invocation passes nothing, other callers could pass anything.
+      withErrorHandling('openCredentials', async (credentialId?: unknown) =>
+        SshCredentialPanel.createOrShow(
+          context,
+          { credentialManager, configManager, onCredentialChange: () => credentialsChangedEmitter.fire() },
+          typeof credentialId === 'string' && credentialId ? { selectCredentialId: credentialId } : undefined
+        )
       )
     ),
 
