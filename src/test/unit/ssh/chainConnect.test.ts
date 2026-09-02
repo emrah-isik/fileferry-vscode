@@ -122,6 +122,7 @@ describe('chainConnect', () => {
         keyboardInteractive: keyboardInteractiveProvider,
         hostKey: hostKeyProvider,
         log: (line) => logLines.push(line),
+        warn: (message) => logLines.push(message),
         ...overrides,
       },
     };

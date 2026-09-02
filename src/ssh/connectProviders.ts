@@ -87,6 +87,12 @@ export interface ConnectProviders {
   jumpHosts?: JumpHostSupport;
   /** Route/prompt log line sink. Callers never pass secrets. */
   log: (line: string) => void;
+  /**
+   * User-visible non-modal warning (18a-2b, Q9). Falls back to `log` when the
+   * VS Code implementation isn't registered — vscode-free callers still never
+   * ignore a problem silently.
+   */
+  warn: (message: string) => void;
 }
 
 export interface ConnectProviderInput {
@@ -94,6 +100,7 @@ export interface ConnectProviderInput {
   hostKey?: HostKeyProvider;
   jumpHosts?: JumpHostSupport;
   log?: (line: string) => void;
+  warn?: (message: string) => void;
 }
 
 /** Shares in-flight keyboard-interactive prompts between concurrent connects. */
@@ -114,11 +121,13 @@ export class ConnectProviderRegistry {
   }
 
   get(): ConnectProviders {
+    const log = this.providers?.log ?? ((): void => undefined);
     return {
       keyboardInteractive: this.providers?.keyboardInteractive,
       hostKey: this.providers?.hostKey,
       jumpHosts: this.providers?.jumpHosts,
-      log: this.providers?.log ?? (() => undefined),
+      log,
+      warn: this.providers?.warn ?? log,
     };
   }
 

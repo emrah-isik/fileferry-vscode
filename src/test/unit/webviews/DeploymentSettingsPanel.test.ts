@@ -388,6 +388,35 @@ describe('DeploymentSettingsPanel message handling', () => {
     }));
   });
 
+  it('testConnection pre-check fails an FTP server whose credential has jump hosts, without connecting (18a-2b, Q9/M7)', async () => {
+    const chainedCredential = { ...credentialsMock[0], jumpHosts: ['cred-bastion'] };
+    (mockCredentialManager.getAll as jest.Mock).mockResolvedValue([chainedCredential]);
+    (mockCredentialManager.getWithSecret as jest.Mock).mockResolvedValue({ ...chainedCredential, password: 'secret' });
+    const mockConnect = jest.fn();
+    (createTransferService as jest.Mock).mockImplementation(() => ({ connect: mockConnect, disconnect: jest.fn() }));
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    await messageHandler({ command: 'testConnection', server: { id: 'srv-1', type: 'ftp', credentialId: 'cred-1', rootPath: '/var/www' } });
+    expect(mockConnect).not.toHaveBeenCalled();
+    expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      command: 'testResult',
+      success: false,
+      message: expect.stringMatching(/jump host/i),
+    }));
+  });
+
+  it('testConnection still runs an SFTP test when the credential has jump hosts', async () => {
+    const chainedCredential = { ...credentialsMock[0], jumpHosts: ['cred-bastion'] };
+    (mockCredentialManager.getAll as jest.Mock).mockResolvedValue([chainedCredential]);
+    (mockCredentialManager.getWithSecret as jest.Mock).mockResolvedValue({ ...chainedCredential, password: 'secret' });
+    const mockConnect = jest.fn().mockResolvedValue(undefined);
+    (createTransferService as jest.Mock).mockImplementation(() => ({
+      connect: mockConnect, disconnect: jest.fn(), listDirectory: jest.fn().mockResolvedValue([]),
+    }));
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    await messageHandler({ command: 'testConnection', server: { id: 'srv-1', type: 'sftp', credentialId: 'cred-1', rootPath: '/var/www' } });
+    expect(mockConnect).toHaveBeenCalled();
+  });
+
   it('cloneServer creates a copy with a new id and "(copy)" suffix', async () => {
     DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
     await messageHandler({ command: 'cloneServer', id: 'srv-1' });

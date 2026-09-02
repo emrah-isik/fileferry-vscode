@@ -111,6 +111,10 @@ export function activate(context: vscode.ExtensionContext): void {
       },
     },
     log: sshLog,
+    warn: (message) => {
+      sshLog(message);
+      void vscode.window.showWarningMessage(message);
+    },
   });
   context.subscriptions.push({ dispose: () => connectProviderRegistry.clear() });
   context.subscriptions.push({ dispose: () => jumpHostPool.dispose() });

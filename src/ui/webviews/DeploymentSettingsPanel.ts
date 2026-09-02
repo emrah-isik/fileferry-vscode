@@ -480,6 +480,17 @@ export class DeploymentSettingsPanel {
       return;
     }
 
+    // FTP guard (18a-2b, Q9/M7): jump hosts are SSH tunnels — fail the test
+    // before dialing rather than let the chain be silently ignored.
+    if (isFtp && credential.jumpHosts && credential.jumpHosts.length > 0) {
+      this.panel.webview.postMessage({
+        command: 'testResult',
+        success: false,
+        message: `Credential "${credential.name}" uses jump hosts, which only work over SFTP. Pick a credential without jump hosts, or change the server type to SFTP.`,
+      });
+      return;
+    }
+
     const service = createTransferService((server.type ?? 'sftp') as ServerType);
     try {
       await service.connect(credential, { password: credential.password, passphrase: credential.passphrase });

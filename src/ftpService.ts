@@ -4,6 +4,7 @@ import * as path from 'path';
 import { Writable } from 'stream';
 import { TransferService, FileEntry } from './transferService';
 import { ServerConfig } from './types';
+import { connectProviderRegistry } from './ssh/connectProviders';
 
 // 553 = file name not allowed; some servers use it for write-denied temp
 // files. 550 is also reused here when its body says "permission denied".
@@ -22,10 +23,20 @@ export class FtpService implements TransferService {
   }
 
   async connect(
-    server: Pick<ServerConfig, 'type' | 'host' | 'port' | 'username'>,
+    server: Pick<ServerConfig, 'type' | 'host' | 'port' | 'username' | 'jumpHosts'>,
     credentials: { password?: string; passphrase?: string },
     _options?: unknown
   ): Promise<void> {
+    // 18a-2b, Q9: the save-time/test/webview guards should make this
+    // unreachable, but a hand-edited config can still get here — warn (never
+    // silently ignore) and connect directly, since FTP cannot ride an SSH
+    // tunnel chain.
+    if (server.jumpHosts && server.jumpHosts.length > 0) {
+      connectProviderRegistry.get().warn(
+        `FileFerry: "${server.host}" is an FTP/FTPS server but its credential has jump hosts — jump hosts only work over SFTP and are being ignored for this connection.`
+      );
+    }
+
     this.client = new FtpClient();
 
     let secure: boolean | 'implicit' = false;

@@ -144,8 +144,19 @@ export function validateProjectServer(
 
   if (!server.credentialId) {
     errors.push({ field: 'credentialId', message: 'Credential must be selected' });
-  } else if (!existingCredentials.some(c => c.id === server.credentialId)) {
-    errors.push({ field: 'credentialId', message: 'Selected credential no longer exists' });
+  } else {
+    const credential = existingCredentials.find(c => c.id === server.credentialId);
+    if (!credential) {
+      errors.push({ field: 'credentialId', message: 'Selected credential no longer exists' });
+    } else if (server.type && server.type !== 'sftp' && credential.jumpHosts && credential.jumpHosts.length > 0) {
+      // FTP guard (18a-2b, Q9/M7): jump hosts are SSH tunnels — an FTP/FTPS
+      // server cannot route through them, and silently ignoring the chain is
+      // explicitly rejected.
+      errors.push({
+        field: 'credentialId',
+        message: `Credential "${credential.name}" uses jump hosts, which only work over SFTP. Pick a credential without jump hosts, or change the server type to SFTP.`,
+      });
+    }
   }
 
   if (!server.rootPath?.trim()) {
