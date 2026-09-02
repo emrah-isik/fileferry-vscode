@@ -38,6 +38,7 @@ import { duplicateRemoteItem } from './commands/duplicateRemoteItem';
 import { moveRemoteItem } from './commands/moveRemoteItem';
 import { chmodRemoteItem } from './commands/chmodRemoteItem';
 import { uploadFilesHere, uploadFolderHere } from './commands/uploadHere';
+import { disconnectRemoteBrowser } from './commands/disconnectRemoteBrowser';
 import { UploadOnSaveService } from './services/UploadOnSaveService';
 import { FileWatcherService } from './services/FileWatcherService';
 import { DeploymentServer } from './models/DeploymentServer';
@@ -671,10 +672,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
     vscode.commands.registerCommand(
       'fileferry.remoteBrowser.disconnect',
-      withErrorHandling('disconnect', async () => {
-        await browserProvider.suspend();
-        vscode.window.showInformationMessage('FileFerry: Remote browser disconnected.');
-      })
+      withErrorHandling('disconnect', () => disconnectRemoteBrowser(browserProvider, jumpHostPool))
     ),
 
     // Refresh views when project config changes
