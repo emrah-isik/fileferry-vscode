@@ -49,7 +49,7 @@ Click **Add Credential** and fill in the details:
 
 Prompts only appear for connections you start yourself (a deploy, **Test Connection**, browsing, a manual save of a remote edit). Background connections — upload on save, the file watcher, the Remote Files panel drawing itself, `files.autoSave`-triggered remote-edit saves — never prompt: when they would need one they fail fast with a warning instead (see [Host key verification](#host-key-verification)). A keyboard-interactive credential therefore cannot be used by background uploads at all — those always need your answer.
 
-**FTP/FTPS note:** FTP and FTPS protocols only support password authentication. When you select an FTP protocol in Deployment Settings, the credential dropdown automatically filters to show only password-auth credentials.
+**FTP/FTPS note:** FTP and FTPS protocols only support password authentication. When you select an FTP protocol in Deployment Settings, the credential dropdown automatically filters to show only password-auth credentials without jump hosts (jump-host chains are SSH tunnels — SFTP only).
 
 Passwords and passphrases are stored in your OS keychain (macOS Keychain / Windows Credential Manager / Linux libsecret). They are never written to disk or included in project files.
 
@@ -73,17 +73,23 @@ Tick **Resolve from `~/.ssh/config`** on the credential, then enter the alias (`
 
 #### Jump hosts (SFTP only)
 
-If a server is only reachable through a bastion (jump host), configure the chain on the **target's credential**: each hop is itself a normal credential (host, user, auth method — password, key, agent, or keyboard-interactive), and the target credential lists the hops in order, first hop → last hop before the target. Chains are flat: a credential used as a hop cannot have hops of its own, and validation rejects such nesting when you save.
+If a server is only reachable through a bastion (jump host), configure the chain on the **target's credential**: each hop is itself a normal credential (host, user, auth method — password, key, agent, or keyboard-interactive), and the target credential lists the hops in order, first hop → last hop before the target.
+
+Create the hop credential(s) first, then open the target credential and use the **Jump hosts** picker on the form: add hops from the dropdown, reorder them with the ↑/↓ buttons (the connection tunnels through them top-to-bottom), and remove one with ✕. The dropdown only offers credentials that can legally be a hop — chains are flat, so a credential that has jump hosts of its own is not offered, and a credential that others already use as a hop cannot be given hops itself (the form tells you who uses it). The same rules are enforced again when you save.
+
+**Test Connection runs the whole chain** and, when it fails, names the hop that failed (`✗ Jump host bastion.example.com (hop 1) failed: …`) rather than leaving you guessing which login broke.
+
+A credential that is in use cannot be deleted: if servers reference it, or other credentials use it as a jump host, Delete is blocked with a message naming them (e.g. *used as a jump host by: Production via bastion*) — reassign those first. Editing or deleting a credential also takes effect immediately: a pooled hop logged in with the old details is dropped, and an open Remote Files session using that credential disconnects so the next action reconnects with the new data.
 
 At connect time FileFerry logs in to each hop in turn and tunnels the SFTP session through it (`[ssh] route: local → you@bastion:22 → you@target:22` in the output channel). Everything that opens an SSH connection uses the chain automatically — deploys, Test Connection, the Remote Files panel, remote-edit saves. Because several identities can prompt during one connect, every authentication input box is titled with who is asking (`SSH login: you@bastion:22`) — answer with **that** host's credentials, not the target's.
 
-**MFA and the chain — what to expect.** Hop connections are *pooled*: the bastion login is kept alive and shared, so its password/OTP prompt is asked **once per idle window** (the pooled connection closes after 5 minutes unused), no matter how many sessions a deploy opens through it. The *target* still authenticates once per session — a deploy opens several sequential sessions, so a target that itself demands a one-time code will prompt for each (TOTP servers reject code reuse, so FileFerry cannot replay one code for you). Putting the MFA on the bastion is therefore the pleasant setup; MFA on the target works, but prompts more.
+**MFA and the chain — what to expect.** Hop connections are *pooled*: the bastion login is kept alive and shared, so its password/OTP prompt is asked **once per idle window** (the pooled connection closes after 5 minutes unused), no matter how many sessions a deploy opens through it. `FileFerry: Disconnect Remote Browser` also closes pooled hops: idle ones immediately, ones still carrying a session (a running deploy) as soon as that session finishes — it never cuts a hop out from under live traffic. If a pooled hop drops unexpectedly while the Remote Files panel is browsing through it, the panel shows its **Disconnected** row; click it to reconnect (which will re-prompt the hop's MFA if it has one). The *target* still authenticates once per session — a deploy opens several sequential sessions, so a target that itself demands a one-time code will prompt for each (TOTP servers reject code reuse, so FileFerry cannot replay one code for you). Putting the MFA on the bastion is therefore the pleasant setup; MFA on the target works, but prompts more.
 
 Every host in the chain gets the same [host key verification](#host-key-verification) as a direct connection — expect one trust prompt per hop on first use. Background connections (upload on save, the watcher) never prompt through a chain either: an unverified hop fails fast with the usual warning.
 
 **Server-side requirement:** the bastion must allow TCP forwarding (OpenSSH: `AllowTcpForwarding yes`, and any `PermitOpen` rules must include the next host). If the forward is refused, the connection error names the hop that refused it.
 
-FTP/FTPS cannot use jump hosts — a credential with hops is SFTP-only.
+FTP/FTPS cannot use jump hosts — a credential with hops is SFTP-only. Deployment Settings enforces this everywhere: the credential dropdown for an FTP/FTPS server hides chained credentials, saving such a combination is a validation error, and Test Connection refuses it before dialing.
 
 ### 2. Add a Deployment Server
 
@@ -93,7 +99,7 @@ In the **Connection** tab:
 
 1. Give the server a name (e.g. "Production" or "Staging")
 2. Select the protocol: **SFTP** (recommended), **FTP**, **FTPS (Explicit TLS)**, or **FTPS (Implicit TLS)**
-3. Pick the credential you just created (FTP/FTPS only shows password-auth credentials)
+3. Pick the credential you just created (FTP/FTPS only shows password-auth credentials without jump hosts)
 4. Set the **Root Path** to the base directory on the server (e.g. `/var/www`)
 
 Click **Save**. Use **Test Connection** to verify everything works before deploying.
@@ -279,7 +285,7 @@ Features:
 - **Multi-select** — Ctrl/Shift-click several rows; Delete, Download, Copy Path, Duplicate, Move, and Change Permissions all operate on the whole selection. A context-menu command only appears when it applies to *every* selected row (stock VS Code behaviour), so e.g. a mixed file+folder selection won't offer file-only commands
 - Path indicator shows your current location
 - Use `FileFerry: Go to Remote Path` to jump to a specific directory
-- Use `FileFerry: Disconnect Remote Browser` to close the connection — the panel shows a **Disconnected** row and stays offline until you click it (or navigate/refresh explicitly); internal refreshes never reconnect behind your back
+- Use `FileFerry: Disconnect Remote Browser` to close the connection — the panel shows a **Disconnected** row and stays offline until you click it (or navigate/refresh explicitly); internal refreshes never reconnect behind your back. The command also drains pooled jump-host connections: idle hops close immediately, hops still under a live session (a running deploy) close when that session ends
 
 ### Host key verification
 
@@ -305,6 +311,7 @@ See all configured servers at a glance. The active server shows a filled circle 
 
 - Click a server to switch to it
 - Right-click for options: **Edit Server**, **Test Connection**
+- Hover a server to see its connection route — `Route: local → jump@bastion:2222 → deploy@target:22` for a jump-host chain, with a hop whose credential was deleted shown as `(missing jump host)`
 
 ---
 
@@ -587,7 +594,7 @@ Customize via `Preferences -> Keyboard Shortcuts` and search for `fileferry`.
 | `FileFerry: Manage SSH Credentials` | Add, edit, or delete credentials |
 | `FileFerry: Switch Server` | Change the default server for this project |
 | `FileFerry: Go to Remote Path` | Navigate the Remote File Browser to a path |
-| `FileFerry: Disconnect Remote Browser` | Suspend the remote browser connection until explicitly resumed |
+| `FileFerry: Disconnect Remote Browser` | Suspend the remote browser connection until explicitly resumed; also drains idle pooled jump hosts (held ones close on last release) |
 | `FileFerry: Reset Upload Confirmations` | Re-enable upload prompts |
 | `FileFerry: Test Connection` | Verify server credentials |
 | `FileFerry: New File/Folder in Current Path…` | Create an entry at the path the panel currently shows |
