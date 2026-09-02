@@ -122,7 +122,7 @@ describe('RemoteBrowserConnection', () => {
           authMethod: 'password',
         }),
         expect.objectContaining({ password: 'secret' }),
-        { interactive: true }
+        expect.objectContaining({ interactive: true })
       );
     });
 
@@ -147,7 +147,7 @@ describe('RemoteBrowserConnection', () => {
     it('forwards interactive:false to the connect (18a-1b)', async () => {
       await connection.ensureConnected({ interactive: false });
       expect(mockSftp.connect).toHaveBeenCalledWith(
-        expect.anything(), expect.anything(), { interactive: false }
+        expect.anything(), expect.anything(), expect.objectContaining({ interactive: false })
       );
     });
 
@@ -163,7 +163,7 @@ describe('RemoteBrowserConnection', () => {
       await run();
 
       expect(mockSftp.connect).toHaveBeenCalledWith(
-        expect.anything(), expect.anything(), { interactive: false }
+        expect.anything(), expect.anything(), expect.objectContaining({ interactive: false })
       );
     });
 
@@ -784,6 +784,102 @@ describe('RemoteBrowserConnection', () => {
       await fireCredentialChange({ id: 'cred-1', kind: 'save' });
 
       expect(mockSftp.disconnect).not.toHaveBeenCalled();
+    });
+  });
+
+  // 18a-2b §I wedge fix: the panel's single shared connection was not guarded
+  // against overlapping ensureConnected calls, and a connect parked on an
+  // open prompt (chain+MFA) was never cancelled on a default-server change —
+  // its getChildren promise never settled and every later render hung until
+  // Reload Window. These tests encode the (code-trace-confirmed) repro.
+  describe('in-flight connect management (18a-2b §I wedge fix)', () => {
+    const flushMicrotasks = async (): Promise<void> => {
+      for (let i = 0; i < 10; i++) { await Promise.resolve(); }
+    };
+
+    // Parks every connect until its signal aborts (rejecting like
+    // SftpService's abort machinery) or the test resolves it.
+    let connectResolvers: Array<() => void>;
+    const parkConnects = (): void => {
+      connectResolvers = [];
+      mockSftp.connect.mockImplementation((_server: unknown, _credentials: unknown, options?: { signal?: AbortSignal }) =>
+        new Promise<void>((resolve, reject) => {
+          connectResolvers.push(resolve);
+          options?.signal?.addEventListener('abort', () =>
+            reject(new Error('Connection cancelled: the connection request was superseded')));
+        })
+      );
+    };
+
+    const switchDefaultTo = (server: typeof fakeServer, name: string) => {
+      mockConfigManager.getConfig.mockResolvedValue({ defaultServerId: server.id, servers: { [name]: server } });
+      mockConfigManager.getServerById.mockResolvedValue({ name, server });
+    };
+
+    it('REPRO: a connect parked on an open prompt settles when the default server changes — the panel cannot wedge', async () => {
+      parkConnects();
+      const pending = connection.ensureConnected();
+      await flushMicrotasks();
+      expect(mockSftp.connect).toHaveBeenCalledTimes(1);
+
+      switchDefaultTo({ ...fakeServer, id: 'server-2' }, 'Other');
+      await fireOnDidSaveConfig();
+
+      await expect(pending).rejects.toThrow(/cancelled/i);
+    });
+
+    it('overlapping ensureConnected calls for the same server share one connect', async () => {
+      parkConnects();
+      const first = connection.ensureConnected();
+      await flushMicrotasks();
+      const second = connection.ensureConnected();
+      await flushMicrotasks();
+
+      expect(mockSftp.connect).toHaveBeenCalledTimes(1);
+      connectResolvers[0]();
+      await expect(first).resolves.toBeUndefined();
+      await expect(second).resolves.toBeUndefined();
+    });
+
+    it('ensureConnected for a different server aborts the in-flight connect and dials the new one', async () => {
+      parkConnects();
+      const first = connection.ensureConnected();
+      await flushMicrotasks();
+
+      switchDefaultTo({ ...fakeServer, id: 'server-2' }, 'Other');
+      const second = connection.ensureConnected();
+      await flushMicrotasks();
+
+      await expect(first).rejects.toThrow(/cancelled/i);
+      expect(mockSftp.connect).toHaveBeenCalledTimes(2);
+      connectResolvers[1]();
+      await expect(second).resolves.toBeUndefined();
+    });
+
+    it('disconnect() aborts an in-flight connect', async () => {
+      parkConnects();
+      const pending = connection.ensureConnected();
+      await flushMicrotasks();
+
+      await connection.disconnect();
+
+      await expect(pending).rejects.toThrow(/cancelled/i);
+    });
+
+    it('a credential change aborts an in-flight connect using that credential', async () => {
+      parkConnects();
+      const pending = connection.ensureConnected();
+      await flushMicrotasks();
+
+      await fireCredentialChange({ id: 'cred-1', kind: 'save' });
+
+      await expect(pending).rejects.toThrow(/cancelled/i);
+    });
+
+    it('passes an AbortSignal to the transfer service connect', async () => {
+      await connection.ensureConnected();
+      const options = mockSftp.connect.mock.calls[0][2];
+      expect(options.signal).toBeInstanceOf(AbortSignal);
     });
   });
 
