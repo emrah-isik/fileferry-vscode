@@ -153,6 +153,74 @@ describe('chainConnect', () => {
     pool.dispose();
   });
 
+  // 18a-2b (§I wedge fix): a superseded connect aborts via options.signal —
+  // the chain must stop waiting, never leak a lease, and hand providers the
+  // signal so an open prompt can be dismissed.
+  describe('abort signal', () => {
+    const flushMicrotasks = (): Promise<void> => new Promise(resolve => setImmediate(resolve));
+
+    it('an abort while a hop dial is parked rejects with the cancel error, and the late lease is released', async () => {
+      let resolveAcquire!: (handle: unknown) => void;
+      const release = jest.fn();
+      const stubPool = { acquire: jest.fn(() => new Promise(resolve => { resolveAcquire = resolve; })) };
+      const controller = new AbortController();
+
+      const pending = chainConnect(
+        target,
+        [bastionCredential.id],
+        { interactive: true, signal: controller.signal },
+        { ...dependencies(), pool: stubPool as unknown as JumpHostPool }
+      );
+      await flushMicrotasks();
+      controller.abort();
+
+      await expect(pending).rejects.toThrow(/cancelled/i);
+      await expect(pending).rejects.not.toBeInstanceOf(HopConnectError);
+
+      // The raced-out acquire settles later — its lease must not leak.
+      resolveAcquire({ key: 'k', forwardOut: jest.fn(), release });
+      await flushMicrotasks();
+      expect(release).toHaveBeenCalled();
+    });
+
+    it('an already-aborted signal rejects before acquiring anything', async () => {
+      const stubPool = { acquire: jest.fn() };
+      const controller = new AbortController();
+      controller.abort();
+
+      await expect(chainConnect(
+        target,
+        [bastionCredential.id],
+        { interactive: true, signal: controller.signal },
+        { ...dependencies(), pool: stubPool as unknown as JumpHostPool }
+      )).rejects.toThrow(/cancelled/i);
+      expect(stubPool.acquire).not.toHaveBeenCalled();
+    });
+
+    it('hop prompt contexts carry the signal so providers can dismiss open prompts', async () => {
+      const controller = new AbortController();
+      let seenContext: { signal?: AbortSignal } | undefined;
+      const dependenciesWithCapture = dependencies({
+        hostKey: {
+          verify: (_hopTarget, _key, context, verdict) => {
+            seenContext = context;
+            verdict(true);
+          },
+          checkStored: async () => storedStatus,
+        },
+      });
+
+      const result = await chainConnect(
+        target,
+        [bastionCredential.id],
+        { interactive: true, signal: controller.signal },
+        dependenciesWithCapture
+      );
+      expect(seenContext?.signal).toBe(controller.signal);
+      result.release();
+    });
+  });
+
   it('connects one hop and returns the forward to the target as sock', async () => {
     const result = await chainConnect(target, [bastionCredential.id], { interactive: true }, dependencies());
     expect(clients).toHaveLength(1);

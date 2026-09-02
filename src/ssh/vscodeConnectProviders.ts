@@ -15,7 +15,11 @@ export class VscodeKeyboardInteractiveProvider implements KeyboardInteractivePro
   prompt(request: KeyboardInteractiveRequest, context: PromptContext): Promise<string[] | null> {
     context.promptOpened();
     const { username, host, port } = request.target;
-    return showKeyboardInteractivePrompts(request.prompts, `SSH login: ${username}@${host}:${port}`);
+    return showKeyboardInteractivePrompts(
+      request.prompts,
+      `SSH login: ${username}@${host}:${port}`,
+      context.signal
+    );
   }
 }
 

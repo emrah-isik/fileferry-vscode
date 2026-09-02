@@ -13,6 +13,19 @@
 /** Base class: the connect needed the user and was not allowed to ask. */
 export class InteractionRequiredError extends Error {}
 
+/**
+ * The connect was cancelled from outside via `options.signal` (18a-2b §I
+ * wedge fix): superseded by a connect to a different server, an explicit
+ * disconnect, or a default-server change while a prompt was open. Not a
+ * connection failure — callers may treat it as routine.
+ */
+export class ConnectionCancelledError extends Error {
+  constructor(reason?: string) {
+    super(reason ? `Connection cancelled: ${reason}` : 'Connection cancelled');
+    this.name = 'ConnectionCancelledError';
+  }
+}
+
 /** The host key is not in the trust store (unknown) or does not match it (changed). */
 export class HostNotTrustedError extends InteractionRequiredError {
   constructor(

@@ -28,6 +28,12 @@ export interface TransferService {
        * transports ignore it (they never prompt).
        */
       interactive?: boolean;
+      /**
+       * Cancels the connect from outside (18a-2b): the promise rejects with
+       * `ConnectionCancelledError`, resources are torn down, and any open
+       * prompt is dismissed. FTP/FTPS transports ignore it.
+       */
+      signal?: AbortSignal;
     }
   ): Promise<void>;
 

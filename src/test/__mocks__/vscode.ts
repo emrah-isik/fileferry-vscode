@@ -49,6 +49,21 @@ const vscode = {
     registerCommand: jest.fn(),
     executeCommand: jest.fn()
   },
+  CancellationTokenSource: class CancellationTokenSource {
+    private listeners: Array<() => void> = [];
+    token = {
+      isCancellationRequested: false,
+      onCancellationRequested: (listener: () => void) => {
+        this.listeners.push(listener);
+        return { dispose: () => { this.listeners = this.listeners.filter(l => l !== listener); } };
+      },
+    };
+    cancel = () => {
+      this.token.isCancellationRequested = true;
+      this.listeners.forEach(l => l());
+    };
+    dispose = () => { this.listeners = []; };
+  },
   EventEmitter: class EventEmitter {
     private listeners: Array<(...args: any[]) => void> = [];
     event = (listener: (...args: any[]) => void) => {

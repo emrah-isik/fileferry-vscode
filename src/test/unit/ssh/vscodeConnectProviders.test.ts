@@ -34,7 +34,7 @@ describe('VscodeKeyboardInteractiveProvider', () => {
     }, context);
 
     expect(answers).toEqual(['123456']);
-    expect(vscode.window.showInputBox).toHaveBeenCalledWith(expect.objectContaining({ prompt: 'Verification code: ', password: true }));
+    expect(vscode.window.showInputBox).toHaveBeenCalledWith(expect.objectContaining({ prompt: 'Verification code: ', password: true }), expect.anything());
   });
 
   it('titles the input boxes with the asking identity — a chain prompts for hops AND the target (18a-2a)', async () => {
@@ -48,7 +48,24 @@ describe('VscodeKeyboardInteractiveProvider', () => {
 
     expect(vscode.window.showInputBox).toHaveBeenCalledWith(expect.objectContaining({
       title: 'SSH login: mfauser@127.0.0.1:2222',
-    }));
+    }), expect.anything());
+  });
+
+  it('threads the context signal to the input boxes — aborting dismisses the open prompt (18a-2b)', async () => {
+    (vscode.window.showInputBox as jest.Mock).mockImplementation(
+      (_options: unknown, token?: { onCancellationRequested: (listener: () => void) => void }) =>
+        new Promise(resolve => { token?.onCancellationRequested(() => resolve(undefined)); })
+    );
+    const controller = new AbortController();
+    const provider = new VscodeKeyboardInteractiveProvider();
+
+    const pending = provider.prompt({
+      target: { username: 'mfauser', host: '127.0.0.1', port: 2222 }, round: 1, name: '', instructions: '',
+      prompts: [{ prompt: 'Password: ', echo: false }],
+    }, { promptOpened: jest.fn(), signal: controller.signal });
+    controller.abort();
+
+    await expect(pending).resolves.toBeNull();
   });
 
   it('returns null when the user dismisses an input box', async () => {

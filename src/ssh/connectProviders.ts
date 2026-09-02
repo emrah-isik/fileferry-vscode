@@ -25,6 +25,12 @@ export interface ConnectTarget {
 /** Lets a provider tell the connect it now shows UI — cancels the pre-prompt timer. */
 export interface PromptContext {
   promptOpened(): void;
+  /**
+   * Aborted when the connect is cancelled from outside (18a-2b): a provider
+   * with UI open should dismiss it — an ignoreFocusOut input box would
+   * otherwise keep prompting for a connect that no longer exists.
+   */
+  signal?: AbortSignal;
 }
 
 export interface KeyboardInteractiveRequest {
