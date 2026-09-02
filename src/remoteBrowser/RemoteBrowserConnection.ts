@@ -4,6 +4,7 @@ import { createTransferService } from '../transferServiceFactory';
 import { CredentialManager } from '../storage/CredentialManager';
 import { ProjectConfigManager } from '../storage/ProjectConfigManager';
 import { ServerConfig } from '../types';
+import { JumpHostPool } from '../ssh/JumpHostPool';
 
 const IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -16,13 +17,24 @@ export class RemoteBrowserConnection {
   private readonly configSaveSubscription: vscode.Disposable;
   private readonly credentialChangeSubscription: vscode.Disposable;
 
+  // Pool keys of the hops the CURRENT session tunnels through (18a-2b, Q34).
+  // Empty for unchained sessions; cleared on disconnect.
+  private currentRouteKeys = new Set<string>();
+  private readonly poolEvictSubscription: { dispose(): void } | undefined;
+
   private readonly _onDidDisconnect = new vscode.EventEmitter<void>();
   readonly onDidDisconnect = this._onDidDisconnect.event;
+
+  // Fired when a hop on the current route was evicted from the pool
+  // (unexpected close, credential change) — the session's tunnel is dead.
+  private readonly _onDidLoseRoute = new vscode.EventEmitter<string>();
+  readonly onDidLoseRoute = this._onDidLoseRoute.event;
 
   constructor(
     private readonly credentialManager: CredentialManager,
     private readonly configManager: ProjectConfigManager,
-    private readonly output: vscode.OutputChannel
+    private readonly output: vscode.OutputChannel,
+    jumpHostPool?: Pick<JumpHostPool, 'onDidEvict'>
   ) {
     this.sftp = createTransferService('sftp');
     this.configSaveSubscription = this.configManager.onDidSaveConfig(() => {
@@ -35,6 +47,12 @@ export class RemoteBrowserConnection {
       if (event.id === this.currentCredentialId) {
         this.output.appendLine('[remote-browser] Session credential changed — disconnecting');
         return this.disconnect();
+      }
+    });
+    this.poolEvictSubscription = jumpHostPool?.onDidEvict((key) => {
+      if (this.currentRouteKeys.has(key)) {
+        this.output.appendLine(`[remote-browser] Jump host ${key} on the current route was evicted`);
+        this._onDidLoseRoute.fire(key);
       }
     });
   }
@@ -136,7 +154,26 @@ export class RemoteBrowserConnection {
     this.currentServerId = server.id;
     this.currentCredentialId = server.credentialId;
     this.currentRootPath = server.rootPath;
+    this.currentRouteKeys = await this.computeRouteKeys(credential.jumpHosts);
     this.output.appendLine(`[remote-browser] Connected to ${serverName} (${credential.host})`);
+  }
+
+  // Canonical pool keys for this session's hops, so pool evictions can be
+  // matched against the route (Q34). Ids resolve through the credential list
+  // — a dangling id simply contributes no key.
+  private async computeRouteKeys(jumpHostIds: string[] | undefined): Promise<Set<string>> {
+    const keys = new Set<string>();
+    if (!jumpHostIds || jumpHostIds.length === 0) {
+      return keys;
+    }
+    const all = await this.credentialManager.getAll();
+    for (const hopId of jumpHostIds) {
+      const hop = all.find(c => c.id === hopId);
+      if (hop) {
+        keys.add(JumpHostPool.keyFor({ username: hop.username, host: hop.host, port: hop.port }));
+      }
+    }
+    return keys;
   }
 
   async listDirectory(remotePath: string): Promise<FileEntry[]> {
@@ -241,6 +278,7 @@ export class RemoteBrowserConnection {
     }
     this.currentServerId = null;
     this.currentCredentialId = null;
+    this.currentRouteKeys = new Set();
   }
 
   getRootPath(): string {
@@ -251,7 +289,9 @@ export class RemoteBrowserConnection {
     this.clearIdleTimer();
     this.configSaveSubscription.dispose();
     this.credentialChangeSubscription.dispose();
+    this.poolEvictSubscription?.dispose();
     this._onDidDisconnect.dispose();
+    this._onDidLoseRoute.dispose();
   }
 
   private resetIdleTimer(): void {

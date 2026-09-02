@@ -371,7 +371,7 @@ export function activate(context: vscode.ExtensionContext): void {
   updateHasServersContext();
 
   // Remote File Browser
-  const browserConnection = new RemoteBrowserConnection(credentialManager, configManager, output);
+  const browserConnection = new RemoteBrowserConnection(credentialManager, configManager, output, jumpHostPool);
   const browserProvider = new RemoteBrowserProvider(browserConnection);
   const remoteEditSessionRegistry = new RemoteEditSessionRegistry();
   const remoteEditSaveListener = new RemoteEditSaveListener({

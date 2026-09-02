@@ -10,6 +10,7 @@ const mockConnection = {
   disconnect: jest.fn(),
   getRootPath: jest.fn().mockReturnValue('/var/www'),
   onDidDisconnect: jest.fn(),
+  onDidLoseRoute: jest.fn(),
 };
 
 describe('RemoteBrowserProvider', () => {
@@ -407,6 +408,22 @@ describe('RemoteBrowserProvider', () => {
       mockConnection.listDirectory.mockRejectedValue(new Error('Connection refused'));
       await provider.getChildren();
       expect(provider.getCurrentPath()).toBeNull();
+    });
+  });
+
+  describe('route eviction (18a-2b, Q34)', () => {
+    it('a lost route drops the panel to the Disconnected/click-to-reconnect state', async () => {
+      const registration = (mockConnection.onDidLoseRoute as jest.Mock).mock.calls[0];
+      expect(registration).toBeDefined();
+      const listener = registration[0] as (key: string) => void;
+
+      listener('jump@bastion.example.com:2222');
+      await Promise.resolve(); // let the async suspend settle
+
+      expect(mockConnection.disconnect).toHaveBeenCalled();
+      const children = await provider.getChildren();
+      expect(children).toHaveLength(1);
+      expect(children![0].label).toBe('Disconnected');
     });
   });
 

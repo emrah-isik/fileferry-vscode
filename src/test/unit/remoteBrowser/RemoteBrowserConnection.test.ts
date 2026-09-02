@@ -31,6 +31,7 @@ const fireCredentialChange = async (event: { id: string; kind: 'save' | 'delete'
 
 const mockCredentialManager = {
   getWithSecret: jest.fn(),
+  getAll: jest.fn().mockResolvedValue([]),
   onDidChange: (listener: CredentialChangeListener) => {
     credentialChangeListeners.push(listener);
     return { dispose: () => { const i = credentialChangeListeners.indexOf(listener); if (i >= 0) { credentialChangeListeners.splice(i, 1); } } };
@@ -783,6 +784,75 @@ describe('RemoteBrowserConnection', () => {
       await fireCredentialChange({ id: 'cred-1', kind: 'save' });
 
       expect(mockSftp.disconnect).not.toHaveBeenCalled();
+    });
+  });
+
+  // 18a-2b, Q34: when a hop on the CURRENT session's route is evicted from
+  // the pool (unexpected close, credential change), the session is dead —
+  // onDidLoseRoute lets the panel drop to its Disconnected state.
+  describe('jump-host route eviction (Q34)', () => {
+    const bastionCredential = {
+      id: 'cred-bastion', name: 'Bastion', host: 'Bastion.example.com', port: 2222,
+      username: 'jump', authMethod: 'password' as const,
+    };
+    const evictListeners: Array<(key: string) => void> = [];
+    const fireEvict = (key: string) => { for (const listener of [...evictListeners]) { listener(key); } };
+    const fakePool = {
+      onDidEvict: (listener: (key: string) => void) => {
+        evictListeners.push(listener);
+        return { dispose: () => { const i = evictListeners.indexOf(listener); if (i >= 0) { evictListeners.splice(i, 1); } } };
+      },
+    };
+
+    let routedConnection: RemoteBrowserConnection;
+    let lostRoutes: string[];
+
+    beforeEach(() => {
+      evictListeners.length = 0;
+      lostRoutes = [];
+      mockCredentialManager.getWithSecret.mockResolvedValue({
+        ...fakeCredential,
+        jumpHosts: ['cred-bastion'],
+      });
+      mockCredentialManager.getAll.mockResolvedValue([fakeCredential, bastionCredential]);
+      routedConnection = new RemoteBrowserConnection(
+        mockCredentialManager as any,
+        mockConfigManager as any,
+        mockOutput as any,
+        fakePool as any
+      );
+      routedConnection.onDidLoseRoute((key: string) => lostRoutes.push(key));
+    });
+
+    afterEach(() => {
+      routedConnection.dispose();
+    });
+
+    it('fires onDidLoseRoute when a hop on the current route is evicted (pool key is canonical)', async () => {
+      await routedConnection.ensureConnected();
+      fireEvict('jump@bastion.example.com:2222');
+      expect(lostRoutes).toEqual(['jump@bastion.example.com:2222']);
+    });
+
+    it('ignores evictions of hops not on the current route', async () => {
+      await routedConnection.ensureConnected();
+      fireEvict('other@elsewhere.example.com:22');
+      expect(lostRoutes).toEqual([]);
+    });
+
+    it('ignores evictions after the session disconnected', async () => {
+      await routedConnection.ensureConnected();
+      mockSftp.connected = true;
+      await routedConnection.disconnect();
+      fireEvict('jump@bastion.example.com:2222');
+      expect(lostRoutes).toEqual([]);
+    });
+
+    it('a session without jump hosts never reacts to evictions', async () => {
+      mockCredentialManager.getWithSecret.mockResolvedValue(fakeCredential);
+      await routedConnection.ensureConnected();
+      fireEvict('jump@bastion.example.com:2222');
+      expect(lostRoutes).toEqual([]);
     });
   });
 });
