@@ -447,6 +447,24 @@ describe('SshCredentialPanel message handling', () => {
     );
   });
 
+  it('saveCredential preserves picker hop order exactly (18a-2b, Q16)', async () => {
+    (mockCredentialManager.getAll as jest.Mock).mockResolvedValue([
+      credentialFixture,
+      { id: 'cred-hop-a', name: 'Hop A', host: 'a.example.com', port: 22, username: 'jump', authMethod: 'password' },
+      { id: 'cred-hop-b', name: 'Hop B', host: 'b.example.com', port: 22, username: 'jump', authMethod: 'password' },
+    ]);
+    SshCredentialPanel.createOrShow(mockContext, deps());
+    await messageHandler({
+      command: 'saveCredential',
+      payload: {
+        credential: { ...credentialFixture, jumpHosts: ['cred-hop-b', 'cred-hop-a'] },
+        password: undefined,
+      },
+    });
+    const savedCredential = (mockCredentialManager.save as jest.Mock).mock.calls[0][0];
+    expect(savedCredential.jumpHosts).toEqual(['cred-hop-b', 'cred-hop-a']);
+  });
+
   it('saveCredential omits jumpHosts when the list is empty', async () => {
     SshCredentialPanel.createOrShow(mockContext, deps());
     await messageHandler({

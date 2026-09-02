@@ -344,3 +344,60 @@ code {
   padding-left: 16px;
   color: var(--vscode-descriptionForeground);
 }
+
+/* ─── Jump-host picker (18a-2b) ─────────────────────────────────────────── */
+
+.jump-host-list {
+  list-style: none;
+  margin: 0 0 6px;
+  padding: 0;
+}
+
+.jump-host-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  border-radius: 3px;
+}
+
+.jump-host-row:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.jump-host-order {
+  color: var(--vscode-descriptionForeground);
+  min-width: 18px;
+  text-align: right;
+}
+
+.jump-host-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.jump-host-target {
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.9em;
+}
+
+.btn-icon {
+  background: transparent;
+  border: none;
+  color: var(--vscode-foreground);
+  cursor: pointer;
+  padding: 2px 5px;
+  border-radius: 3px;
+  line-height: 1;
+}
+
+.btn-icon:hover:not(:disabled) {
+  background: var(--vscode-toolbar-hoverBackground);
+}
+
+.btn-icon:disabled {
+  opacity: 0.35;
+  cursor: default;
+}

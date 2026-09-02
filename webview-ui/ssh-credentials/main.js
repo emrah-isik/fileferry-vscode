@@ -12,6 +12,11 @@ let state = {
   selectedId: null,
   editingNew: false,
   testStatus: null,  // { success, message } | null
+  // Unsaved jump-host picker edits for the credential currently on the form
+  // (18a-2b, Q16). null = not initialised for this selection; reset whenever
+  // the selection changes so drafts never leak between credentials. Ids are
+  // stored, names are display-only.
+  draftJumpHosts: null,
 };
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────
@@ -31,6 +36,7 @@ window.addEventListener('message', ({ data: msg }) => {
       } else if (!state.selectedId && state.credentials.length > 0) {
         state.selectedId = state.credentials[0].id;
       }
+      state.draftJumpHosts = null;
       render();
       break;
 
@@ -39,6 +45,7 @@ window.addEventListener('message', ({ data: msg }) => {
         state.selectedId = msg.id;
         state.editingNew = false;
         state.testStatus = null;
+        state.draftJumpHosts = null;
         render();
       }
       break;
@@ -48,6 +55,7 @@ window.addEventListener('message', ({ data: msg }) => {
       state.selectedId = msg.credential.id;
       state.editingNew = false;
       state.testStatus = null;
+      state.draftJumpHosts = null;
       render();
       break;
 
@@ -55,6 +63,7 @@ window.addEventListener('message', ({ data: msg }) => {
       state.credentials = state.credentials.filter(c => c.id !== msg.id);
       state.selectedId = state.credentials[0]?.id ?? null;
       state.editingNew = false;
+      state.draftJumpHosts = null;
       render();
       break;
 
@@ -150,6 +159,7 @@ function renderList() {
     state.editingNew = true;
     state.selectedId = null;
     state.testStatus = null;
+    state.draftJumpHosts = null;
     render();
   });
 
@@ -158,6 +168,7 @@ function renderList() {
       state.selectedId = el.dataset.id;
       state.editingNew = false;
       state.testStatus = null;
+      state.draftJumpHosts = null;
       render();
     });
   });
@@ -232,6 +243,8 @@ function renderDetail() {
 
       <div id="auth-fields"></div>
 
+      <div class="form-group" id="jump-hosts-section"></div>
+
       <div id="test-connection-result"></div>
 
       <div class="form-actions">
@@ -243,6 +256,10 @@ function renderDetail() {
   `;
 
   renderAuthFields(authMethod);
+  if (state.draftJumpHosts === null) {
+    state.draftJumpHosts = (cred.jumpHosts || []).slice();
+  }
+  renderJumpHostPicker(cred);
   if (state.testStatus) renderTestResult();
 
   // Clear field errors as the user types
@@ -353,11 +370,108 @@ function renderAuthFields(authMethod) {
   }
 }
 
+// Ordered jump-host picker (18a-2b, Q16). Mirrors validateSshCredential's
+// chain rules in the UI: a credential cannot hop through itself or through a
+// credential that has hops of its own (chains are flat), and a credential
+// other chains hop through cannot get hops. Re-renders only its own section —
+// a full renderDetail would wipe typed-but-unsaved form fields.
+function renderJumpHostPicker(cred) {
+  const el = document.getElementById('jump-hosts-section');
+  if (!el) return;
+
+  const draft = state.draftJumpHosts || [];
+  const usedAsHopBy = state.credentials.filter(
+    c => c.id !== cred.id && (c.jumpHosts || []).includes(cred.id)
+  );
+
+  if (usedAsHopBy.length > 0) {
+    el.innerHTML = `
+      <label>Jump hosts</label>
+      <span class="field-hint">This credential is used as a jump host by
+        ${usedAsHopBy.map(c => escapeHtml(`"${c.name}"`)).join(', ')} —
+        a jump host cannot have jump hosts of its own.</span>
+    `;
+    return;
+  }
+
+  const eligible = state.credentials.filter(c =>
+    c.id !== cred.id &&
+    !(c.jumpHosts && c.jumpHosts.length > 0) &&
+    !draft.includes(c.id)
+  );
+
+  const rows = draft.map((hopId, index) => {
+    const hop = state.credentials.find(c => c.id === hopId);
+    const label = hop
+      ? `${escapeHtml(hop.name)} <span class="jump-host-target">(${escapeHtml(hop.username)}@${escapeHtml(hop.host)}:${escapeHtml(hop.port)})</span>`
+      : `<em>missing credential</em> <span class="jump-host-target">(${escapeHtml(hopId)})</span>`;
+    return `
+      <li class="jump-host-row">
+        <span class="jump-host-order">${index + 1}.</span>
+        <span class="jump-host-name">${label}</span>
+        <button class="btn-hop-up btn-icon" data-index="${index}" title="Move up" ${index === 0 ? 'disabled' : ''}>↑</button>
+        <button class="btn-hop-down btn-icon" data-index="${index}" title="Move down" ${index === draft.length - 1 ? 'disabled' : ''}>↓</button>
+        <button class="btn-hop-remove btn-icon" data-index="${index}" title="Remove jump host">✕</button>
+      </li>
+    `;
+  }).join('');
+
+  el.innerHTML = `
+    <label for="f-add-jump-host">Jump hosts</label>
+    ${draft.length > 0 ? `<ol class="jump-host-list">${rows}</ol>` : ''}
+    <select id="f-add-jump-host" ${eligible.length === 0 ? 'disabled' : ''}>
+      <option value="">${eligible.length === 0 ? '— No eligible credentials —' : '— Add jump host… —'}</option>
+      ${eligible.map(c => `
+        <option value="${escapeHtml(c.id)}">${escapeHtml(c.name)} (${escapeHtml(c.username)}@${escapeHtml(c.host)}:${escapeHtml(c.port)})</option>
+      `).join('')}
+    </select>
+    <span class="field-error" id="err-jumpHosts"></span>
+    <span class="field-hint">Connections tunnel through these hosts in order (first → last)
+      before reaching this one. Credentials that have jump hosts themselves are not
+      offered — chains cannot be nested. SFTP only.</span>
+  `;
+
+  document.getElementById('f-add-jump-host')?.addEventListener('change', (e) => {
+    const id = e.target.value;
+    if (!id) return;
+    state.draftJumpHosts = [...draft, id];
+    renderJumpHostPicker(cred);
+  });
+
+  el.querySelectorAll('.btn-hop-remove').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const index = Number(btn.dataset.index);
+      state.draftJumpHosts = draft.filter((_, i) => i !== index);
+      renderJumpHostPicker(cred);
+    });
+  });
+
+  const swap = (index, otherIndex) => {
+    const next = draft.slice();
+    [next[index], next[otherIndex]] = [next[otherIndex], next[index]];
+    state.draftJumpHosts = next;
+    renderJumpHostPicker(cred);
+  };
+  el.querySelectorAll('.btn-hop-up').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const index = Number(btn.dataset.index);
+      if (index > 0) swap(index, index - 1);
+    });
+  });
+  el.querySelectorAll('.btn-hop-down').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const index = Number(btn.dataset.index);
+      if (index < draft.length - 1) swap(index, index + 1);
+    });
+  });
+}
+
 function buildPayload(existingId) {
   const authMethod = document.getElementById('f-auth-method')?.value || 'password';
-  // Fields without form controls (agentSocketPath; jumpHosts until the 18a-2b
-  // picker) pass through from the stored credential — a save of an unrelated
-  // field must never drop them.
+  // Fields without form controls (agentSocketPath) pass through from the
+  // stored credential — a save of an unrelated field must never drop them.
+  // jumpHosts comes from the picker draft (Q16), falling back to the stored
+  // value only if the picker never initialised for this selection.
   const stored = state.credentials.find(c => c.id === existingId);
   const credential = {
     id: existingId || undefined,
@@ -371,7 +485,7 @@ function buildPayload(existingId) {
       : undefined,
     agentSocketPath: stored?.agentSocketPath,
     useSshConfig: document.getElementById('f-use-ssh-config')?.checked || false,
-    jumpHosts: stored?.jumpHosts,
+    jumpHosts: state.draftJumpHosts !== null ? state.draftJumpHosts.slice() : stored?.jumpHosts,
   };
   const password = authMethod === 'password'
     ? (document.getElementById('f-password')?.value || '')
