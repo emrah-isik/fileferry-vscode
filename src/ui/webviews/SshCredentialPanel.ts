@@ -8,6 +8,7 @@ import { generateId } from '../../utils/uuid';
 import { SshCredential, SshCredentialWithSecret } from '../../models/SshCredential';
 import { validateSshCredential } from '../../utils/validation';
 import { describeResolution } from '../../ssh/SshConfigResolver';
+import { HopConnectError } from '../../ssh/connectErrors';
 
 // Change notification is NOT a panel concern (18a-2b): CredentialManager
 // fires onDidChange on every save/delete; subscribers wire up in extension.ts.
@@ -290,6 +291,20 @@ export class SshCredentialPanel {
       await service.disconnect();
       this.panel.webview.postMessage({ command: 'testResult', success: true, message: 'Connected successfully' });
     } catch (err: unknown) {
+      // Chain-aware reporting (18a-2b, Q16): a HopConnectError says WHICH hop
+      // failed — pass the attribution through so the webview can show it.
+      // (SftpService already unwraps hop failures whose cause is an
+      // InteractionRequiredError; those messages name host:port themselves.)
+      if (err instanceof HopConnectError) {
+        this.panel.webview.postMessage({
+          command: 'testResult',
+          success: false,
+          message: err.cause.message,
+          hopIndex: err.hopIndex,
+          hopHost: err.hopHost,
+        });
+        return;
+      }
       this.panel.webview.postMessage({
         command: 'testResult',
         success: false,

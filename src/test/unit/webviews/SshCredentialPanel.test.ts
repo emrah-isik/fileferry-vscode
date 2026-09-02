@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { SshCredentialPanel } from '../../../ui/webviews/SshCredentialPanel';
 import type { CredentialManager } from '../../../storage/CredentialManager';
 import type { ProjectConfigManager } from '../../../storage/ProjectConfigManager';
+import { HopConnectError, HostNotTrustedError } from '../../../ssh/connectErrors';
 
 jest.mock('../../../transferServiceFactory');
 jest.mock('fs/promises', () => ({ stat: jest.fn() }));
@@ -380,6 +381,53 @@ describe('SshCredentialPanel message handling', () => {
     expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
       command: 'testResult', success: true,
     }));
+  });
+
+  // Chain-aware Test Connection (18a-2b, Q16): a chained credential's test
+  // must say WHICH hop failed, not just that "the connection" did.
+  describe('testConnection hop-failure reporting', () => {
+    it('surfaces hopIndex/hopHost from a HopConnectError, with the cause as the message', async () => {
+      (createTransferService as jest.Mock).mockImplementation(() => ({
+        connect: jest.fn().mockRejectedValue(
+          new HopConnectError(1, 'bastion2.example.com', new Error('Connection refused'))
+        ),
+        disconnect: jest.fn(),
+      }));
+      SshCredentialPanel.createOrShow(mockContext, deps());
+      await messageHandler({
+        command: 'testConnection',
+        credential: { ...credentialFixture, jumpHosts: ['cred-b1', 'cred-b2'] },
+        password: 'typed-password',
+      });
+      expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+        command: 'testResult',
+        success: false,
+        hopIndex: 1,
+        hopHost: 'bastion2.example.com',
+        message: 'Connection refused',
+      }));
+    });
+
+    it('passes an unwrapped InteractionRequiredError message through without hop attribution', async () => {
+      // SftpService unwraps a HopConnectError whose cause is an
+      // InteractionRequiredError — the typed error already names host:port.
+      (createTransferService as jest.Mock).mockImplementation(() => ({
+        connect: jest.fn().mockRejectedValue(new HostNotTrustedError('bastion.example.com', 2222, 'unknown')),
+        disconnect: jest.fn(),
+      }));
+      SshCredentialPanel.createOrShow(mockContext, deps());
+      await messageHandler({
+        command: 'testConnection',
+        credential: { ...credentialFixture, jumpHosts: ['cred-b1'] },
+        password: 'typed-password',
+      });
+      const result = (mockWebview.postMessage as jest.Mock).mock.calls
+        .map(c => c[0]).find(m => m.command === 'testResult');
+      expect(result.success).toBe(false);
+      expect(result.hopIndex).toBeUndefined();
+      expect(result.hopHost).toBeUndefined();
+      expect(result.message).toContain('bastion.example.com:2222');
+    });
   });
 
   it('testConnection does not persist any changes to storage', async () => {

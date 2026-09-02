@@ -68,7 +68,9 @@ window.addEventListener('message', ({ data: msg }) => {
       break;
 
     case 'testResult':
-      state.testStatus = { success: msg.success, message: msg.message };
+      // hopIndex/hopHost present when a jump-host chain failed at a specific
+      // hop (18a-2b, Q16) — the display names the hop, not just "failed".
+      state.testStatus = { success: msg.success, message: msg.message, hopIndex: msg.hopIndex, hopHost: msg.hopHost };
       renderTestResult();
       break;
 
@@ -517,9 +519,13 @@ function renderTestResult() {
   const el = document.getElementById('test-connection-result');
   if (!el || !state.testStatus) return;
   el.className = state.testStatus.success ? 'success' : 'error';
-  el.textContent = state.testStatus.success
-    ? `✓ ${state.testStatus.message}`
-    : `✗ ${state.testStatus.message}`;
+  if (state.testStatus.success) {
+    el.textContent = `✓ ${state.testStatus.message}`;
+  } else if (state.testStatus.hopHost !== undefined) {
+    el.textContent = `✗ Jump host ${state.testStatus.hopHost} (hop ${state.testStatus.hopIndex + 1}) failed: ${state.testStatus.message}`;
+  } else {
+    el.textContent = `✗ ${state.testStatus.message}`;
+  }
 }
 
 function showValidationErrors(errors) {
