@@ -156,6 +156,47 @@ describe('chain wire test (in-process ssh2 servers)', () => {
     await secondService.disconnect();
   });
 
+  it('a TWO-hop chain works: hop 2 handshakes over hop 1\'s forwarded channel, not a TCP socket', async () => {
+    // The part fakes cannot prove: an ssh2 Client dialing over a `sock` that
+    // is itself an ssh2 ClientChannel (hop 1's forwardOut), then forwarding
+    // again. Production topology for bastion → inner hop → target.
+    let secondBastionAuthAttempts = 0;
+    const secondBastion = await listen(createBastion(() => { secondBastionAuthAttempts += 1; }));
+    const secondBastionCredential: SshCredentialWithSecret = {
+      id: 'cred-bastion-two', name: 'Wire Bastion Two', host: '127.0.0.1', port: secondBastion.port,
+      username: 'jumpuser', authMethod: 'password', password: 'bastion-pass',
+    };
+    connectProviderRegistry.clear();
+    connectProviderRegistry.set({
+      log: () => undefined,
+      jumpHosts: {
+        pool,
+        resolveCredential: async (id) => {
+          if (id === 'cred-bastion') { return bastionCredential; }
+          if (id === 'cred-bastion-two') { return secondBastionCredential; }
+          return null;
+        },
+      },
+    });
+
+    try {
+      const service = new SftpService();
+      await service.connect(
+        { ...chainedServer, jumpHosts: ['cred-bastion', 'cred-bastion-two'] },
+        { password: 'target-pass' }
+      );
+      expect(await service.resolveRemotePath('.')).toBe('/var/www');
+      expect(bastionAuthAttempts).toBe(1);
+      expect(secondBastionAuthAttempts).toBe(1);
+      await service.disconnect();
+    } finally {
+      // Idle pooled hops outlive the session by design (5-min timer) and
+      // server.close() waits for open connections — drain first.
+      pool.drain();
+      await secondBastion.close();
+    }
+  });
+
   it('a wrong target password fails the target connect, not the hop — and releases the bastion lease', async () => {
     const service = new SftpService();
     await expect(service.connect(chainedServer, { password: 'wrong' })).rejects.toThrow(/authentication/i);
