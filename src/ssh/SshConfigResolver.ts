@@ -208,7 +208,10 @@ export function describeResolution(
  * HostName is configured, the original host (the alias) is kept. Pure — returns
  * a new object and never mutates the input.
  */
-export function applySshConfig<T extends ServerConfig>(server: T, resolved: ResolvedSshConfig): T {
+export function applySshConfig<T extends Pick<ServerConfig, 'host' | 'port' | 'username' | 'privateKeyPath'>>(
+  server: T,
+  resolved: ResolvedSshConfig
+): T {
   return {
     ...server,
     host: resolved.hostName ?? server.host,

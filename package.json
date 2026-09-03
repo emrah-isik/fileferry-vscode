@@ -163,6 +163,23 @@
         "title": "Test Connection"
       },
       {
+        "command": "fileferry.openSshTerminal",
+        "title": "FileFerry: Open SSH Terminal"
+      },
+      {
+        "command": "fileferry.servers.openSshTerminal",
+        "title": "Open SSH Terminal"
+      },
+      {
+        "command": "fileferry.remoteBrowser.openSshTerminalHere",
+        "title": "Open SSH Terminal Here"
+      },
+      {
+        "command": "fileferry.remoteBrowser.openSshTerminalCurrentPath",
+        "title": "FileFerry: Open SSH Terminal in Current Path",
+        "icon": "$(terminal)"
+      },
+      {
         "command": "fileferry.openProjectSettings",
         "title": "FileFerry: Project Settings"
       },
@@ -311,6 +328,11 @@
           "group": "navigation"
         },
         {
+          "command": "fileferry.remoteBrowser.openSshTerminalCurrentPath",
+          "when": "view == fileferry.remoteBrowser",
+          "group": "navigation"
+        },
+        {
           "command": "fileferry.remoteBrowser.createFileInCurrentPath",
           "when": "view == fileferry.remoteBrowser",
           "group": "1_create@1"
@@ -433,6 +455,11 @@
           "group": "2_actions"
         },
         {
+          "command": "fileferry.remoteBrowser.openSshTerminalHere",
+          "when": "view == fileferry.remoteBrowser && viewItem == remoteDirectory",
+          "group": "2_actions"
+        },
+        {
           "command": "fileferry.servers.setDefault",
           "when": "view == fileferry.serversView && viewItem == server-inactive",
           "group": "1_switch"
@@ -444,6 +471,11 @@
         },
         {
           "command": "fileferry.servers.testConnection",
+          "when": "view == fileferry.serversView",
+          "group": "2_manage"
+        },
+        {
+          "command": "fileferry.servers.openSshTerminal",
           "when": "view == fileferry.serversView",
           "group": "2_manage"
         }
@@ -475,6 +507,18 @@
         },
         {
           "command": "fileferry.servers.testConnection",
+          "when": "false"
+        },
+        {
+          "command": "fileferry.servers.openSshTerminal",
+          "when": "false"
+        },
+        {
+          "command": "fileferry.remoteBrowser.openSshTerminalHere",
+          "when": "false"
+        },
+        {
+          "command": "fileferry.remoteBrowser.openSshTerminalCurrentPath",
           "when": "false"
         },
         {

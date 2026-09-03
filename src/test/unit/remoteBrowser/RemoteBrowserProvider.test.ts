@@ -9,6 +9,7 @@ const mockConnection = {
   downloadFile: jest.fn(),
   disconnect: jest.fn(),
   getRootPath: jest.fn().mockReturnValue('/var/www'),
+  getCurrentServerId: jest.fn().mockReturnValue('server-a'),
   onDidDisconnect: jest.fn(),
   onDidLoseRoute: jest.fn(),
 };
@@ -316,6 +317,55 @@ describe('RemoteBrowserProvider', () => {
       mockConnection.listDirectory.mockResolvedValue([]);
       await provider.getChildren();
       expect(mockConnection.listDirectory).toHaveBeenCalledWith('/var/log');
+    });
+
+    // Manual §K K7 (2026-09-03): a navigated path that cannot be listed used
+    // to stick forever — every later render of every server retried it and
+    // the panel stayed on "Connection failed" until Reload Window.
+    it('drops a navigated path whose listing fails, so the next render is back at the root', async () => {
+      provider.navigateTo('/var/www/k7 dir');
+      mockConnection.listDirectory.mockRejectedValueOnce(new Error('list: No such file /var/www/k7 dir'));
+
+      const rows = await provider.getChildren();
+      expect(rows[0].label).toBe('Connection failed');
+
+      mockConnection.listDirectory.mockResolvedValue([]);
+      await provider.getChildren();
+      expect(mockConnection.listDirectory).toHaveBeenLastCalledWith('/var/www');
+    });
+
+    it('keeps the navigated path when the connect itself failed (the path was never tried)', async () => {
+      provider.navigateTo('/var/log');
+      mockConnection.ensureConnected.mockRejectedValueOnce(new Error('connect ECONNREFUSED'));
+
+      await provider.getChildren();
+
+      mockConnection.listDirectory.mockResolvedValue([]);
+      await provider.getChildren();
+      expect(mockConnection.listDirectory).toHaveBeenLastCalledWith('/var/log');
+    });
+
+    it('forgets the navigated path when the panel moves to another server', async () => {
+      mockConnection.listDirectory.mockResolvedValue([]);
+      provider.navigateTo('/var/log');
+      await provider.getChildren();
+      expect(mockConnection.listDirectory).toHaveBeenLastCalledWith('/var/log');
+
+      mockConnection.getCurrentServerId.mockReturnValue('server-b');
+      await provider.getChildren();
+
+      expect(mockConnection.listDirectory).toHaveBeenLastCalledWith('/var/www');
+    });
+
+    it('keeps the navigated path across a reconnect to the same server (idle timeout)', async () => {
+      mockConnection.listDirectory.mockResolvedValue([]);
+      provider.navigateTo('/var/log');
+      await provider.getChildren();
+
+      await mockConnection.disconnect();
+      await provider.getChildren();
+
+      expect(mockConnection.listDirectory).toHaveBeenLastCalledWith('/var/log');
     });
   });
 
