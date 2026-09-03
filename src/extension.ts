@@ -39,6 +39,7 @@ import { moveRemoteItem } from './commands/moveRemoteItem';
 import { chmodRemoteItem } from './commands/chmodRemoteItem';
 import { uploadFilesHere, uploadFolderHere } from './commands/uploadHere';
 import { disconnectRemoteBrowser } from './commands/disconnectRemoteBrowser';
+import { openSshTerminal, OpenSshTerminalSelection } from './commands/openSshTerminal';
 import { UploadOnSaveService } from './services/UploadOnSaveService';
 import { FileWatcherService } from './services/FileWatcherService';
 import { DeploymentServer } from './models/DeploymentServer';
@@ -374,6 +375,19 @@ export function activate(context: vscode.ExtensionContext): void {
   // Remote File Browser
   const browserConnection = new RemoteBrowserConnection(credentialManager, configManager, output, jumpHostPool);
   const browserProvider = new RemoteBrowserProvider(browserConnection);
+
+  // The terminal dials its own raw ssh2 client through the same registry
+  // providers (prompts, host keys, pool) as every SFTP connect.
+  const openTerminal = (selection: OpenSshTerminalSelection): Promise<void> =>
+    openSshTerminal(selection, {
+      configManager,
+      credentialManager,
+      terminal: {
+        providers: connectProviderRegistry.get(),
+        coordinator: connectProviderRegistry.coordinator,
+        createClient: () => new Ssh2Client(),
+      },
+    });
   const remoteEditSessionRegistry = new RemoteEditSessionRegistry();
   const remoteEditSaveListener = new RemoteEditSaveListener({
     registry: remoteEditSessionRegistry,
@@ -673,6 +687,28 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand(
       'fileferry.remoteBrowser.disconnect',
       withErrorHandling('disconnect', () => disconnectRemoteBrowser(browserProvider, jumpHostPool))
+    ),
+
+    // Open SSH Terminal (feature 20, Q11): palette → active server at its
+    // root path; Servers tree → that server; Remote Files → that directory.
+    vscode.commands.registerCommand(
+      'fileferry.openSshTerminal',
+      withErrorHandling('openSshTerminal', () => openTerminal({ serverId: null }))
+    ),
+    vscode.commands.registerCommand(
+      'fileferry.servers.openSshTerminal',
+      withErrorHandling('servers.openSshTerminal', (item: { serverId?: string } | undefined) =>
+        openTerminal({ serverId: item?.serverId ?? null })
+      )
+    ),
+    vscode.commands.registerCommand(
+      'fileferry.remoteBrowser.openSshTerminalHere',
+      withErrorHandling('remoteBrowser.openSshTerminalHere', (item: RemoteFileItem | undefined) =>
+        openTerminal({
+          serverId: null,
+          remotePath: item?.entry?.remotePath ?? browserProvider.getCurrentPath() ?? undefined,
+        })
+      )
     ),
 
     // Refresh views when project config changes
