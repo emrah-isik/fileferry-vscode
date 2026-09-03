@@ -31,7 +31,14 @@ export class RemoteBrowserProvider implements vscode.TreeDataProvider<RemoteFile
   private readonly _onDidChangePath = new vscode.EventEmitter<string>();
   readonly onDidChangePath = this._onDidChangePath.event;
 
-  constructor(private readonly connection: RemoteBrowserConnection) {}
+  constructor(private readonly connection: RemoteBrowserConnection) {
+    // 18a-2b, Q34: a hop on the session's route evicted from the pool kills
+    // the tunnel — drop to the existing Disconnected/click-to-reconnect state
+    // instead of letting the next operation fail with a cryptic socket error.
+    this.connection.onDidLoseRoute(() => {
+      void this.suspend();
+    });
+  }
 
   getTreeItem(element: RemoteFileItem): vscode.TreeItem {
     return element;

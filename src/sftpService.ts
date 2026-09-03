@@ -13,7 +13,7 @@ import {
   PromptContext,
   PRE_PROMPT_TIMEOUT_MS,
 } from './ssh/connectProviders';
-import { HopConnectError, HostNotTrustedError, InteractionRequiredError, VerificationRequiredError } from './ssh/connectErrors';
+import { ConnectionCancelledError, HopConnectError, HostNotTrustedError, InteractionRequiredError, VerificationRequiredError } from './ssh/connectErrors';
 import { DEFAULT_ALGORITHMS } from './ssh/defaultAlgorithms';
 import { chainConnect, ChainConnectResult } from './ssh/chainConnect';
 import { resolveHostAlias, applySshConfig } from './ssh/SshConfigResolver';
@@ -77,6 +77,13 @@ export class SftpService implements TransferService, RemoteCommandRunner {
        * Default `true`.
        */
       interactive?: boolean;
+      /**
+       * Aborting cancels the connect from outside (18a-2b §I wedge fix):
+       * the promise rejects with `ConnectionCancelledError`, the client is
+       * torn down, chain leases are released, and an open prompt raised via
+       * the registered providers is dismissed.
+       */
+      signal?: AbortSignal;
     }
   ): Promise<void> {
     const firstAttempt = { keychainAnswerUsed: false, userPrompted: false };
@@ -88,7 +95,7 @@ export class SftpService implements TransferService, RemoteCommandRunner {
       // the only attempt before the user ever sees a prompt. Reconnect once
       // with the auto-answer disabled — R5's "then asks the user".
       const authFailed = /authentication methods failed/i.test((err as Error).message ?? '');
-      if (!authFailed || !firstAttempt.keychainAnswerUsed || firstAttempt.userPrompted) {
+      if (!authFailed || !firstAttempt.keychainAnswerUsed || firstAttempt.userPrompted || options?.signal?.aborted) {
         throw err;
       }
       connectProviderRegistry.get().log(
@@ -114,6 +121,11 @@ export class SftpService implements TransferService, RemoteCommandRunner {
     const providers = connectProviderRegistry.get();
     const target = { username: server.username, host: server.host, port: server.port };
     const interactiveAllowed = options?.interactive !== false;
+    const signal = options?.signal;
+
+    if (signal?.aborted) {
+      throw new ConnectionCancelledError('the connection request was superseded');
+    }
 
     if (!interactiveAllowed && server.authMethod === 'keyboard-interactive') {
       // The credential's whole auth method is answering prompts — there is
@@ -136,7 +148,7 @@ export class SftpService implements TransferService, RemoteCommandRunner {
         chain = await chainConnect(
           target,
           server.jumpHosts,
-          { interactive: interactiveAllowed },
+          { interactive: interactiveAllowed, signal },
           {
             pool: jumpHostSupport.pool,
             resolveHopCredential: (id) => jumpHostSupport.resolveCredential(id),
@@ -172,7 +184,7 @@ export class SftpService implements TransferService, RemoteCommandRunner {
     };
 
     let timer: PrePromptTimer | undefined;
-    const context: PromptContext = { promptOpened: () => timer?.promptOpened() };
+    const context: PromptContext = { promptOpened: () => timer?.promptOpened(), signal };
 
     // Set when the store-only check refuses the host; thrown in place of
     // ssh2's generic handshake error so callers get a recognisable type.
@@ -253,13 +265,14 @@ export class SftpService implements TransferService, RemoteCommandRunner {
       connectConfig.agent = resolveAgentSocket(server.agentSocketPath);
     }
 
-    // A cancelled prompt or an expired pre-prompt timer must fail the connect
-    // even though ssh2 is still waiting on the wire: race the connect against
-    // an abort promise and tear the client down.
+    // A cancelled prompt, an expired pre-prompt timer, or an outside abort
+    // (options.signal) must fail the connect even though ssh2 is still
+    // waiting on the wire: race the connect against an abort promise and
+    // tear the client down.
     let rejectAbort!: (error: Error) => void;
     const aborted = new Promise<never>((_resolve, reject) => { rejectAbort = reject; });
-    const abort = (reason: string): void => {
-      rejectAbort(new Error(reason));
+    const abort = (reason: string | Error): void => {
+      rejectAbort(typeof reason === 'string' ? new Error(reason) : reason);
       void client.end().catch(() => undefined);
       if (this.client === client) {
         this.client = null;
@@ -269,6 +282,10 @@ export class SftpService implements TransferService, RemoteCommandRunner {
         this.chain = null;
       }
     };
+    const onSignalAbort = (): void => {
+      abort(new ConnectionCancelledError('the connection request was superseded'));
+    };
+    signal?.addEventListener('abort', onSignalAbort, { once: true });
 
     if (keyboardInteractive) {
       // Register before connect, so the listener is ready for the first challenge.
@@ -311,6 +328,7 @@ export class SftpService implements TransferService, RemoteCommandRunner {
       }
       throw err;
     } finally {
+      signal?.removeEventListener('abort', onSignalAbort);
       timer?.dispose();
     }
   }

@@ -32,6 +32,11 @@ export class ServersProvider implements vscode.TreeDataProvider<ServerItem> {
         serverName: name,
         server,
         credential,
+        // Chain order preserved; a dangling id maps to undefined so the
+        // tooltip can mark the missing hop (18a-2b).
+        hopCredentials: credential?.jumpHosts?.map(
+          hopId => credentials.find(c => c.id === hopId)
+        ),
         isDefault: server.id === defaultServerId,
       };
       return new ServerItem(data);

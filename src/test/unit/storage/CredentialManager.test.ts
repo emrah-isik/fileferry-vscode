@@ -117,4 +117,37 @@ describe('CredentialManager', () => {
     expect(mockContext.secrets.delete).toHaveBeenCalledWith('fileferry.credential.cred-1.password');
     expect(mockContext.secrets.delete).toHaveBeenCalledWith('fileferry.credential.cred-1.passphrase');
   });
+
+  // 18a-2b, H3/Q14: the manager is the single source of change events —
+  // subscribers (jump-host pool, Remote Files session, UI refresh) react to
+  // ANY save/delete, not just ones going through the credentials panel.
+  describe('onDidChange', () => {
+    it('fires with the credential id and kind "save" after a save completed', async () => {
+      mockReadFile.mockRejectedValue({ code: 'ENOENT' });
+      const events: Array<{ id: string; kind: string }> = [];
+      manager.onDidChange(event => events.push(event));
+      await manager.save(credentialFixture, 'mypassword');
+      expect(events).toEqual([{ id: 'cred-1', kind: 'save' }]);
+      // The write happened before the event — a subscriber calling getAll()
+      // inside its listener must see the new state.
+      expect(mockWriteFile).toHaveBeenCalled();
+    });
+
+    it('fires with kind "delete" after a delete completed', async () => {
+      mockReadFile.mockResolvedValue(JSON.stringify([credentialFixture]));
+      const events: Array<{ id: string; kind: string }> = [];
+      manager.onDidChange(event => events.push(event));
+      await manager.delete('cred-1');
+      expect(events).toEqual([{ id: 'cred-1', kind: 'delete' }]);
+    });
+
+    it('a disposed subscription no longer receives events', async () => {
+      mockReadFile.mockRejectedValue({ code: 'ENOENT' });
+      const events: Array<{ id: string; kind: string }> = [];
+      const subscription = manager.onDidChange(event => events.push(event));
+      subscription.dispose();
+      await manager.save(credentialFixture);
+      expect(events).toEqual([]);
+    });
+  });
 });

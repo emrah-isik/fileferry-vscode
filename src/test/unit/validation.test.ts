@@ -337,6 +337,46 @@ describe('validateProjectServer', () => {
     expect(errors.some(e => e.field === 'credentialId')).toBe(true);
   });
 
+  // FTP guard (18a-2b, Q9/M7): jump hosts are SSH tunnels — an FTP/FTPS
+  // server referencing a chained credential is a config error, never a
+  // silent ignore.
+  describe('FTP/FTPS with a chained credential', () => {
+    const chainedCredentials: SshCredential[] = [
+      { id: 'cred-chained', name: 'Via Bastion', host: 'internal.example.com', port: 22, username: 'user', authMethod: 'password', jumpHosts: ['cred-existing'] },
+      ...existingCredentials,
+    ];
+
+    it.each(['ftp', 'ftps', 'ftps-implicit'] as const)('rejects a %s server referencing a credential with jumpHosts', (type) => {
+      const errors = validateProjectServer(
+        'Production',
+        { ...validServer, type, credentialId: 'cred-chained' },
+        [],
+        chainedCredentials
+      );
+      expect(errors.some(e => e.field === 'credentialId' && /jump host/i.test(e.message))).toBe(true);
+    });
+
+    it('accepts an SFTP server referencing a credential with jumpHosts', () => {
+      const errors = validateProjectServer(
+        'Production',
+        { ...validServer, type: 'sftp', credentialId: 'cred-chained' },
+        [],
+        chainedCredentials
+      );
+      expect(errors).toHaveLength(0);
+    });
+
+    it('accepts an FTP server referencing a credential without jumpHosts', () => {
+      const errors = validateProjectServer(
+        'Production',
+        { ...validServer, type: 'ftp' },
+        [],
+        chainedCredentials
+      );
+      expect(errors).toHaveLength(0);
+    });
+  });
+
   it('requires rootPath starting with /', () => {
     const errors = validateProjectServer(
       'Production',

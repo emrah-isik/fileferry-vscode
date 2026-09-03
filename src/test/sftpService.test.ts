@@ -715,6 +715,36 @@ describe('SftpService', () => {
     });
   });
 
+  // 18a-2b (§I wedge fix): a caller superseding an in-flight connect (server
+  // switch, disconnect) aborts it via options.signal — the connect must
+  // reject promptly and tear the client down instead of staying parked on an
+  // open prompt forever.
+  describe('abort signal (18a-2b)', () => {
+    it('aborting the signal rejects a parked connect and ends the client', async () => {
+      mockMethods.connect.mockReturnValue(new Promise(() => undefined)); // parked
+      mockMethods.end.mockResolvedValue(undefined);
+      const controller = new AbortController();
+
+      const pending = service.connect(serverConfig, { password: 'secret' }, { signal: controller.signal });
+      await new Promise(resolve => setImmediate(resolve)); // let the dial start
+      controller.abort();
+
+      await expect(pending).rejects.toThrow(/cancelled/i);
+      expect(mockMethods.end).toHaveBeenCalled();
+      expect(service.connected).toBe(false);
+    });
+
+    it('a signal aborted before the connect starts rejects without dialing', async () => {
+      const controller = new AbortController();
+      controller.abort();
+
+      await expect(
+        service.connect(serverConfig, { password: 'secret' }, { signal: controller.signal })
+      ).rejects.toThrow(/cancelled/i);
+      expect(mockMethods.connect).not.toHaveBeenCalled();
+    });
+  });
+
   describe('jump hosts (18a-2a)', () => {
     const chainedServer: ServerConfig = { ...serverConfig, jumpHosts: ['cred-bastion'] };
     const fakeSock = { fake: 'channel' };
@@ -758,6 +788,16 @@ describe('SftpService', () => {
       await service.connect(chainedServer, { password: 'secret' }, { interactive: false });
       expect(mockChainConnect).toHaveBeenCalledWith(
         expect.anything(), expect.anything(), { interactive: false }, expect.anything()
+      );
+    });
+
+    it('threads the abort signal into the chain (18a-2b)', async () => {
+      const controller = new AbortController();
+      await service.connect(chainedServer, { password: 'secret' }, { signal: controller.signal });
+      expect(mockChainConnect).toHaveBeenCalledWith(
+        expect.anything(), expect.anything(),
+        { interactive: true, signal: controller.signal },
+        expect.anything()
       );
     });
 

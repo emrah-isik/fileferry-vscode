@@ -140,8 +140,10 @@ function isFtpType(type) {
 
 function buildCredentialOptions(serverType, selectedCredentialId) {
   const isFtp = isFtpType(serverType);
+  // FTP/FTPS: password auth only, and no jump-host chains (SSH tunnels) —
+  // mirrors validateProjectServer's save-time guard (18a-2b, Q9/M7).
   const filtered = isFtp
-    ? state.credentials.filter(c => c.authMethod === 'password')
+    ? state.credentials.filter(c => c.authMethod === 'password' && !(c.jumpHosts && c.jumpHosts.length > 0))
     : state.credentials;
   return `
     <option value="">\u2014 Select credential \u2014</option>

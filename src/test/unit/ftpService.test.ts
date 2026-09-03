@@ -1,5 +1,6 @@
 import { FtpService } from '../../ftpService';
 import { TransferService } from '../../transferService';
+import { connectProviderRegistry } from '../../ssh/connectProviders';
 
 // Mock basic-ftp Client
 const mockClient = {
@@ -136,6 +137,38 @@ describe('FtpService', () => {
           { password: 'pass' }
         )
       ).rejects.toThrow('Connection refused');
+    });
+
+    // 18a-2b, Q9: the three FTP guards should prevent this config, but a
+    // hand-edited credentials.json can still reach here — warn (never
+    // silently ignore), then connect directly without the chain.
+    it('warns through the registry and connects directly when the credential carries jumpHosts', async () => {
+      const warn = jest.fn();
+      connectProviderRegistry.set({ warn, log: () => undefined });
+      try {
+        await service.connect(
+          { host: 'ftp.example.com', port: 21, username: 'user', type: 'ftp', jumpHosts: ['cred-bastion'] },
+          { password: 'pass' }
+        );
+        expect(warn).toHaveBeenCalledWith(expect.stringMatching(/jump host/i));
+        expect(mockClient.access).toHaveBeenCalled();
+      } finally {
+        connectProviderRegistry.clear();
+      }
+    });
+
+    it('does not warn when the credential has no jumpHosts', async () => {
+      const warn = jest.fn();
+      connectProviderRegistry.set({ warn, log: () => undefined });
+      try {
+        await service.connect(
+          { host: 'ftp.example.com', port: 21, username: 'user', type: 'ftp' },
+          { password: 'pass' }
+        );
+        expect(warn).not.toHaveBeenCalled();
+      } finally {
+        connectProviderRegistry.clear();
+      }
     });
   });
 

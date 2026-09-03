@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { SshCredentialPanel } from '../../../ui/webviews/SshCredentialPanel';
 import type { CredentialManager } from '../../../storage/CredentialManager';
 import type { ProjectConfigManager } from '../../../storage/ProjectConfigManager';
+import { HopConnectError, HostNotTrustedError } from '../../../ssh/connectErrors';
 
 jest.mock('../../../transferServiceFactory');
 jest.mock('fs/promises', () => ({ stat: jest.fn() }));
@@ -267,21 +268,72 @@ describe('SshCredentialPanel message handling', () => {
     expect(mockCredentialManager.delete).not.toHaveBeenCalled();
   });
 
-  it('deleteCredential that is referenced by a server shows warning before deleting', async () => {
-    (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({
-      defaultServerId: 'srv-1',
-      servers: {
-        Production: { id: 'srv-1', type: 'sftp', credentialId: 'cred-1', credentialName: 'Prod SSH', rootPath: '/var/www', mappings: [], excludedPaths: [] },
-      },
+  // Delete guard (18a-2b, Q28/H5): a referenced credential cannot be deleted
+  // at all — cascade-delete and warn-but-allow are both explicitly rejected.
+  describe('delete guard (Q28/H5)', () => {
+    const productionServer = {
+      id: 'srv-1', type: 'sftp', credentialId: 'cred-1', credentialName: 'Prod SSH',
+      rootPath: '/var/www', mappings: [], excludedPaths: [],
+    };
+    const chainedCredential = {
+      id: 'cred-chained', name: 'Via Bastion', host: 'internal.example.com',
+      port: 22, username: 'deploy', authMethod: 'password' as const,
+      jumpHosts: ['cred-1'],
+    };
+
+    it('blocks deleting a credential referenced by a server, naming the server', async () => {
+      (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({
+        defaultServerId: 'srv-1',
+        servers: { Production: productionServer },
+      });
+      SshCredentialPanel.createOrShow(mockContext, deps());
+      await messageHandler({ command: 'deleteCredential', id: 'cred-1' });
+      expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+        expect.stringContaining('Production')
+      );
+      expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
+      expect(mockCredentialManager.delete).not.toHaveBeenCalled();
     });
-    (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(undefined); // user cancels
-    SshCredentialPanel.createOrShow(mockContext, deps());
-    await messageHandler({ command: 'deleteCredential', id: 'cred-1' });
-    expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
-      expect.stringContaining('Production'),
-      expect.any(String), expect.any(String)
-    );
-    expect(mockCredentialManager.delete).not.toHaveBeenCalled();
+
+    it('blocks deleting a credential used as a jump host, naming the referencing credential', async () => {
+      (mockCredentialManager.getAll as jest.Mock).mockResolvedValue([
+        credentialFixture, chainedCredential,
+      ]);
+      SshCredentialPanel.createOrShow(mockContext, deps());
+      await messageHandler({ command: 'deleteCredential', id: 'cred-1' });
+      expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+        expect.stringContaining('used as a jump host by: Via Bastion')
+      );
+      expect(mockCredentialManager.delete).not.toHaveBeenCalled();
+    });
+
+    it('blocks deleting a credential referenced by a server AND as a jump host, naming both', async () => {
+      (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({
+        defaultServerId: 'srv-1',
+        servers: { Production: productionServer },
+      });
+      (mockCredentialManager.getAll as jest.Mock).mockResolvedValue([
+        credentialFixture, chainedCredential,
+      ]);
+      SshCredentialPanel.createOrShow(mockContext, deps());
+      await messageHandler({ command: 'deleteCredential', id: 'cred-1' });
+      const message = (vscode.window.showErrorMessage as jest.Mock).mock.calls[0][0];
+      expect(message).toContain('Production');
+      expect(message).toContain('used as a jump host by: Via Bastion');
+      expect(mockCredentialManager.delete).not.toHaveBeenCalled();
+    });
+
+    it('an unreferenced credential still deletes through the existing confirmation', async () => {
+      (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue('Delete');
+      (mockCredentialManager.getAll as jest.Mock).mockResolvedValue([
+        credentialFixture,
+        { ...chainedCredential, jumpHosts: ['cred-other'] },
+      ]);
+      SshCredentialPanel.createOrShow(mockContext, deps());
+      await messageHandler({ command: 'deleteCredential', id: 'cred-1' });
+      expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
+      expect(mockCredentialManager.delete).toHaveBeenCalledWith('cred-1');
+    });
   });
 
   it('testConnection temporarily assembles credential with provided password and tests', async () => {
@@ -329,6 +381,53 @@ describe('SshCredentialPanel message handling', () => {
     expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
       command: 'testResult', success: true,
     }));
+  });
+
+  // Chain-aware Test Connection (18a-2b, Q16): a chained credential's test
+  // must say WHICH hop failed, not just that "the connection" did.
+  describe('testConnection hop-failure reporting', () => {
+    it('surfaces hopIndex/hopHost from a HopConnectError, with the cause as the message', async () => {
+      (createTransferService as jest.Mock).mockImplementation(() => ({
+        connect: jest.fn().mockRejectedValue(
+          new HopConnectError(1, 'bastion2.example.com', new Error('Connection refused'))
+        ),
+        disconnect: jest.fn(),
+      }));
+      SshCredentialPanel.createOrShow(mockContext, deps());
+      await messageHandler({
+        command: 'testConnection',
+        credential: { ...credentialFixture, jumpHosts: ['cred-b1', 'cred-b2'] },
+        password: 'typed-password',
+      });
+      expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+        command: 'testResult',
+        success: false,
+        hopIndex: 1,
+        hopHost: 'bastion2.example.com',
+        message: 'Connection refused',
+      }));
+    });
+
+    it('passes an unwrapped InteractionRequiredError message through without hop attribution', async () => {
+      // SftpService unwraps a HopConnectError whose cause is an
+      // InteractionRequiredError — the typed error already names host:port.
+      (createTransferService as jest.Mock).mockImplementation(() => ({
+        connect: jest.fn().mockRejectedValue(new HostNotTrustedError('bastion.example.com', 2222, 'unknown')),
+        disconnect: jest.fn(),
+      }));
+      SshCredentialPanel.createOrShow(mockContext, deps());
+      await messageHandler({
+        command: 'testConnection',
+        credential: { ...credentialFixture, jumpHosts: ['cred-b1'] },
+        password: 'typed-password',
+      });
+      const result = (mockWebview.postMessage as jest.Mock).mock.calls
+        .map(c => c[0]).find(m => m.command === 'testResult');
+      expect(result.success).toBe(false);
+      expect(result.hopIndex).toBeUndefined();
+      expect(result.hopHost).toBeUndefined();
+      expect(result.message).toContain('bastion.example.com:2222');
+    });
   });
 
   it('testConnection does not persist any changes to storage', async () => {
@@ -394,6 +493,24 @@ describe('SshCredentialPanel message handling', () => {
       undefined,
       undefined
     );
+  });
+
+  it('saveCredential preserves picker hop order exactly (18a-2b, Q16)', async () => {
+    (mockCredentialManager.getAll as jest.Mock).mockResolvedValue([
+      credentialFixture,
+      { id: 'cred-hop-a', name: 'Hop A', host: 'a.example.com', port: 22, username: 'jump', authMethod: 'password' },
+      { id: 'cred-hop-b', name: 'Hop B', host: 'b.example.com', port: 22, username: 'jump', authMethod: 'password' },
+    ]);
+    SshCredentialPanel.createOrShow(mockContext, deps());
+    await messageHandler({
+      command: 'saveCredential',
+      payload: {
+        credential: { ...credentialFixture, jumpHosts: ['cred-hop-b', 'cred-hop-a'] },
+        password: undefined,
+      },
+    });
+    const savedCredential = (mockCredentialManager.save as jest.Mock).mock.calls[0][0];
+    expect(savedCredential.jumpHosts).toEqual(['cred-hop-b', 'cred-hop-a']);
   });
 
   it('saveCredential omits jumpHosts when the list is empty', async () => {

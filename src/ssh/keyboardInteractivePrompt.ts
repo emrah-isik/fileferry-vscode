@@ -11,17 +11,33 @@ import * as vscode from 'vscode';
  */
 export async function showKeyboardInteractivePrompts(
   prompts: Array<{ prompt: string; echo: boolean }>,
-  title?: string
+  title?: string,
+  signal?: AbortSignal
 ): Promise<string[] | null> {
   const responses: string[] = [];
 
   for (const p of prompts) {
-    const value = await vscode.window.showInputBox({
-      ...(title ? { title } : {}),
-      prompt: p.prompt,
-      password: !p.echo,
-      ignoreFocusOut: true,
-    });
+    // A cancelled connect (18a-2b) dismisses the open box via the signal —
+    // ignoreFocusOut keeps it alive through focus loss, so nothing else
+    // would ever close it.
+    if (signal?.aborted) {
+      return null;
+    }
+    const cancellation = new vscode.CancellationTokenSource();
+    const onAbort = (): void => cancellation.cancel();
+    signal?.addEventListener('abort', onAbort, { once: true });
+    let value: string | undefined;
+    try {
+      value = await vscode.window.showInputBox({
+        ...(title ? { title } : {}),
+        prompt: p.prompt,
+        password: !p.echo,
+        ignoreFocusOut: true,
+      }, cancellation.token);
+    } finally {
+      signal?.removeEventListener('abort', onAbort);
+      cancellation.dispose();
+    }
     if (value === undefined) {
       return null;
     }

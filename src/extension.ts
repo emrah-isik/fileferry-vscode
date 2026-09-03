@@ -38,6 +38,7 @@ import { duplicateRemoteItem } from './commands/duplicateRemoteItem';
 import { moveRemoteItem } from './commands/moveRemoteItem';
 import { chmodRemoteItem } from './commands/chmodRemoteItem';
 import { uploadFilesHere, uploadFolderHere } from './commands/uploadHere';
+import { disconnectRemoteBrowser } from './commands/disconnectRemoteBrowser';
 import { UploadOnSaveService } from './services/UploadOnSaveService';
 import { FileWatcherService } from './services/FileWatcherService';
 import { DeploymentServer } from './models/DeploymentServer';
@@ -111,6 +112,10 @@ export function activate(context: vscode.ExtensionContext): void {
       },
     },
     log: sshLog,
+    warn: (message) => {
+      sshLog(message);
+      void vscode.window.showWarningMessage(message);
+    },
   });
   context.subscriptions.push({ dispose: () => connectProviderRegistry.clear() });
   context.subscriptions.push({ dispose: () => jumpHostPool.dispose() });
@@ -145,8 +150,19 @@ export function activate(context: vscode.ExtensionContext): void {
   const fileWatcher = new FileWatcherService({ credentialManager, configManager, output });
   context.subscriptions.push(fileWatcher.register());
 
+  // Thin void adapter over CredentialManager.onDidChange for UI refreshes
+  // (Servers view, Deployment Settings' credential dropdown). Kept separate
+  // from the manager's typed event on purpose (18a-2b decision): consumers
+  // here only need "something changed", and the manager event is the single
+  // source — SshCredentialPanel no longer reports changes itself.
   const credentialsChangedEmitter = new vscode.EventEmitter<void>();
   context.subscriptions.push(credentialsChangedEmitter);
+  context.subscriptions.push(credentialManager.onDidChange((event) => {
+    // Order matters: evict the stale pooled hop BEFORE the UI refresh events
+    // trigger renders that might re-acquire it (H3/Q14).
+    jumpHostPool.evictBySourceId(event.id);
+    credentialsChangedEmitter.fire();
+  }));
 
   context.subscriptions.push(
     vscode.commands.registerCommand(
@@ -218,7 +234,7 @@ export function activate(context: vscode.ExtensionContext): void {
       withErrorHandling('openCredentials', async (credentialId?: unknown) =>
         SshCredentialPanel.createOrShow(
           context,
-          { credentialManager, configManager, onCredentialChange: () => credentialsChangedEmitter.fire() },
+          { credentialManager, configManager },
           typeof credentialId === 'string' && credentialId ? { selectCredentialId: credentialId } : undefined
         )
       )
@@ -356,7 +372,7 @@ export function activate(context: vscode.ExtensionContext): void {
   updateHasServersContext();
 
   // Remote File Browser
-  const browserConnection = new RemoteBrowserConnection(credentialManager, configManager, output);
+  const browserConnection = new RemoteBrowserConnection(credentialManager, configManager, output, jumpHostPool);
   const browserProvider = new RemoteBrowserProvider(browserConnection);
   const remoteEditSessionRegistry = new RemoteEditSessionRegistry();
   const remoteEditSaveListener = new RemoteEditSaveListener({
@@ -656,10 +672,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
     vscode.commands.registerCommand(
       'fileferry.remoteBrowser.disconnect',
-      withErrorHandling('disconnect', async () => {
-        await browserProvider.suspend();
-        vscode.window.showInformationMessage('FileFerry: Remote browser disconnected.');
-      })
+      withErrorHandling('disconnect', () => disconnectRemoteBrowser(browserProvider, jumpHostPool))
     ),
 
     // Refresh views when project config changes

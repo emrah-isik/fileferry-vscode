@@ -8,11 +8,13 @@ import { generateId } from '../../utils/uuid';
 import { SshCredential, SshCredentialWithSecret } from '../../models/SshCredential';
 import { validateSshCredential } from '../../utils/validation';
 import { describeResolution } from '../../ssh/SshConfigResolver';
+import { HopConnectError } from '../../ssh/connectErrors';
 
+// Change notification is NOT a panel concern (18a-2b): CredentialManager
+// fires onDidChange on every save/delete; subscribers wire up in extension.ts.
 interface Deps {
   credentialManager: CredentialManager;
   configManager: ProjectConfigManager;
-  onCredentialChange?: () => void;
 }
 
 // Messages posted from the webview. `command` selects the handler; the other
@@ -191,7 +193,6 @@ export class SshCredentialPanel {
       this.postSshConfigSummary(saved);
     }
     vscode.window.showInformationMessage(`FileFerry: Credential "${saved.name}" saved.`);
-    this.deps.onCredentialChange?.();
   }
 
   // Surfaces what ~/.ssh/config resolution did for an alias credential, so alias
@@ -217,20 +218,38 @@ export class SshCredentialPanel {
     const credentials = await this.deps.credentialManager.getAll();
     const credential = credentials.find(c => c.id === id);
     const config = await this.deps.configManager.getConfig();
-    const references = config
+
+    // Delete guard (18a-2b, Q28/H5): a referenced credential cannot be
+    // deleted — neither cascade-delete nor a dangling id is acceptable. Scans
+    // servers AND every other credential's jumpHosts; names are display-only.
+    const serverReferences = config
       ? Object.entries(config.servers).filter(([, s]) => s.credentialId === id).map(([name]) => name)
       : [];
+    const hopReferences = credentials
+      .filter(c => c.id !== id && (c.jumpHosts ?? []).includes(id))
+      .map(c => c.name);
+    if (serverReferences.length > 0 || hopReferences.length > 0) {
+      const reasons: string[] = [];
+      if (serverReferences.length > 0) {
+        reasons.push(`used by server${serverReferences.length > 1 ? 's' : ''}: ${serverReferences.join(', ')}`);
+      }
+      if (hopReferences.length > 0) {
+        reasons.push(`used as a jump host by: ${hopReferences.join(', ')}`);
+      }
+      vscode.window.showErrorMessage(
+        `FileFerry: Cannot delete "${credential?.name ?? 'this credential'}" — ${reasons.join('; ')}. Reassign those first.`
+      );
+      return;
+    }
 
-    const message = references.length > 0
-      ? `Delete "${credential?.name ?? 'this credential'}"? It is used by: ${references.join(', ')}.`
-      : `Delete "${credential?.name ?? 'this credential'}"? This cannot be undone.`;
-
-    const answer = await vscode.window.showWarningMessage(message, 'Delete', 'Cancel');
+    const answer = await vscode.window.showWarningMessage(
+      `Delete "${credential?.name ?? 'this credential'}"? This cannot be undone.`,
+      'Delete', 'Cancel'
+    );
     if (answer !== 'Delete') return;
 
     await this.deps.credentialManager.delete(id);
     this.panel.webview.postMessage({ command: 'credentialDeleted', id });
-    this.deps.onCredentialChange?.();
   }
 
   private async handleTestConnection(
@@ -272,6 +291,20 @@ export class SshCredentialPanel {
       await service.disconnect();
       this.panel.webview.postMessage({ command: 'testResult', success: true, message: 'Connected successfully' });
     } catch (err: unknown) {
+      // Chain-aware reporting (18a-2b, Q16): a HopConnectError says WHICH hop
+      // failed — pass the attribution through so the webview can show it.
+      // (SftpService already unwraps hop failures whose cause is an
+      // InteractionRequiredError; those messages name host:port themselves.)
+      if (err instanceof HopConnectError) {
+        this.panel.webview.postMessage({
+          command: 'testResult',
+          success: false,
+          message: err.cause.message,
+          hopIndex: err.hopIndex,
+          hopHost: err.hopHost,
+        });
+        return;
+      }
       this.panel.webview.postMessage({
         command: 'testResult',
         success: false,

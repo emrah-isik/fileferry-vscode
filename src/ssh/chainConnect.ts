@@ -12,7 +12,7 @@ import {
   PromptContext,
   PRE_PROMPT_TIMEOUT_MS,
 } from './connectProviders';
-import { HopConnectError, HostNotTrustedError, VerificationRequiredError } from './connectErrors';
+import { ConnectionCancelledError, HopConnectError, HostNotTrustedError, VerificationRequiredError } from './connectErrors';
 import { DEFAULT_ALGORITHMS } from './defaultAlgorithms';
 import { JumpHostDialer, JumpHostHandle, JumpHostPool } from './JumpHostPool';
 
@@ -56,12 +56,37 @@ export interface ChainConnectResult {
 export async function chainConnect(
   target: ChainConnectTarget,
   hopIds: string[],
-  options: { interactive: boolean },
+  options: { interactive: boolean; signal?: AbortSignal },
   dependencies: ChainConnectDependencies
 ): Promise<ChainConnectResult> {
   if (hopIds.length === 0) {
     throw new Error('chainConnect called with no jump hosts — direct connects must not route through the chain');
   }
+  const signal = options.signal;
+  if (signal?.aborted) {
+    throw new ConnectionCancelledError('the connection request was superseded');
+  }
+
+  // Races a chain step against the abort signal (18a-2b §I wedge fix): a
+  // superseded connect stops waiting immediately. The underlying step may
+  // still settle later — `onLateResolve` cleans up what it produced (a pool
+  // lease, a forwarded channel) so nothing leaks.
+  const raceWithSignal = <T>(step: Promise<T>, onLateResolve: (value: T) => void): Promise<T> => {
+    if (!signal) {
+      return step;
+    }
+    return new Promise<T>((resolve, reject) => {
+      const onAbort = (): void => {
+        reject(new ConnectionCancelledError('the connection request was superseded'));
+        step.then(onLateResolve, () => undefined);
+      };
+      signal.addEventListener('abort', onAbort, { once: true });
+      step.then(
+        (value) => { signal.removeEventListener('abort', onAbort); resolve(value); },
+        (error: unknown) => { signal.removeEventListener('abort', onAbort); reject(error); }
+      );
+    });
+  };
 
   const hopCredentials: SshCredentialWithSecret[] = [];
   for (const [hopIndex, hopId] of hopIds.entries()) {
@@ -95,14 +120,20 @@ export async function chainConnect(
     for (const [hopIndex, hopCredential] of hopCredentials.entries()) {
       const carrier = previousHandle;
       try {
-        const handle = await dependencies.pool.acquire({
-          target: { username: hopCredential.username, host: hopCredential.host, port: hopCredential.port },
-          sourceId: hopCredential.id,
-          dialer: createHopDialer(hopCredential, carrier, options.interactive, dependencies),
-        });
+        const handle = await raceWithSignal(
+          dependencies.pool.acquire({
+            target: { username: hopCredential.username, host: hopCredential.host, port: hopCredential.port },
+            sourceId: hopCredential.id,
+            dialer: createHopDialer(hopCredential, carrier, options, dependencies),
+          }),
+          (lateHandle) => lateHandle.release()
+        );
         handles.push(handle);
         previousHandle = handle;
       } catch (error: unknown) {
+        if (error instanceof ConnectionCancelledError) {
+          throw error;
+        }
         throw toHopConnectError(hopIndex, hopCredential.host, error);
       }
     }
@@ -110,8 +141,14 @@ export async function chainConnect(
     const lastHopIndex = hopCredentials.length - 1;
     let sock: ClientChannel;
     try {
-      sock = await previousHandle!.forwardOut('127.0.0.1', 0, target.host, target.port);
+      sock = await raceWithSignal(
+        previousHandle!.forwardOut('127.0.0.1', 0, target.host, target.port),
+        (lateChannel) => lateChannel.destroy()
+      );
     } catch (error: unknown) {
+      if (error instanceof ConnectionCancelledError) {
+        throw error;
+      }
       // The forward to the target is the last hop refusing/failing it —
       // attribute it there (AllowTcpForwarding/PermitOpen live on the hop).
       throw toHopConnectError(lastHopIndex, hopCredentials[lastHopIndex].host, error);
@@ -143,9 +180,10 @@ function toHopConnectError(hopIndex: number, hopHost: string, error: unknown): H
 function createHopDialer(
   credential: SshCredentialWithSecret,
   carrier: JumpHostHandle | undefined,
-  interactive: boolean,
+  options: { interactive: boolean; signal?: AbortSignal },
   dependencies: ChainConnectDependencies
 ): JumpHostDialer {
+  const { interactive, signal } = options;
   const attemptState = { keychainAnswerUsed: false, userPrompted: false };
 
   return {
@@ -178,7 +216,7 @@ function createHopDialer(
       }
 
       let timer: PrePromptTimer | undefined;
-      const context: PromptContext = { promptOpened: () => timer?.promptOpened() };
+      const context: PromptContext = { promptOpened: () => timer?.promptOpened(), signal };
 
       if (keyboardInteractive) {
         client.on('keyboard-interactive', createKeyboardInteractiveListener(dependencies.coordinator, {

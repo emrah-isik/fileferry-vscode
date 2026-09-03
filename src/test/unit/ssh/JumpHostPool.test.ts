@@ -312,6 +312,44 @@ describe('JumpHostPool', () => {
     expect(evicted).toHaveLength(0);
   });
 
+  // 18a-2b, H3/Q14: a saved/deleted credential invalidates its pooled hop —
+  // the connection was authenticated with the OLD data. Unlike drain, this IS
+  // an eviction: live holders' sessions ride the closed client, so onDidEvict
+  // must fire for consumers (Remote Files) to react.
+  describe('evictBySourceId', () => {
+    it('closes the hop dialed with that credential and fires onDidEvict, even while held', async () => {
+      const evicted: string[] = [];
+      pool.onDidEvict((key) => evicted.push(key));
+      const handle = await pool.acquire(request('cred-bastion'));
+      pool.evictBySourceId('cred-bastion');
+      await flushMicrotasks();
+      expect(clients[0].ended).toBe(true);
+      expect(evicted).toEqual(['jump@bastion.example.com:22']);
+      handle.release();
+    });
+
+    it('leaves hops dialed with other credentials untouched', async () => {
+      const evicted: string[] = [];
+      pool.onDidEvict((key) => evicted.push(key));
+      const handle = await pool.acquire(request('cred-bastion'));
+      pool.evictBySourceId('cred-unrelated');
+      await flushMicrotasks();
+      expect(clients[0].ended).toBe(false);
+      expect(evicted).toHaveLength(0);
+      handle.release();
+    });
+
+    it('a fresh acquire after the eviction dials a new connection', async () => {
+      const first = await pool.acquire(request('cred-bastion'));
+      first.release();
+      pool.evictBySourceId('cred-bastion');
+      await flushMicrotasks();
+      const second = await pool.acquire(request('cred-bastion'));
+      expect(clients).toHaveLength(2);
+      second.release();
+    });
+  });
+
   it('release is idempotent per handle', async () => {
     jest.useFakeTimers({ doNotFake: ["setImmediate"] });
     try {

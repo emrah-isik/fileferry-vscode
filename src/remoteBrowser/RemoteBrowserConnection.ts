@@ -4,42 +4,99 @@ import { createTransferService } from '../transferServiceFactory';
 import { CredentialManager } from '../storage/CredentialManager';
 import { ProjectConfigManager } from '../storage/ProjectConfigManager';
 import { ServerConfig } from '../types';
+import { JumpHostPool } from '../ssh/JumpHostPool';
+import { ConnectionCancelledError } from '../ssh/connectErrors';
+import { ProjectServer } from '../models/ProjectConfig';
 
 const IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+
+// The one connect this shared connection currently has in flight (18a-2b §I
+// wedge fix). Overlapping ensureConnected calls join it instead of racing it,
+// and a default-server change / suspend / disconnect aborts it — including a
+// connect parked on an open MFA prompt, which previously wedged every later
+// panel render until Reload Window.
+interface InFlightConnect {
+  serverId: string;
+  credentialId: string;
+  interactive: boolean;
+  promise: Promise<void>;
+  controller: AbortController;
+}
 
 export class RemoteBrowserConnection {
   private sftp: TransferService;
   private currentServerId: string | null = null;
   private currentCredentialId: string | null = null;
   private currentRootPath: string = '/';
+  private inFlightConnect: InFlightConnect | null = null;
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly configSaveSubscription: vscode.Disposable;
+  private readonly credentialChangeSubscription: vscode.Disposable;
+
+  // Pool keys of the hops the CURRENT session tunnels through (18a-2b, Q34).
+  // Empty for unchained sessions; cleared on disconnect.
+  private currentRouteKeys = new Set<string>();
+  private readonly poolEvictSubscription: { dispose(): void } | undefined;
 
   private readonly _onDidDisconnect = new vscode.EventEmitter<void>();
   readonly onDidDisconnect = this._onDidDisconnect.event;
 
+  // Fired when a hop on the current route was evicted from the pool
+  // (unexpected close, credential change) — the session's tunnel is dead.
+  private readonly _onDidLoseRoute = new vscode.EventEmitter<string>();
+  readonly onDidLoseRoute = this._onDidLoseRoute.event;
+
   constructor(
     private readonly credentialManager: CredentialManager,
     private readonly configManager: ProjectConfigManager,
-    private readonly output: vscode.OutputChannel
+    private readonly output: vscode.OutputChannel,
+    jumpHostPool?: Pick<JumpHostPool, 'onDidEvict'>
   ) {
     this.sftp = createTransferService('sftp');
     this.configSaveSubscription = this.configManager.onDidSaveConfig(() => {
       void this.handleConfigSaved();
     });
+    // 18a-2b, H3: an open session must not survive editing/deleting its own
+    // credential — it authenticated with the old host/user/auth. Drop it; the
+    // next operation reconnects with the current data.
+    this.credentialChangeSubscription = this.credentialManager.onDidChange((event) => {
+      if (this.inFlightConnect?.credentialId === event.id) {
+        // The in-flight dial authenticated with data that just changed.
+        this.abortInFlightConnect('its credential changed');
+      }
+      if (event.id === this.currentCredentialId) {
+        this.output.appendLine('[remote-browser] Session credential changed — disconnecting');
+        return this.disconnect();
+      }
+    });
+    this.poolEvictSubscription = jumpHostPool?.onDidEvict((key) => {
+      if (this.currentRouteKeys.has(key)) {
+        this.output.appendLine(`[remote-browser] Jump host ${key} on the current route was evicted`);
+        this._onDidLoseRoute.fire(key);
+      }
+    });
   }
 
   private async handleConfigSaved(): Promise<void> {
-    if (!this.sftp.connected) { return; }
-
     try {
       const config = await this.configManager.getConfig();
-      if (!config || !config.defaultServerId) {
-        await this.disconnect();
-        return;
+      const match = config?.defaultServerId
+        ? await this.configManager.getServerById(config.defaultServerId)
+        : undefined;
+
+      // §I wedge fix: a connect parked on an open prompt has no session yet
+      // (`connected` is still false during the chain phase), so it must be
+      // cancelled HERE — before the connected checks — when it no longer
+      // matches the default. Otherwise its render promise never settles and
+      // the panel hangs until Reload Window.
+      const inFlight = this.inFlightConnect;
+      if (inFlight && (!match
+        || match.server.id !== inFlight.serverId
+        || match.server.credentialId !== inFlight.credentialId)) {
+        this.abortInFlightConnect('the default server changed');
       }
 
-      const match = await this.configManager.getServerById(config.defaultServerId);
+      if (!this.sftp.connected) { return; }
       if (!match) {
         await this.disconnect();
         return;
@@ -71,6 +128,7 @@ export class RemoteBrowserConnection {
   // callers turn into the "Host not verified" placeholder row or the
   // non-modal verification warning.
   async ensureConnected(options?: { interactive?: boolean }): Promise<void> {
+    const interactive = options?.interactive !== false;
     const config = await this.configManager.getConfig();
     if (!config || !config.defaultServerId) {
       throw new Error('No server configured. Open Deployment Settings to add one.');
@@ -88,13 +146,61 @@ export class RemoteBrowserConnection {
       return;
     }
 
+    // Overlap guard (§I wedge fix): the panel's renders, saves, and commands
+    // all share this connection — never run two connects at once.
+    const inFlight = this.inFlightConnect;
+    if (inFlight) {
+      const sameIdentity = inFlight.serverId === server.id
+        && inFlight.credentialId === server.credentialId;
+      if (sameIdentity && (inFlight.interactive || !interactive)) {
+        return inFlight.promise;
+      }
+      if (sameIdentity) {
+        // Interactive request joining a background connect: take its result;
+        // only if it fails (e.g. needing prompts) run our own attempt.
+        try {
+          await inFlight.promise;
+          return;
+        } catch {
+          // fall through to a fresh interactive connect
+        }
+      } else {
+        this.abortInFlightConnect('superseded by a connection to a different server');
+      }
+    }
+
+    const controller = new AbortController();
+    const entry: InFlightConnect = {
+      serverId: server.id,
+      credentialId: server.credentialId,
+      interactive,
+      promise: this.performConnect(serverName, server, interactive, controller.signal),
+      controller,
+    };
+    this.inFlightConnect = entry;
+    try {
+      await entry.promise;
+    } finally {
+      if (this.inFlightConnect === entry) {
+        this.inFlightConnect = null;
+      }
+    }
+  }
+
+  private async performConnect(
+    serverName: string,
+    server: ProjectServer,
+    interactive: boolean,
+    signal: AbortSignal
+  ): Promise<void> {
     // Connected to a different server — disconnect first
     if (this.sftp.connected) {
       await this.sftp.disconnect();
     }
 
     // Create the correct service type for this server
-    this.sftp = createTransferService(server.type);
+    const service = createTransferService(server.type);
+    this.sftp = service;
 
     const credential = await this.credentialManager.getWithSecret(server.credentialId);
 
@@ -117,16 +223,59 @@ export class RemoteBrowserConnection {
     // Host-key verification and keyboard-interactive prompts are not wired
     // here: SftpService.connect() applies the registered connect providers
     // (src/ssh/connectProviders.ts) to every SSH connect, and FTP/FTPS have
-    // no host keys to verify.
-    await this.sftp.connect(serverConfig, {
+    // no host keys to verify. The signal lets abortInFlightConnect cancel
+    // this dial — an open prompt included.
+    await service.connect(serverConfig, {
       password: credential.password,
       passphrase: credential.passphrase,
-    }, { interactive: options?.interactive !== false });
+    }, { interactive, signal });
+
+    if (signal.aborted) {
+      // Aborted in the narrow window after the transport resolved — the
+      // superseding connect owns the state now, so never adopt this session.
+      await service.disconnect().catch(() => undefined);
+      throw new ConnectionCancelledError('the connection request was superseded');
+    }
 
     this.currentServerId = server.id;
     this.currentCredentialId = server.credentialId;
     this.currentRootPath = server.rootPath;
+    this.currentRouteKeys = await this.computeRouteKeys(credential.jumpHosts);
     this.output.appendLine(`[remote-browser] Connected to ${serverName} (${credential.host})`);
+  }
+
+  // §I wedge fix: settles the in-flight connect's promise (rejecting through
+  // SftpService's abort machinery) and dismisses any prompt it has open, so
+  // a parked connect can never wedge later renders.
+  private abortInFlightConnect(reason: string): void {
+    const inFlight = this.inFlightConnect;
+    if (!inFlight) {
+      return;
+    }
+    this.inFlightConnect = null;
+    this.output.appendLine(`[remote-browser] Cancelling in-flight connect — ${reason}`);
+    inFlight.controller.abort();
+    // The owner's await handles the rejection; this guard only covers the
+    // window where the owner's frame was already torn down.
+    inFlight.promise.catch(() => undefined);
+  }
+
+  // Canonical pool keys for this session's hops, so pool evictions can be
+  // matched against the route (Q34). Ids resolve through the credential list
+  // — a dangling id simply contributes no key.
+  private async computeRouteKeys(jumpHostIds: string[] | undefined): Promise<Set<string>> {
+    const keys = new Set<string>();
+    if (!jumpHostIds || jumpHostIds.length === 0) {
+      return keys;
+    }
+    const all = await this.credentialManager.getAll();
+    for (const hopId of jumpHostIds) {
+      const hop = all.find(c => c.id === hopId);
+      if (hop) {
+        keys.add(JumpHostPool.keyFor({ username: hop.username, host: hop.host, port: hop.port }));
+      }
+    }
+    return keys;
   }
 
   async listDirectory(remotePath: string): Promise<FileEntry[]> {
@@ -224,6 +373,7 @@ export class RemoteBrowserConnection {
   }
 
   async disconnect(): Promise<void> {
+    this.abortInFlightConnect('disconnected');
     this.clearIdleTimer();
     if (this.sftp.connected) {
       await this.sftp.disconnect();
@@ -231,6 +381,7 @@ export class RemoteBrowserConnection {
     }
     this.currentServerId = null;
     this.currentCredentialId = null;
+    this.currentRouteKeys = new Set();
   }
 
   getRootPath(): string {
@@ -240,7 +391,10 @@ export class RemoteBrowserConnection {
   dispose(): void {
     this.clearIdleTimer();
     this.configSaveSubscription.dispose();
+    this.credentialChangeSubscription.dispose();
+    this.poolEvictSubscription?.dispose();
     this._onDidDisconnect.dispose();
+    this._onDidLoseRoute.dispose();
   }
 
   private resetIdleTimer(): void {

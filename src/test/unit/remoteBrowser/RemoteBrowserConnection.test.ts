@@ -23,8 +23,19 @@ const mockSftp = {
 
 (createTransferService as jest.Mock).mockReturnValue(mockSftp);
 
+type CredentialChangeListener = (event: { id: string; kind: 'save' | 'delete' }) => unknown;
+const credentialChangeListeners: CredentialChangeListener[] = [];
+const fireCredentialChange = async (event: { id: string; kind: 'save' | 'delete' }) => {
+  for (const listener of [...credentialChangeListeners]) { await listener(event); }
+};
+
 const mockCredentialManager = {
   getWithSecret: jest.fn(),
+  getAll: jest.fn().mockResolvedValue([]),
+  onDidChange: (listener: CredentialChangeListener) => {
+    credentialChangeListeners.push(listener);
+    return { dispose: () => { const i = credentialChangeListeners.indexOf(listener); if (i >= 0) { credentialChangeListeners.splice(i, 1); } } };
+  },
 };
 
 type SaveListener = () => void;
@@ -78,6 +89,7 @@ describe('RemoteBrowserConnection', () => {
     jest.clearAllMocks();
     jest.useFakeTimers();
     saveListeners.length = 0;
+    credentialChangeListeners.length = 0;
     mockSftp.connected = false;
     mockConfigManager.getConfig.mockResolvedValue(fakeConfig);
     mockConfigManager.getServerById.mockResolvedValue({ name: 'Production', server: fakeServer });
@@ -110,7 +122,7 @@ describe('RemoteBrowserConnection', () => {
           authMethod: 'password',
         }),
         expect.objectContaining({ password: 'secret' }),
-        { interactive: true }
+        expect.objectContaining({ interactive: true })
       );
     });
 
@@ -135,7 +147,7 @@ describe('RemoteBrowserConnection', () => {
     it('forwards interactive:false to the connect (18a-1b)', async () => {
       await connection.ensureConnected({ interactive: false });
       expect(mockSftp.connect).toHaveBeenCalledWith(
-        expect.anything(), expect.anything(), { interactive: false }
+        expect.anything(), expect.anything(), expect.objectContaining({ interactive: false })
       );
     });
 
@@ -151,7 +163,7 @@ describe('RemoteBrowserConnection', () => {
       await run();
 
       expect(mockSftp.connect).toHaveBeenCalledWith(
-        expect.anything(), expect.anything(), { interactive: false }
+        expect.anything(), expect.anything(), expect.objectContaining({ interactive: false })
       );
     });
 
@@ -725,6 +737,218 @@ describe('RemoteBrowserConnection', () => {
 
       expect(mockSftp.disconnect).not.toHaveBeenCalled();
       expect(mockSftp.connect).not.toHaveBeenCalled();
+    });
+  });
+
+  // 18a-2b, H3: fixes the pre-existing staleness where an open Remote Files
+  // session survived editing (or deleting) its own credential — the session
+  // was authenticated with the OLD host/user/auth.
+  describe('credential-change invalidation', () => {
+    it('drops the open session when its own credential is saved', async () => {
+      await connection.ensureConnected();
+      mockSftp.connected = true;
+      mockSftp.disconnect.mockClear();
+
+      await fireCredentialChange({ id: 'cred-1', kind: 'save' });
+
+      expect(mockSftp.disconnect).toHaveBeenCalled();
+      expect(connection.getCurrentServerId()).toBeNull();
+    });
+
+    it('drops the open session when its own credential is deleted', async () => {
+      await connection.ensureConnected();
+      mockSftp.connected = true;
+      mockSftp.disconnect.mockClear();
+
+      await fireCredentialChange({ id: 'cred-1', kind: 'delete' });
+
+      expect(mockSftp.disconnect).toHaveBeenCalled();
+    });
+
+    it('ignores changes to a credential the session does not use', async () => {
+      await connection.ensureConnected();
+      mockSftp.connected = true;
+      mockSftp.disconnect.mockClear();
+
+      await fireCredentialChange({ id: 'cred-other', kind: 'save' });
+
+      expect(mockSftp.disconnect).not.toHaveBeenCalled();
+    });
+
+    it('dispose() unsubscribes from credential changes', async () => {
+      await connection.ensureConnected();
+      mockSftp.connected = true;
+      mockSftp.disconnect.mockClear();
+
+      connection.dispose();
+      await fireCredentialChange({ id: 'cred-1', kind: 'save' });
+
+      expect(mockSftp.disconnect).not.toHaveBeenCalled();
+    });
+  });
+
+  // 18a-2b §I wedge fix: the panel's single shared connection was not guarded
+  // against overlapping ensureConnected calls, and a connect parked on an
+  // open prompt (chain+MFA) was never cancelled on a default-server change —
+  // its getChildren promise never settled and every later render hung until
+  // Reload Window. These tests encode the (code-trace-confirmed) repro.
+  describe('in-flight connect management (18a-2b §I wedge fix)', () => {
+    const flushMicrotasks = async (): Promise<void> => {
+      for (let i = 0; i < 10; i++) { await Promise.resolve(); }
+    };
+
+    // Parks every connect until its signal aborts (rejecting like
+    // SftpService's abort machinery) or the test resolves it.
+    let connectResolvers: Array<() => void>;
+    const parkConnects = (): void => {
+      connectResolvers = [];
+      mockSftp.connect.mockImplementation((_server: unknown, _credentials: unknown, options?: { signal?: AbortSignal }) =>
+        new Promise<void>((resolve, reject) => {
+          connectResolvers.push(resolve);
+          options?.signal?.addEventListener('abort', () =>
+            reject(new Error('Connection cancelled: the connection request was superseded')));
+        })
+      );
+    };
+
+    const switchDefaultTo = (server: typeof fakeServer, name: string) => {
+      mockConfigManager.getConfig.mockResolvedValue({ defaultServerId: server.id, servers: { [name]: server } });
+      mockConfigManager.getServerById.mockResolvedValue({ name, server });
+    };
+
+    it('REPRO: a connect parked on an open prompt settles when the default server changes — the panel cannot wedge', async () => {
+      parkConnects();
+      const pending = connection.ensureConnected();
+      await flushMicrotasks();
+      expect(mockSftp.connect).toHaveBeenCalledTimes(1);
+
+      switchDefaultTo({ ...fakeServer, id: 'server-2' }, 'Other');
+      await fireOnDidSaveConfig();
+
+      await expect(pending).rejects.toThrow(/cancelled/i);
+    });
+
+    it('overlapping ensureConnected calls for the same server share one connect', async () => {
+      parkConnects();
+      const first = connection.ensureConnected();
+      await flushMicrotasks();
+      const second = connection.ensureConnected();
+      await flushMicrotasks();
+
+      expect(mockSftp.connect).toHaveBeenCalledTimes(1);
+      connectResolvers[0]();
+      await expect(first).resolves.toBeUndefined();
+      await expect(second).resolves.toBeUndefined();
+    });
+
+    it('ensureConnected for a different server aborts the in-flight connect and dials the new one', async () => {
+      parkConnects();
+      const first = connection.ensureConnected();
+      await flushMicrotasks();
+
+      switchDefaultTo({ ...fakeServer, id: 'server-2' }, 'Other');
+      const second = connection.ensureConnected();
+      await flushMicrotasks();
+
+      await expect(first).rejects.toThrow(/cancelled/i);
+      expect(mockSftp.connect).toHaveBeenCalledTimes(2);
+      connectResolvers[1]();
+      await expect(second).resolves.toBeUndefined();
+    });
+
+    it('disconnect() aborts an in-flight connect', async () => {
+      parkConnects();
+      const pending = connection.ensureConnected();
+      await flushMicrotasks();
+
+      await connection.disconnect();
+
+      await expect(pending).rejects.toThrow(/cancelled/i);
+    });
+
+    it('a credential change aborts an in-flight connect using that credential', async () => {
+      parkConnects();
+      const pending = connection.ensureConnected();
+      await flushMicrotasks();
+
+      await fireCredentialChange({ id: 'cred-1', kind: 'save' });
+
+      await expect(pending).rejects.toThrow(/cancelled/i);
+    });
+
+    it('passes an AbortSignal to the transfer service connect', async () => {
+      await connection.ensureConnected();
+      const options = mockSftp.connect.mock.calls[0][2];
+      expect(options.signal).toBeInstanceOf(AbortSignal);
+    });
+  });
+
+  // 18a-2b, Q34: when a hop on the CURRENT session's route is evicted from
+  // the pool (unexpected close, credential change), the session is dead —
+  // onDidLoseRoute lets the panel drop to its Disconnected state.
+  describe('jump-host route eviction (Q34)', () => {
+    const bastionCredential = {
+      id: 'cred-bastion', name: 'Bastion', host: 'Bastion.example.com', port: 2222,
+      username: 'jump', authMethod: 'password' as const,
+    };
+    const evictListeners: Array<(key: string) => void> = [];
+    const fireEvict = (key: string) => { for (const listener of [...evictListeners]) { listener(key); } };
+    const fakePool = {
+      onDidEvict: (listener: (key: string) => void) => {
+        evictListeners.push(listener);
+        return { dispose: () => { const i = evictListeners.indexOf(listener); if (i >= 0) { evictListeners.splice(i, 1); } } };
+      },
+    };
+
+    let routedConnection: RemoteBrowserConnection;
+    let lostRoutes: string[];
+
+    beforeEach(() => {
+      evictListeners.length = 0;
+      lostRoutes = [];
+      mockCredentialManager.getWithSecret.mockResolvedValue({
+        ...fakeCredential,
+        jumpHosts: ['cred-bastion'],
+      });
+      mockCredentialManager.getAll.mockResolvedValue([fakeCredential, bastionCredential]);
+      routedConnection = new RemoteBrowserConnection(
+        mockCredentialManager as any,
+        mockConfigManager as any,
+        mockOutput as any,
+        fakePool as any
+      );
+      routedConnection.onDidLoseRoute((key: string) => lostRoutes.push(key));
+    });
+
+    afterEach(() => {
+      routedConnection.dispose();
+    });
+
+    it('fires onDidLoseRoute when a hop on the current route is evicted (pool key is canonical)', async () => {
+      await routedConnection.ensureConnected();
+      fireEvict('jump@bastion.example.com:2222');
+      expect(lostRoutes).toEqual(['jump@bastion.example.com:2222']);
+    });
+
+    it('ignores evictions of hops not on the current route', async () => {
+      await routedConnection.ensureConnected();
+      fireEvict('other@elsewhere.example.com:22');
+      expect(lostRoutes).toEqual([]);
+    });
+
+    it('ignores evictions after the session disconnected', async () => {
+      await routedConnection.ensureConnected();
+      mockSftp.connected = true;
+      await routedConnection.disconnect();
+      fireEvict('jump@bastion.example.com:2222');
+      expect(lostRoutes).toEqual([]);
+    });
+
+    it('a session without jump hosts never reacts to evictions', async () => {
+      mockCredentialManager.getWithSecret.mockResolvedValue(fakeCredential);
+      await routedConnection.ensureConnected();
+      fireEvict('jump@bastion.example.com:2222');
+      expect(lostRoutes).toEqual([]);
     });
   });
 });
