@@ -14,6 +14,7 @@ import {
 } from '../../../ssh/connectProviders';
 import { HopConnectError, HostNotTrustedError, VerificationRequiredError } from '../../../ssh/connectErrors';
 import { SshCredentialWithSecret } from '../../../models/SshCredential';
+import * as agentResolver from '../../../ssh/agentResolver';
 
 // ─── Fakes ───────────────────────────────────────────────────────────────────
 
@@ -442,7 +443,9 @@ describe('chainConnect with config-derived hops (18b)', () => {
   let clients: FakeSshClient[];
   let logLines: string[];
   let pool: JumpHostPool;
-  let savedAgentSocket: string | undefined;
+  // Q15's "no agent" must not depend on the CI host: Windows answers
+  // 'pageant' whenever SSH_AUTH_SOCK is unset.
+  let agentSocket: jest.SpyInstance<string | undefined, [string?]>;
 
   const configHop = { alias: 'bastion', host: 'bastion.example.com', port: 2222, user: 'jump' };
 
@@ -465,8 +468,7 @@ describe('chainConnect with config-derived hops (18b)', () => {
     clients = [];
     logLines = [];
     FakeSshClient.nextAuthFailures = 0;
-    savedAgentSocket = process.env.SSH_AUTH_SOCK;
-    delete process.env.SSH_AUTH_SOCK;
+    agentSocket = jest.spyOn(agentResolver, 'resolveAgentSocket').mockReturnValue(undefined);
     pool = new JumpHostPool({
       createClient: () => {
         const client = new FakeSshClient();
@@ -479,11 +481,7 @@ describe('chainConnect with config-derived hops (18b)', () => {
 
   afterEach(() => {
     pool.dispose();
-    if (savedAgentSocket === undefined) {
-      delete process.env.SSH_AUTH_SOCK;
-    } else {
-      process.env.SSH_AUTH_SOCK = savedAgentSocket;
-    }
+    agentSocket.mockRestore();
   });
 
   it('dials a config hop with its IdentityFile as key auth, keyed and sourced by its alias', async () => {
@@ -504,7 +502,7 @@ describe('chainConnect with config-derived hops (18b)', () => {
   });
 
   it('falls back to the SSH agent when the hop has no IdentityFile (Q15)', async () => {
-    process.env.SSH_AUTH_SOCK = '/tmp/fake-agent.sock';
+    agentSocket.mockReturnValue('/tmp/fake-agent.sock');
     const result = await chainConnect(target, [configHop], { interactive: true }, dependencies());
     expect(clients[0].connectConfig?.agent).toBe('/tmp/fake-agent.sock');
     expect(clients[0].connectConfig?.privateKey).toBeUndefined();
@@ -541,7 +539,7 @@ describe('chainConnect with config-derived hops (18b)', () => {
   });
 
   it('explains an auth failure on a config hop in terms of what ProxyJump hosts can use', async () => {
-    process.env.SSH_AUTH_SOCK = '/tmp/fake-agent.sock';
+    agentSocket.mockReturnValue('/tmp/fake-agent.sock');
     FakeSshClient.nextAuthFailures = 2; // the pool retries an auth failure once
     const error = await chainConnect(target, [configHop], { interactive: true }, dependencies())
       .then(() => { throw new Error('expected the chain to fail'); }, (caught: unknown) => caught as HopConnectError);
@@ -564,7 +562,7 @@ describe('chainConnect with config-derived hops (18b)', () => {
   });
 
   it('mixes credential hops and config hops in route order', async () => {
-    process.env.SSH_AUTH_SOCK = '/tmp/fake-agent.sock';
+    agentSocket.mockReturnValue('/tmp/fake-agent.sock');
     const result = await chainConnect(target, [bastionCredential.id, { ...configHop, alias: 'inner', host: 'inner.example.com', port: 22, user: 'relay' }], { interactive: true }, dependencies());
     expect(result.hopKeys).toEqual(['jump@bastion.example.com:2222', 'relay@inner.example.com:22']);
     expect(clients[1].connectConfig?.sock).toBeDefined();

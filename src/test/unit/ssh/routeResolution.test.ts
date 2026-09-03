@@ -1,3 +1,4 @@
+import * as path from 'path';
 import {
   reportRouteNotices,
   resetRouteNoticesForTests,
@@ -60,7 +61,7 @@ describe('resolveRoute', () => {
     expect(route.target).toMatchObject({ host: '10.0.0.5', port: 22, username: 'deploy' });
     expect(route.hops).toEqual([{
       alias: 'bastion', host: 'bastion.example.com', port: 2222, user: 'jump',
-      identityFile: '/home/dev/.ssh/bastion_ed25519',
+      identityFile: path.join('/home/dev', '.ssh/bastion_ed25519'),
     }]);
     expect(route.notes).toEqual([]);
   });
