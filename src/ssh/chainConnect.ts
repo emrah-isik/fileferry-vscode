@@ -49,6 +49,8 @@ export interface ChainConnectTarget {
 export interface ChainConnectResult {
   /** The last hop's forward to the target — hand it to ssh2-sftp-client as `sock`. */
   sock: ClientChannel;
+  /** Canonical pool keys of the leased hops, in route order — match `onDidEvict` against them (Q34). */
+  hopKeys: string[];
   /** Releases every hop lease this connect acquired. Idempotent. */
   release(): void;
 }
@@ -119,12 +121,17 @@ export async function chainConnect(
     let previousHandle: JumpHostHandle | undefined;
     for (const [hopIndex, hopCredential] of hopCredentials.entries()) {
       const carrier = previousHandle;
+      // Hops beyond the first dial over a fresh forward from the previous
+      // hop — opened per attempt, so a retry never reuses a dead stream.
+      const openSock = carrier
+        ? (): Promise<ClientChannel> => carrier.forwardOut('127.0.0.1', 0, hopCredential.host, hopCredential.port)
+        : undefined;
       try {
         const handle = await raceWithSignal(
           dependencies.pool.acquire({
             target: { username: hopCredential.username, host: hopCredential.host, port: hopCredential.port },
             sourceId: hopCredential.id,
-            dialer: createHopDialer(hopCredential, carrier, options, dependencies),
+            dialer: createCredentialDialer(hopCredential, openSock, options, dependencies),
           }),
           (lateHandle) => lateHandle.release()
         );
@@ -154,7 +161,7 @@ export async function chainConnect(
       throw toHopConnectError(lastHopIndex, hopCredentials[lastHopIndex].host, error);
     }
 
-    return { sock, release };
+    return { sock, hopKeys: handles.map((handle) => handle.key), release };
   } catch (error: unknown) {
     release();
     throw error;
@@ -168,25 +175,45 @@ function toHopConnectError(hopIndex: number, hopHost: string, error: unknown): H
   return new HopConnectError(hopIndex, hopHost, error instanceof Error ? error : new Error(String(error)));
 }
 
+/** A `JumpHostDialer` that also reports what happened to the keychain answer across attempts (F8). */
+export interface CredentialDialer extends JumpHostDialer {
+  /** A `/password/i` prompt was answered silently from the keychain on the latest attempt. */
+  readonly keychainAnswerUsed: boolean;
+  /** The user was shown at least one prompt on the latest attempt. */
+  readonly userPrompted: boolean;
+}
+
 /**
- * Builds the pool dialer for one hop. Each `prepare` call is one fresh dial
- * attempt (the pool re-invokes it for reconnects and its auth-failure retry),
- * so prompt/keychain state that must span attempts lives in this closure:
- * after a silent keychain auto-answer was rejected, the retry disables the
- * auto-answer AND drops the known-rejected password entirely — stock Ubuntu
- * sshd (UsePAM) kills the connection when a successful keyboard-interactive
- * follows a failed password auth on the same connection (18a-1a F8 finding).
+ * Builds the dialer for one credential — a pooled hop, or (feature 20) the
+ * terminal's own raw target client via `dialClient`. Each `prepare` call is
+ * one fresh dial attempt (the pool re-invokes it for reconnects and its
+ * auth-failure retry), so prompt/keychain state that must span attempts lives
+ * in this closure: after a silent keychain auto-answer was rejected, the
+ * retry disables the auto-answer AND drops the known-rejected password
+ * entirely — stock Ubuntu sshd (UsePAM) kills the connection when a
+ * successful keyboard-interactive follows a failed password auth on the same
+ * connection (18a-1a F8 finding).
+ *
+ * `openSock` supplies the transport for a dial that rides another hop's
+ * forward; it is called once per attempt so a retry never reuses a dead
+ * stream. Omit it for a direct TCP dial.
  */
-function createHopDialer(
+export function createCredentialDialer(
   credential: SshCredentialWithSecret,
-  carrier: JumpHostHandle | undefined,
+  openSock: (() => Promise<ClientChannel>) | undefined,
   options: { interactive: boolean; signal?: AbortSignal },
-  dependencies: ChainConnectDependencies
-): JumpHostDialer {
+  dependencies: Pick<ChainConnectDependencies, 'providers' | 'coordinator'>
+): CredentialDialer {
   const { interactive, signal } = options;
   const attemptState = { keychainAnswerUsed: false, userPrompted: false };
 
   return {
+    get keychainAnswerUsed(): boolean {
+      return attemptState.keychainAnswerUsed;
+    },
+    get userPrompted(): boolean {
+      return attemptState.userPrompted;
+    },
     async prepare(client: Client, abortConnect: (reason: Error) => void): Promise<ConnectConfig> {
       const hopTarget = { username: credential.username, host: credential.host, port: credential.port };
       const providers = dependencies.providers;
@@ -279,10 +306,8 @@ function createHopDialer(
         config.agent = resolveAgentSocket(credential.agentSocketPath);
       }
 
-      if (carrier) {
-        // Hops beyond the first dial over a fresh forward from the previous
-        // hop — opened per attempt, so a retry never reuses a dead stream.
-        config.sock = await carrier.forwardOut('127.0.0.1', 0, hopTarget.host, hopTarget.port);
+      if (openSock) {
+        config.sock = await openSock();
       }
 
       return config;
