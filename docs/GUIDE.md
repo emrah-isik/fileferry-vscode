@@ -285,7 +285,7 @@ Features:
 - Persistent connection with automatic idle timeout
 - **Multi-select** — Ctrl/Shift-click several rows; Delete, Download, Copy Path, Duplicate, Move, and Change Permissions all operate on the whole selection. A context-menu command only appears when it applies to *every* selected row (stock VS Code behaviour), so e.g. a mixed file+folder selection won't offer file-only commands
 - Path indicator shows your current location
-- Use `FileFerry: Go to Remote Path` to jump to a specific directory
+- Use `FileFerry: Go to Remote Path` to jump to a specific directory. A path that cannot be listed shows an error row once; the next refresh returns to the server's root path, and switching servers never carries a navigated path along
 - The terminal icon in the panel title opens a shell in the folder the panel is showing; right-click any folder for **Open SSH Terminal Here** — see [Open SSH Terminal](#open-ssh-terminal)
 - Use `FileFerry: Disconnect Remote Browser` to close the connection — the panel shows a **Disconnected** row and stays offline until you click it (or navigate/refresh explicitly); internal refreshes never reconnect behind your back. The command also drains pooled jump-host connections: idle hops close immediately, hops still under a live session (a running deploy, an open SSH terminal) close when that session ends
 
@@ -327,7 +327,7 @@ Three ways in, each deciding where the shell starts:
 - **Servers panel → right-click → Open SSH Terminal** — that server, in its root path (it does not have to be the active one).
 - **Remote Files panel** — the terminal icon in the panel title opens a shell in the folder the panel is currently showing; right-click any folder → **Open SSH Terminal Here** for that folder.
 
-The tab is named `FileFerry: <server> — <path>` and opens immediately with `Connecting to <server> via <route>…`; any password, one-time-code, or host-key prompt appears as usual while the tab waits. Dismissing a prompt cancels the connection — the tab says `Connection cancelled` and closes with exit code 1, as does any other connection failure (the message names the cause, including which jump host failed).
+The tab is named `FileFerry: <server> — <path>` and opens immediately with `Connecting to <server> via <route>…`; any password, one-time-code, or host-key prompt appears as usual while the tab waits. Dismissing a prompt cancels the connection — the tab says `Connection cancelled`, keeps that on screen until you press any key, and then closes with exit code 1. Any other connection failure behaves the same way (the message names the cause, including which jump host failed).
 
 What to expect:
 
@@ -335,7 +335,7 @@ What to expect:
 - **No MOTD, no `~/.ssh/rc`.** FileFerry opens an *exec* session rather than a plain interactive shell session — that is what keeps the start-up race-free — and OpenSSH prints the message of the day and runs `~/.ssh/rc` only for shell sessions. Everything your shell's own start-up files do still happens.
 - **POSIX shells only.** The start-up command is POSIX `sh` syntax; a server whose login shell is not POSIX-compatible (Windows OpenSSH with `cmd`/PowerShell, for instance) will not start correctly.
 - **Resizing works**, and the shell's exit status becomes the terminal's exit code — typing `exit` closes the tab; closing the tab ends the session.
-- **`FileFerry: Disconnect Remote Browser` leaves the terminal alone.** A jump host under an open terminal stays connected until the last terminal (and any deploy) using it finishes; then it closes. If the hop drops for another reason — the bastion restarted, or you edited the hop's credential — the terminal closes with `connection to <hop> lost`.
+- **`FileFerry: Disconnect Remote Browser` leaves the terminal alone.** A jump host under an open terminal stays connected until the last terminal (and any deploy) using it finishes; then it closes. If the hop drops for another reason — the bastion restarted, or you edited the hop's credential — the terminal prints `connection to <hop> lost` and closes on your next keypress, so whatever the shell printed before stays readable.
 - **Agent forwarding is not requested**, even if your `~/.ssh/config` says `ForwardAgent yes` — the terminal authenticates with the server's credential only.
 - Each invocation opens its own terminal; several can be open at once, on the same or different servers. FTP/FTPS servers cannot open a terminal — the command refuses with a message.
 
