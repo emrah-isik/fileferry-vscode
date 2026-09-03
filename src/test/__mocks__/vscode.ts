@@ -36,6 +36,12 @@ const vscode = {
     withProgress: jest.fn(),
     setStatusBarMessage: jest.fn().mockReturnValue({ dispose: jest.fn() }),
     createWebviewPanel: jest.fn(),
+    // Feature 20: the SSH terminal is an ExtensionTerminalOptions
+    // ({ name, pty }) terminal; tests inspect the call and drive the pty.
+    createTerminal: jest.fn().mockImplementation(() => ({
+      show: jest.fn(),
+      dispose: jest.fn(),
+    })),
     createStatusBarItem: jest.fn().mockReturnValue({
       text: '',
       tooltip: '',
