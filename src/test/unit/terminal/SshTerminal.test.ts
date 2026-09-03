@@ -367,13 +367,16 @@ describe('SshTerminal', () => {
       expect(closes).toEqual([1]);
     });
 
-    it('closes with 1 and says so when the connection drops under the shell', async () => {
-      const { writes, closes, client } = await openAndConnect();
+    it('says so when the connection drops under the shell, and exits 1 on a keypress', async () => {
+      const { terminal, writes, closes, client } = await openAndConnect();
       writes.length = 0;
 
       client.emit('close');
 
       expect(writes.join('')).toMatch(/connection closed/i);
+      expect(writes.join('')).toContain('Press any key to close');
+      expect(closes).toEqual([]);
+      terminal.handleInput('x');
       expect(closes).toEqual([1]);
     });
 
@@ -388,8 +391,12 @@ describe('SshTerminal', () => {
     });
   });
 
+  // VS Code disposes an extension terminal the moment onDidClose fires, so a
+  // message written just before it would never be seen (§K finding). After a
+  // failure the tab therefore stays open — message + "Press any key to
+  // close" — and the exit code 1 is delivered on the next keypress.
   describe('failures', () => {
-    it('writes "Connection cancelled" and exits 1 when the prompt is dismissed after the tab opened (R8-12)', async () => {
+    it('writes "Connection cancelled" when the prompt is dismissed after the tab opened, then exits 1 on a keypress (R8-12)', async () => {
       FakeTargetClient.behaviour = 'keyboard-interactive';
       promptAnswer = null;
       const keyboardCredential: SshCredentialWithSecret = { ...targetCredential, authMethod: 'keyboard-interactive', password: undefined };
@@ -399,13 +406,17 @@ describe('SshTerminal', () => {
       await flush();
 
       expect(writes.join('')).toContain('Connection cancelled');
-      expect(closes).toEqual([1]);
+      expect(writes.join('')).toContain('Press any key to close');
+      expect(closes).toEqual([]);
       expect(targetClients[0].ended).toBe(true);
       // Dismissed once — no retry, no second prompt.
       expect(promptCount).toBe(1);
+
+      terminal.handleInput('\r');
+      expect(closes).toEqual([1]);
     });
 
-    it('reports a failed login and exits 1', async () => {
+    it('reports a failed login and exits 1 on a keypress', async () => {
       FakeTargetClient.behaviour = 'auth-failure';
       const { terminal, writes, closes } = createTerminal();
 
@@ -413,10 +424,12 @@ describe('SshTerminal', () => {
       await flush();
 
       expect(writes.join('')).toContain('All configured authentication methods failed');
+      expect(closes).toEqual([]);
+      terminal.handleInput('x');
       expect(closes).toEqual([1]);
     });
 
-    it('reports a failed exec and exits 1', async () => {
+    it('reports a failed exec and exits 1 on a keypress', async () => {
       FakeTargetClient.execError = new Error('Unable to exec');
       const { terminal, writes, closes } = createTerminal();
 
@@ -424,11 +437,13 @@ describe('SshTerminal', () => {
       await flush();
 
       expect(writes.join('')).toContain('Unable to exec');
-      expect(closes).toEqual([1]);
       expect(targetClients[0].ended).toBe(true);
+      expect(closes).toEqual([]);
+      terminal.handleInput('x');
+      expect(closes).toEqual([1]);
     });
 
-    it('reports a credential that cannot be loaded and exits 1', async () => {
+    it('reports a credential that cannot be loaded and exits 1 on a keypress', async () => {
       const { terminal, writes, closes } = createTerminal(options({
         resolveCredential: async () => { throw new Error('Credential not found: cred-target'); },
       }));
@@ -437,7 +452,33 @@ describe('SshTerminal', () => {
       await flush();
 
       expect(writes.join('')).toContain('Credential not found');
+      expect(closes).toEqual([]);
+      terminal.handleInput('x');
       expect(closes).toEqual([1]);
+    });
+
+    it('fires the deferred exit code only once however many keys are pressed', async () => {
+      FakeTargetClient.behaviour = 'auth-failure';
+      const { terminal, closes } = createTerminal();
+
+      terminal.open(undefined);
+      await flush();
+      terminal.handleInput('a');
+      terminal.handleInput('b');
+
+      expect(closes).toEqual([1]);
+    });
+
+    it('needs no keypress when VS Code closes the held tab itself', async () => {
+      FakeTargetClient.behaviour = 'auth-failure';
+      const { terminal, closes } = createTerminal();
+
+      terminal.open(undefined);
+      await flush();
+      terminal.close();
+      terminal.handleInput('x');
+
+      expect(closes).toEqual([]);
     });
   });
 
@@ -528,16 +569,18 @@ describe('SshTerminal', () => {
       expect(hopClients[0].ended).toBe(true);
     });
 
-    it('closes with "connection to <hop> lost" when a hop on its route is evicted (Q34)', async () => {
-      const { writes, closes, client } = await openAndConnect(chainedOptions());
+    it('reports "connection to <hop> lost" when a hop on its route is evicted, and exits 1 on a keypress (Q34)', async () => {
+      const { terminal, writes, closes, client } = await openAndConnect(chainedOptions());
       writes.length = 0;
 
       pool.evictBySourceId('cred-bastion');
       await flush();
 
       expect(writes.join('')).toContain(`connection to ${BASTION_KEY} lost`);
-      expect(closes).toEqual([1]);
       expect(client.ended).toBe(true);
+      expect(closes).toEqual([]);
+      terminal.handleInput('x');
+      expect(closes).toEqual([1]);
     });
 
     it('ignores evictions of hops that are not on its route', async () => {
@@ -567,9 +610,13 @@ describe('SshTerminal', () => {
       pool.drain();
       await flush();
 
-      expect(closes).toEqual([1]);
+      // The lease is released at failure time — before the keypress that
+      // delivers the exit code.
+      expect(closes).toEqual([]);
       // Nobody holds the hop any more — drain closes it immediately.
       expect(hopClients[0].ended).toBe(true);
+      terminal.handleInput('x');
+      expect(closes).toEqual([1]);
     });
   });
 });

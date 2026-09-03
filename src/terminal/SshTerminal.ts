@@ -80,6 +80,10 @@ export class SshTerminal implements vscode.Pseudoterminal {
   private evictSubscription: { dispose(): void } | undefined;
   private exitCode: number | undefined;
   private finished = false;
+  // Set after a failure: the tab is held open so the message stays readable
+  // (VS Code disposes an extension terminal the instant onDidClose fires);
+  // the next keypress delivers this exit code.
+  private pendingExitCode: number | undefined;
 
   constructor(
     private readonly options: SshTerminalOptions,
@@ -95,6 +99,12 @@ export class SshTerminal implements vscode.Pseudoterminal {
   }
 
   handleInput(data: string): void {
+    if (this.pendingExitCode !== undefined) {
+      const code = this.pendingExitCode;
+      this.pendingExitCode = undefined;
+      this.closeEmitter.fire(code);
+      return;
+    }
     this.channel?.write(data);
   }
 
@@ -106,6 +116,7 @@ export class SshTerminal implements vscode.Pseudoterminal {
 
   /** VS Code closed the tab: tear everything down; there is nobody left to report an exit code to. */
   close(): void {
+    this.pendingExitCode = undefined;
     if (this.finished) {
       return;
     }
@@ -241,15 +252,25 @@ export class SshTerminal implements vscode.Pseudoterminal {
     });
   }
 
+  /**
+   * A normal shell exit closes the tab at once (Q29). A failure — dial
+   * error, dismissed prompt, dropped connection, evicted hop — keeps the tab
+   * open with the message and "Press any key to close": firing onDidClose
+   * right away would dispose the terminal before anyone could read it
+   * (manual §K finding). The exit code 1 is delivered on the keypress
+   * (R8-12, deferred).
+   */
   private finish(code: number, message?: string): void {
     if (this.finished) {
       return;
     }
     this.finished = true;
-    if (message) {
-      this.writeEmitter.fire(`\r\n${message}\r\n`);
-    }
     this.teardown();
+    if (message) {
+      this.writeEmitter.fire(`\r\n${message}\r\nPress any key to close this terminal.\r\n`);
+      this.pendingExitCode = code;
+      return;
+    }
     this.closeEmitter.fire(code);
   }
 
