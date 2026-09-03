@@ -172,7 +172,11 @@
       },
       {
         "command": "fileferry.remoteBrowser.openSshTerminalHere",
-        "title": "Open SSH Terminal Here",
+        "title": "Open SSH Terminal Here"
+      },
+      {
+        "command": "fileferry.remoteBrowser.openSshTerminalCurrentPath",
+        "title": "FileFerry: Open SSH Terminal in Current Path",
         "icon": "$(terminal)"
       },
       {
@@ -324,7 +328,7 @@
           "group": "navigation"
         },
         {
-          "command": "fileferry.remoteBrowser.openSshTerminalHere",
+          "command": "fileferry.remoteBrowser.openSshTerminalCurrentPath",
           "when": "view == fileferry.remoteBrowser",
           "group": "navigation"
         },
@@ -511,6 +515,10 @@
         },
         {
           "command": "fileferry.remoteBrowser.openSshTerminalHere",
+          "when": "false"
+        },
+        {
+          "command": "fileferry.remoteBrowser.openSshTerminalCurrentPath",
           "when": "false"
         },
         {

@@ -701,6 +701,9 @@ export function activate(context: vscode.ExtensionContext): void {
         openTerminal({ serverId: item?.serverId ?? null })
       )
     ),
+    // Folder context menu → the clicked folder. Kept separate from the title
+    // command below: VS Code passes the selected row to a title command that
+    // shares its id, which would override the current path (manual §K K7).
     vscode.commands.registerCommand(
       'fileferry.remoteBrowser.openSshTerminalHere',
       withErrorHandling('remoteBrowser.openSshTerminalHere', (item: RemoteFileItem | undefined) =>
@@ -708,6 +711,15 @@ export function activate(context: vscode.ExtensionContext): void {
           serverId: null,
           remotePath: item?.entry?.remotePath ?? browserProvider.getCurrentPath() ?? undefined,
         })
+      )
+    ),
+
+    // Panel title icon → always the folder the panel is showing, never a
+    // selected row.
+    vscode.commands.registerCommand(
+      'fileferry.remoteBrowser.openSshTerminalCurrentPath',
+      withErrorHandling('remoteBrowser.openSshTerminalCurrentPath', () =>
+        openTerminal({ serverId: null, remotePath: browserProvider.getCurrentPath() ?? undefined })
       )
     ),
 

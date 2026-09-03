@@ -325,7 +325,7 @@ Three ways in, each deciding where the shell starts:
 
 - **`FileFerry: Open SSH Terminal`** (Command Palette) — the active server, in its root path.
 - **Servers panel → right-click → Open SSH Terminal** — that server, in its root path (it does not have to be the active one).
-- **Remote Files panel** — the terminal icon in the panel title opens a shell in the folder the panel is currently showing; right-click any folder → **Open SSH Terminal Here** for that folder.
+- **Remote Files panel** — the terminal icon in the panel title opens a shell in the folder the panel is currently showing (whatever row happens to be selected); right-click any folder → **Open SSH Terminal Here** for that specific folder.
 
 The tab is named `FileFerry: <server> — <path>` and opens immediately with `Connecting to <server> via <route>…`; any password, one-time-code, or host-key prompt appears as usual while the tab waits. Dismissing a prompt cancels the connection — the tab says `Connection cancelled`, keeps that on screen until you press any key, and then closes with exit code 1. Any other connection failure behaves the same way (the message names the cause, including which jump host failed).
 
