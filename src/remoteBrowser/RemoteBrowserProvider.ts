@@ -7,6 +7,12 @@ import { InteractionRequiredError } from '../ssh/connectErrors';
 
 export class RemoteBrowserProvider implements vscode.TreeDataProvider<RemoteFileItem> {
   private userNavigatedPath: string | null = null;
+  // The server the navigated path was last listed on. A navigated path only
+  // makes sense there: when the panel moves to another server it is dropped
+  // (and so is one whose listing fails) — otherwise every later render of
+  // every server retried a dead path and the panel stayed on "Connection
+  // failed" until Reload Window (manual §K K7 finding, 2026-09-03).
+  private navigatedServerId: string | null = null;
   // Set by an explicit "Disconnect Remote Browser". While suspended the panel
   // shows a Disconnected placeholder instead of auto-reconnecting — only an
   // explicit user action (refresh command, Go to Remote Path, set default
@@ -75,12 +81,25 @@ export class RemoteBrowserProvider implements vscode.TreeDataProvider<RemoteFile
         const interactive = this.interactiveRenderPending;
         this.interactiveRenderPending = false;
         await this.connection.ensureConnected({ interactive });
+        this.forgetNavigatedPathIfServerChanged();
         targetPath = this.userNavigatedPath ?? this.connection.getRootPath();
       }
 
-      const entries = await this.connection.listDirectory(targetPath);
+      let entries: FileEntry[];
+      try {
+        entries = await this.connection.listDirectory(targetPath);
+      } catch (err: unknown) {
+        // A navigated path that cannot be listed must not be retried forever;
+        // a connect failure (caught by the outer handler) keeps it.
+        if (!element && this.userNavigatedPath !== null) {
+          this.userNavigatedPath = null;
+          this.navigatedServerId = null;
+        }
+        throw err;
+      }
       if (!element) {
         this.currentPath = targetPath;
+        this.navigatedServerId = this.userNavigatedPath !== null ? this.connection.getCurrentServerId() : null;
         this._onDidChangePath.fire(targetPath);
       }
       return await this.toTreeItems(entries, targetPath);
@@ -116,10 +135,21 @@ export class RemoteBrowserProvider implements vscode.TreeDataProvider<RemoteFile
     this.refresh();
   }
 
+  private forgetNavigatedPathIfServerChanged(): void {
+    if (this.userNavigatedPath === null || this.navigatedServerId === null) {
+      return;
+    }
+    if (this.navigatedServerId !== this.connection.getCurrentServerId()) {
+      this.userNavigatedPath = null;
+      this.navigatedServerId = null;
+    }
+  }
+
   navigateTo(remotePath: string): void {
     this.suspended = false;
     this.interactiveRenderPending = true;
     this.userNavigatedPath = remotePath;
+    this.navigatedServerId = null;
     this.refresh();
   }
 
