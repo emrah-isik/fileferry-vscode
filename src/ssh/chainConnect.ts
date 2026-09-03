@@ -15,6 +15,8 @@ import {
 import { ConnectionCancelledError, HopConnectError, HostNotTrustedError, VerificationRequiredError } from './connectErrors';
 import { DEFAULT_ALGORITHMS } from './defaultAlgorithms';
 import { JumpHostDialer, JumpHostHandle, JumpHostPool } from './JumpHostPool';
+import { ChainHop, isConfigHop } from './routeResolution';
+import { applySshConfig, ResolvedHop, resolveHostAlias, ResolverDeps } from './SshConfigResolver';
 
 /**
  * Jump-host chain connect (feature 18a-2a): resolves `[hop…, target]`, leases
@@ -29,6 +31,13 @@ import { JumpHostDialer, JumpHostHandle, JumpHostPool } from './JumpHostPool';
  * failing hop attributed (Q17); the route is logged ONCE per connect to the
  * plain (unmasked) output channel — never interpolate secrets (L4).
  *
+ * Hops come in two kinds (18b): a stored credential's id, resolved through
+ * `resolveHopCredential` (and through `~/.ssh/config` when that credential
+ * opts in — R8-5), or a `ResolvedHop` derived from the target alias's
+ * `ProxyJump`. A config-derived hop is never stored: it becomes a synthetic
+ * credential for this dial only — `IdentityFile` → key auth, else the SSH
+ * agent, else interactive prompts (Q15) — pooled under `sshconfig:<alias>`.
+ *
  * This module must stay free of `vscode` imports.
  */
 
@@ -38,6 +47,8 @@ export interface ChainConnectDependencies {
   resolveHopCredential(id: string): Promise<SshCredentialWithSecret | null>;
   providers: ConnectProviders;
   coordinator: KeyboardInteractiveCoordinator;
+  /** `~/.ssh/config` access for hop credentials that opt in (R8-5); tests inject a reader. */
+  sshConfig?: ResolverDeps;
 }
 
 export interface ChainConnectTarget {
@@ -57,11 +68,11 @@ export interface ChainConnectResult {
 
 export async function chainConnect(
   target: ChainConnectTarget,
-  hopIds: string[],
+  hops: ChainHop[],
   options: { interactive: boolean; signal?: AbortSignal },
   dependencies: ChainConnectDependencies
 ): Promise<ChainConnectResult> {
-  if (hopIds.length === 0) {
+  if (hops.length === 0) {
     throw new Error('chainConnect called with no jump hosts — direct connects must not route through the chain');
   }
   const signal = options.signal;
@@ -91,12 +102,8 @@ export async function chainConnect(
   };
 
   const hopCredentials: SshCredentialWithSecret[] = [];
-  for (const [hopIndex, hopId] of hopIds.entries()) {
-    const credential = await dependencies.resolveHopCredential(hopId);
-    if (!credential) {
-      throw new HopConnectError(hopIndex, hopId, new Error(`jump host ${hopId} no longer exists`));
-    }
-    hopCredentials.push(credential);
+  for (const [hopIndex, hop] of hops.entries()) {
+    hopCredentials.push(await toHopCredential(hop, hopIndex, options, dependencies));
   }
 
   const describeHop = (credential: SshCredentialWithSecret): string =>
@@ -141,7 +148,7 @@ export async function chainConnect(
         if (error instanceof ConnectionCancelledError) {
           throw error;
         }
-        throw toHopConnectError(hopIndex, hopCredential.host, error);
+        throw toHopConnectError(hopIndex, hopCredential.host, explainConfigHopFailure(hops[hopIndex], error));
       }
     }
 
@@ -166,6 +173,79 @@ export async function chainConnect(
     release();
     throw error;
   }
+}
+
+/**
+ * Turns one chain entry into the credential the dialer needs. A credential id
+ * is looked up (and, when it opts into `~/.ssh/config`, resolved on its own —
+ * R8-5; a `ProxyJump` on ITS alias is not followed, chains are flat per Q3).
+ * A config-derived hop is synthesised per Q15 — never persisted.
+ */
+async function toHopCredential(
+  hop: ChainHop,
+  hopIndex: number,
+  options: { interactive: boolean },
+  dependencies: ChainConnectDependencies
+): Promise<SshCredentialWithSecret> {
+  if (!isConfigHop(hop)) {
+    const credential = await dependencies.resolveHopCredential(hop);
+    if (!credential) {
+      throw new HopConnectError(hopIndex, hop, new Error(`jump host ${hop} no longer exists`));
+    }
+    if (!credential.useSshConfig) {
+      return credential;
+    }
+    const resolved = resolveHostAlias(credential.host, dependencies.sshConfig);
+    if (resolved.proxyJump) {
+      dependencies.providers.log(
+        `ProxyJump for jump host "${credential.host}" ignored — jump-host credentials are flat (add the extra hop to the target's chain instead)`
+      );
+    }
+    return applySshConfig(credential, resolved);
+  }
+  return synthesizeConfigHopCredential(hop, hopIndex, options, dependencies);
+}
+
+/** Q15: IdentityFile → agent → prompts through the registry provider; otherwise a clear failure. */
+function synthesizeConfigHopCredential(
+  hop: ResolvedHop,
+  hopIndex: number,
+  options: { interactive: boolean },
+  dependencies: Pick<ChainConnectDependencies, 'providers'>
+): SshCredentialWithSecret {
+  const base = {
+    id: `sshconfig:${hop.alias}`,
+    name: hop.alias,
+    host: hop.host,
+    port: hop.port,
+    username: hop.user,
+  };
+  if (hop.identityFile) {
+    return { ...base, authMethod: 'key', privateKeyPath: hop.identityFile };
+  }
+  if (resolveAgentSocket()) {
+    return { ...base, authMethod: 'agent' };
+  }
+  // Prompt-only: on a background connect the dialer refuses this before
+  // dialing (VerificationRequiredError), exactly like a stored KI hop.
+  if (dependencies.providers.keyboardInteractive || !options.interactive) {
+    return { ...base, authMethod: 'keyboard-interactive' };
+  }
+  throw new HopConnectError(
+    hopIndex,
+    hop.host,
+    new Error(`hop ${hopIndex + 1} (${hop.alias}): no IdentityFile, no agent — add IdentityFile or define it as a FileFerry credential`)
+  );
+}
+
+/** An auth failure on a config-derived hop gets the one hint that actually helps (Q15). */
+function explainConfigHopFailure(hop: ChainHop, error: unknown): unknown {
+  if (!isConfigHop(hop) || !(error instanceof Error) || !/authentication methods failed/i.test(error.message)) {
+    return error;
+  }
+  return new Error(
+    `${error.message} — a ProxyJump host from ~/.ssh/config can authenticate with its IdentityFile, the SSH agent, or interactive prompts only; for a stored password define "${hop.alias}" as a FileFerry credential and use it as a jump host`
+  );
 }
 
 function toHopConnectError(hopIndex: number, hopHost: string, error: unknown): HopConnectError {
