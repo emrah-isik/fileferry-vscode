@@ -15,6 +15,7 @@ For a quick overview, see the [README](../README.md).
 - [Syncing to the Server](#syncing-to-the-server)
 - [Deploy Hooks and Secrets](#deploy-hooks-and-secrets)
 - [Browsing Remote Files](#browsing-remote-files)
+- [Open SSH Terminal](#open-ssh-terminal)
 - [Managing Remote Files](#managing-remote-files)
 - [Comparing Files](#comparing-files)
 - [Downloading Files](#downloading-files)
@@ -285,7 +286,8 @@ Features:
 - **Multi-select** — Ctrl/Shift-click several rows; Delete, Download, Copy Path, Duplicate, Move, and Change Permissions all operate on the whole selection. A context-menu command only appears when it applies to *every* selected row (stock VS Code behaviour), so e.g. a mixed file+folder selection won't offer file-only commands
 - Path indicator shows your current location
 - Use `FileFerry: Go to Remote Path` to jump to a specific directory
-- Use `FileFerry: Disconnect Remote Browser` to close the connection — the panel shows a **Disconnected** row and stays offline until you click it (or navigate/refresh explicitly); internal refreshes never reconnect behind your back. The command also drains pooled jump-host connections: idle hops close immediately, hops still under a live session (a running deploy) close when that session ends
+- The terminal icon in the panel title opens a shell in the folder the panel is showing; right-click any folder for **Open SSH Terminal Here** — see [Open SSH Terminal](#open-ssh-terminal)
+- Use `FileFerry: Disconnect Remote Browser` to close the connection — the panel shows a **Disconnected** row and stays offline until you click it (or navigate/refresh explicitly); internal refreshes never reconnect behind your back. The command also drains pooled jump-host connections: idle hops close immediately, hops still under a live session (a running deploy, an open SSH terminal) close when that session ends
 
 ### Host key verification
 
@@ -310,8 +312,32 @@ The first deploy to a host you have never trusted therefore shows the prompt too
 See all configured servers at a glance. The active server shows a filled circle indicator.
 
 - Click a server to switch to it
-- Right-click for options: **Edit Server**, **Test Connection**
+- Right-click for options: **Edit Server**, **Test Connection**, **Open SSH Terminal** (a shell on that server, in its root path — see below)
 - Hover a server to see its connection route — `Route: local → jump@bastion:2222 → deploy@target:22` for a jump-host chain, with a hop whose credential was deleted shown as `(missing jump host)`
+
+---
+
+## Open SSH Terminal
+
+Open a shell on an SFTP server without leaving VS Code — and without an `ssh` binary. The terminal uses the same credential (keychain password, key, agent, or keyboard-interactive), the same host-key verification, the same `~/.ssh/config` resolution, and the same jump-host chain as your deploys. A server that is only reachable through a bastion with MFA is therefore one click away, and because bastion logins are pooled, a bastion that a deploy or the Remote Files panel already opened is reused without asking again.
+
+Three ways in, each deciding where the shell starts:
+
+- **`FileFerry: Open SSH Terminal`** (Command Palette) — the active server, in its root path.
+- **Servers panel → right-click → Open SSH Terminal** — that server, in its root path (it does not have to be the active one).
+- **Remote Files panel** — the terminal icon in the panel title opens a shell in the folder the panel is currently showing; right-click any folder → **Open SSH Terminal Here** for that folder.
+
+The tab is named `FileFerry: <server> — <path>` and opens immediately with `Connecting to <server> via <route>…`; any password, one-time-code, or host-key prompt appears as usual while the tab waits. Dismissing a prompt cancels the connection — the tab says `Connection cancelled` and closes with exit code 1, as does any other connection failure (the message names the cause, including which jump host failed).
+
+What to expect:
+
+- **A login shell in the right directory.** The session changes into the directory and then `exec`s your login shell (`$SHELL`, falling back to `/bin/sh`), so your profile loads as it would over `ssh`. If the directory does not exist or is not readable, the `cd` fails silently and the shell opens in your home directory instead.
+- **No MOTD, no `~/.ssh/rc`.** FileFerry opens an *exec* session rather than a plain interactive shell session — that is what keeps the start-up race-free — and OpenSSH prints the message of the day and runs `~/.ssh/rc` only for shell sessions. Everything your shell's own start-up files do still happens.
+- **POSIX shells only.** The start-up command is POSIX `sh` syntax; a server whose login shell is not POSIX-compatible (Windows OpenSSH with `cmd`/PowerShell, for instance) will not start correctly.
+- **Resizing works**, and the shell's exit status becomes the terminal's exit code — typing `exit` closes the tab; closing the tab ends the session.
+- **`FileFerry: Disconnect Remote Browser` leaves the terminal alone.** A jump host under an open terminal stays connected until the last terminal (and any deploy) using it finishes; then it closes. If the hop drops for another reason — the bastion restarted, or you edited the hop's credential — the terminal closes with `connection to <hop> lost`.
+- **Agent forwarding is not requested**, even if your `~/.ssh/config` says `ForwardAgent yes` — the terminal authenticates with the server's credential only.
+- Each invocation opens its own terminal; several can be open at once, on the same or different servers. FTP/FTPS servers cannot open a terminal — the command refuses with a message.
 
 ---
 
@@ -594,7 +620,8 @@ Customize via `Preferences -> Keyboard Shortcuts` and search for `fileferry`.
 | `FileFerry: Manage SSH Credentials` | Add, edit, or delete credentials |
 | `FileFerry: Switch Server` | Change the default server for this project |
 | `FileFerry: Go to Remote Path` | Navigate the Remote File Browser to a path |
-| `FileFerry: Disconnect Remote Browser` | Suspend the remote browser connection until explicitly resumed; also drains idle pooled jump hosts (held ones close on last release) |
+| `FileFerry: Disconnect Remote Browser` | Suspend the remote browser connection until explicitly resumed; also drains idle pooled jump hosts (ones held by a deploy or an open SSH terminal close on last release) |
+| `FileFerry: Open SSH Terminal` | Open a shell on the active server in its root path, through its jump hosts (SFTP only) |
 | `FileFerry: Reset Upload Confirmations` | Re-enable upload prompts |
 | `FileFerry: Test Connection` | Verify server credentials |
 | `FileFerry: New File/Folder in Current Path…` | Create an entry at the path the panel currently shows |
@@ -613,7 +640,10 @@ Remote Files panel context menu (right-click a file or folder):
 | `Download to Workspace` | Download remote file(s) to the mapped local path |
 | `Compare with Local` | Diff a remote file against the local version |
 | `Copy Remote Path` | Copy the selected remote path(s) to clipboard |
+| `Open SSH Terminal Here` | Open a shell in the clicked folder (also in the panel title, for the folder currently shown) |
 | `Delete from Server` | Delete the selection (with confirmation) |
+
+Servers panel context menu (right-click a server): `Edit Server`, `Test Connection`, `Open SSH Terminal` (a shell on that server, in its root path).
 
 ---
 
@@ -668,6 +698,10 @@ The server's SSH host key differs from the one saved on first connection. See [H
 ### "Host not yet trusted or verification required"
 
 A background connection (upload on save, the file watcher, an autosave-triggered remote-edit save) needed a host-key or 2FA prompt it is not allowed to show. Click **Test Connection** in the warning — or run any manual deploy — and answer the prompts once; background uploads then work. The Remote Files panel shows the same situation as a **Host not verified — click to connect** row: click it to connect with the prompts.
+
+### The SSH terminal opens in my home directory
+
+The terminal changes into the requested directory before starting your shell; when that `cd` fails (the path does not exist on the server, or your user cannot enter it) the failure is silent and the login shell starts in `$HOME` instead. Check the server's root path in Deployment Settings, or the folder you right-clicked. Also expected: no message of the day and no `~/.ssh/rc` — the terminal is an exec session (see [Open SSH Terminal](#open-ssh-terminal)).
 
 ### Remote File Browser shows an error
 
