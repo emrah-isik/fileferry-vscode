@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
-import { SshCredential } from '../models/SshCredential';
 import { CredentialManager } from '../storage/CredentialManager';
 import { ProjectConfigManager } from '../storage/ProjectConfigManager';
 import { SshTerminal, SshTerminalDependencies } from '../terminal/SshTerminal';
+import { describeRoute } from '../ssh/routeDescription';
 
 /**
  * Open SSH Terminal (feature 20, Q11) — one core behind three entry points:
@@ -24,15 +24,6 @@ export interface OpenSshTerminalSelection {
   serverId: string | null;
   /** Directory the shell starts in; defaults to the server's root path. */
   remotePath?: string;
-}
-
-type RouteStop = Pick<SshCredential, 'username' | 'host' | 'port'>;
-
-/** `local → hop… → target`; a hop whose credential was deleted is named as such (mirrors the Servers tooltip). */
-export function describeRoute(hops: Array<RouteStop | undefined>, target: RouteStop): string {
-  const stops = hops.map((hop) => (hop ? `${hop.username}@${hop.host}:${hop.port}` : '(missing jump host)'));
-  stops.push(`${target.username}@${target.host}:${target.port}`);
-  return `local → ${stops.join(' → ')}`;
 }
 
 export async function openSshTerminal(
@@ -69,14 +60,15 @@ export async function openSshTerminal(
     vscode.window.showErrorMessage(`FileFerry: The credential for "${serverName}" no longer exists — pick another in Deployment Settings.`);
     return;
   }
-  const hops = (credential.jumpHosts ?? []).map((hopId) => credentials.find((candidate) => candidate.id === hopId));
   const remotePath = selection.remotePath ?? server.rootPath;
 
   const pty = new SshTerminal(
     {
       serverName,
       remotePath,
-      route: describeRoute(hops, credential),
+      // The banner mirrors the Servers tooltip (explicit hops, or the
+      // alias's ProxyJump chain — 18b); the dial resolves the same route.
+      route: describeRoute(credential, credentials, dependencies.terminal.sshConfig),
       resolveCredential: () => dependencies.credentialManager.getWithSecret(server.credentialId),
     },
     dependencies.terminal

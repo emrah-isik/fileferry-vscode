@@ -16,7 +16,8 @@ import {
 import { ConnectionCancelledError, HopConnectError, HostNotTrustedError, InteractionRequiredError, VerificationRequiredError } from './ssh/connectErrors';
 import { DEFAULT_ALGORITHMS } from './ssh/defaultAlgorithms';
 import { chainConnect, ChainConnectResult } from './ssh/chainConnect';
-import { resolveHostAlias, applySshConfig } from './ssh/SshConfigResolver';
+import { reportRouteNotices, resolveRoute } from './ssh/routeResolution';
+import type { ResolverDeps } from './ssh/SshConfigResolver';
 import { TransferService, RemoteCommandResult, RemoteCommandRunner, FileEntry } from './transferService';
 
 function isPermissionDenied(err: { code?: string | number; message?: string }): boolean {
@@ -34,6 +35,11 @@ export class SftpService implements TransferService, RemoteCommandRunner {
 
   get connected(): boolean {
     return this.client !== null;
+  }
+
+  /** Pool keys of the current session's hops (Q34) — empty when direct or disconnected. */
+  get routeKeys(): readonly string[] {
+    return this.chain?.hopKeys ?? [];
   }
 
   /**
@@ -84,6 +90,8 @@ export class SftpService implements TransferService, RemoteCommandRunner {
        * the registered providers is dismissed.
        */
       signal?: AbortSignal;
+      /** `~/.ssh/config` access (18b) — unset in production; tests inject a reader/path. */
+      sshConfig?: ResolverDeps;
     }
   ): Promise<void> {
     const firstAttempt = { keychainAnswerUsed: false, userPrompted: false };
@@ -112,13 +120,16 @@ export class SftpService implements TransferService, RemoteCommandRunner {
     allowKeychainAutoAnswer: boolean,
     attempt: { keychainAnswerUsed: boolean; userPrompted: boolean }
   ): Promise<void> {
-    // When the credential opts in, treat `host` as an ~/.ssh/config Host alias
-    // and resolve HostName/Port/User/IdentityFile from the user's SSH config.
-    if (server.useSshConfig) {
-      server = applySshConfig(server, resolveHostAlias(server.host));
-    }
-
     const providers = connectProviderRegistry.get();
+
+    // Route (18b): an ~/.ssh/config alias resolves HostName/Port/User/
+    // IdentityFile for the target and, unless the credential has explicit
+    // jump hosts (which win — Q5-1), its ProxyJump chain. Notices (ignored
+    // ProxyJump, unsupported ProxyCommand) are emitted once per session.
+    const route = resolveRoute(server, options?.sshConfig);
+    server = route.target;
+    reportRouteNotices(route, providers);
+
     const target = { username: server.username, host: server.host, port: server.port };
     const interactiveAllowed = options?.interactive !== false;
     const signal = options?.signal;
@@ -139,7 +150,7 @@ export class SftpService implements TransferService, RemoteCommandRunner {
     // must leave `connected` false. The chain honours the same interactive
     // flag per hop (R8-18).
     let chain: ChainConnectResult | null = null;
-    if (server.jumpHosts && server.jumpHosts.length > 0) {
+    if (route.hops.length > 0) {
       const jumpHostSupport = providers.jumpHosts;
       if (!jumpHostSupport) {
         throw new Error('This connection uses jump hosts, but jump-host support is not initialised in this context');
@@ -147,13 +158,14 @@ export class SftpService implements TransferService, RemoteCommandRunner {
       try {
         chain = await chainConnect(
           target,
-          server.jumpHosts,
+          route.hops,
           { interactive: interactiveAllowed, signal },
           {
             pool: jumpHostSupport.pool,
             resolveHopCredential: (id) => jumpHostSupport.resolveCredential(id),
             providers,
             coordinator: connectProviderRegistry.coordinator,
+            sshConfig: options?.sshConfig,
           }
         );
       } catch (error: unknown) {

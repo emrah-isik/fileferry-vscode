@@ -198,7 +198,7 @@ export class SshCredentialPanel {
   // Surfaces what ~/.ssh/config resolution did for an alias credential, so alias
   // mode is never silent (no file / no match / resolved target / overrides).
   private postSshConfigSummary(credential: {
-    host: string; port?: number; username?: string; privateKeyPath?: string; authMethod?: string;
+    host: string; port?: number; username?: string; privateKeyPath?: string; authMethod?: string; jumpHosts?: string[];
   }): void {
     const summary = describeResolution({
       host: credential.host,
@@ -206,6 +206,8 @@ export class SshCredentialPanel {
       username: credential.username,
       privateKeyPath: credential.privateKeyPath,
       authMethod: credential.authMethod,
+      // 18b: the summary shows the ProxyJump route, or that explicit hops win.
+      jumpHosts: credential.jumpHosts,
     });
     this.panel.webview.postMessage({
       command: 'sshConfigSummary',

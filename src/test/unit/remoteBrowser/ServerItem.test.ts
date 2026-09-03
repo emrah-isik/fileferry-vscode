@@ -94,17 +94,12 @@ describe('ServerItem', () => {
   // 18a-2b: the tooltip shows the connection route — with a jump-host chain,
   // every hop in order between local and the target.
   describe('route tooltip', () => {
-    const bastionCredential: SshCredential = {
-      id: 'cred-bastion', name: 'Bastion', host: 'bastion.example.com', port: 2222,
-      username: 'jump', authMethod: 'password',
-    };
-
     it('shows local → hop → target for a chained credential', () => {
       const data: ServerItemData = {
         serverName: 'Production',
         server: fakeServer,
         credential: { ...fakeCredential, jumpHosts: ['cred-bastion'] },
-        hopCredentials: [bastionCredential],
+        route: 'local → jump@bastion.example.com:2222 → deploy@example.com:22',
         isDefault: false,
       };
       const item = new ServerItem(data);
@@ -116,6 +111,7 @@ describe('ServerItem', () => {
         serverName: 'Production',
         server: fakeServer,
         credential: fakeCredential,
+        route: 'local → deploy@example.com:22',
         isDefault: false,
       };
       const item = new ServerItem(data);
@@ -127,7 +123,7 @@ describe('ServerItem', () => {
         serverName: 'Production',
         server: fakeServer,
         credential: { ...fakeCredential, jumpHosts: ['cred-gone'] },
-        hopCredentials: [undefined],
+        route: 'local → (missing jump host) → deploy@example.com:22',
         isDefault: false,
       };
       const item = new ServerItem(data);

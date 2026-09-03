@@ -1,3 +1,4 @@
+import type { ResolverDeps } from './ssh/SshConfigResolver';
 import type { KeyboardInteractiveProvider } from './ssh/connectProviders';
 export interface FileEntry {
   name: string;
@@ -34,8 +35,22 @@ export interface TransferService {
        * prompt is dismissed. FTP/FTPS transports ignore it.
        */
       signal?: AbortSignal;
+      /**
+       * `~/.ssh/config` access for alias credentials and ProxyJump chains
+       * (18b). Production leaves it unset (the real file); tests inject a
+       * reader. FTP/FTPS transports ignore it.
+       */
+      sshConfig?: ResolverDeps;
     }
   ): Promise<void>;
+
+  /**
+   * Canonical pool keys (`user@host:port`) of the jump hosts the CURRENT
+   * session tunnels through, in route order — empty for a direct session or
+   * a transport without chains. Consumers match `JumpHostPool.onDidEvict`
+   * against it (Q34).
+   */
+  readonly routeKeys?: readonly string[];
 
   uploadFile(localPath: string, remotePath: string): Promise<void>;
   get(remotePath: string): Promise<Buffer>;
