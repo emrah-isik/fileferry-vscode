@@ -1,7 +1,7 @@
 import * as path from 'path';
 import * as fsPromises from 'fs/promises';
 import { TransferService } from '../transferService';
-import { SshCredentialWithSecret } from '../models/SshCredential';
+import { ConnectTargetWithSecret } from '../connectTarget';
 import { ResolvedUploadItem } from '../path/PathResolver';
 import { ensureGitignored } from '../utils/ensureGitignored';
 
@@ -51,7 +51,7 @@ export class BackupService {
 
   async backup(
     items: ResolvedUploadItem[],
-    credential: SshCredentialWithSecret,
+    target: ConnectTargetWithSecret,
     serverName: string,
     workspaceRoot: string,
     options?: { interactive?: boolean }
@@ -65,9 +65,9 @@ export class BackupService {
       await ensureGitignored(workspaceRoot, '.vscode/fileferry-backups/');
     } catch { /* ignore */ }
 
-    await this.sftp.connect(credential, {
-      password: credential.password,
-      passphrase: credential.passphrase,
+    await this.sftp.connect(target, {
+      password: target.password,
+      passphrase: target.passphrase,
     }, { interactive: options?.interactive !== false });
 
     try {

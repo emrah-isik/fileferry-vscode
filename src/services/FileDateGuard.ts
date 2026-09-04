@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import { TransferService } from '../transferService';
-import { SshCredentialWithSecret } from '../models/SshCredential';
+import { ConnectTargetWithSecret } from '../connectTarget';
 import { ResolvedUploadItem } from '../path/PathResolver';
 
 export interface SkippedItem {
@@ -22,7 +22,7 @@ export class FileDateGuard {
 
   async check(
     items: ResolvedUploadItem[],
-    credential: SshCredentialWithSecret,
+    target: ConnectTargetWithSecret,
     timeOffsetMs?: number,
     options?: { interactive?: boolean }
   ): Promise<ResolvedUploadItem[]> {
@@ -30,9 +30,9 @@ export class FileDateGuard {
       return [];
     }
 
-    await this.sftp.connect(credential, {
-      password: credential.password,
-      passphrase: credential.passphrase,
+    await this.sftp.connect(target, {
+      password: target.password,
+      passphrase: target.passphrase,
     }, { interactive: options?.interactive !== false });
 
     try {
@@ -65,7 +65,7 @@ export class FileDateGuard {
    */
   async partitionByNewerLocal(
     items: ResolvedUploadItem[],
-    credential: SshCredentialWithSecret,
+    target: ConnectTargetWithSecret,
     timeOffsetMs?: number,
     options?: { interactive?: boolean }
   ): Promise<NewerPartition> {
@@ -73,9 +73,9 @@ export class FileDateGuard {
       return { toUpload: [], skipped: [] };
     }
 
-    await this.sftp.connect(credential, {
-      password: credential.password,
-      passphrase: credential.passphrase,
+    await this.sftp.connect(target, {
+      password: target.password,
+      passphrase: target.passphrase,
     }, { interactive: options?.interactive !== false });
 
     try {

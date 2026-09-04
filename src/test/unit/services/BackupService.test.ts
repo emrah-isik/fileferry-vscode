@@ -299,3 +299,16 @@ describe('BackupService.writeBackup (static)', () => {
     expect(mockSftp.get).not.toHaveBeenCalled();
   });
 });
+
+describe('BackupService — connect target (FTPS type drop, feature 35 pre-work)', () => {
+  it('forwards the target — server type included — to the transport untouched', async () => {
+    jest.clearAllMocks();
+    mockSftp.stat.mockResolvedValue(null);
+    const target = { ...credential, type: 'ftps' };
+
+    await new BackupService(mockSftp as any).backup([item('a.php')], target, 'Production', '/workspace');
+
+    expect(mockSftp.connect.mock.calls[0][0]).toBe(target);
+    expect(mockSftp.connect.mock.calls[0][0]).toEqual(expect.objectContaining({ type: 'ftps' }));
+  });
+});

@@ -67,7 +67,7 @@ describe('FtpService', () => {
 
     it('returns true after connect', async () => {
       await service.connect(
-        { host: 'ftp.example.com', port: 21, username: 'user', type: 'ftp' },
+        { host: 'ftp.example.com', port: 21, username: 'user', authMethod: 'password', type: 'ftp' },
         { password: 'pass' }
       );
       expect(service.connected).toBe(true);
@@ -77,7 +77,7 @@ describe('FtpService', () => {
   describe('connect', () => {
     it('connects with plain FTP (no TLS)', async () => {
       await service.connect(
-        { host: 'ftp.example.com', port: 21, username: 'user', type: 'ftp' },
+        { host: 'ftp.example.com', port: 21, username: 'user', authMethod: 'password', type: 'ftp' },
         { password: 'pass' }
       );
       expect(mockClient.access).toHaveBeenCalledWith({
@@ -91,7 +91,7 @@ describe('FtpService', () => {
 
     it('connects with explicit FTPS', async () => {
       await service.connect(
-        { host: 'ftp.example.com', port: 21, username: 'user', type: 'ftps' },
+        { host: 'ftp.example.com', port: 21, username: 'user', authMethod: 'password', type: 'ftps' },
         { password: 'pass' }
       );
       expect(mockClient.access).toHaveBeenCalledWith({
@@ -105,7 +105,7 @@ describe('FtpService', () => {
 
     it('connects with implicit FTPS (port 990)', async () => {
       await service.connect(
-        { host: 'ftp.example.com', port: 990, username: 'user', type: 'ftps-implicit' },
+        { host: 'ftp.example.com', port: 990, username: 'user', authMethod: 'password', type: 'ftps-implicit' },
         { password: 'pass' }
       );
       expect(mockClient.access).toHaveBeenCalledWith({
@@ -119,7 +119,7 @@ describe('FtpService', () => {
 
     it('ignores hostVerifier and keyboardInteractiveHandler options', async () => {
       await service.connect(
-        { host: 'ftp.example.com', port: 21, username: 'user', type: 'ftp' },
+        { host: 'ftp.example.com', port: 21, username: 'user', authMethod: 'password', type: 'ftp' },
         { password: 'pass' },
         {
           hostVerifier: () => true,
@@ -133,7 +133,7 @@ describe('FtpService', () => {
       mockClient.access.mockRejectedValueOnce(new Error('Connection refused'));
       await expect(
         service.connect(
-          { host: 'ftp.example.com', port: 21, username: 'user', type: 'ftp' },
+          { host: 'ftp.example.com', port: 21, username: 'user', authMethod: 'password', type: 'ftp' },
           { password: 'pass' }
         )
       ).rejects.toThrow('Connection refused');
@@ -147,7 +147,7 @@ describe('FtpService', () => {
       connectProviderRegistry.set({ warn, log: () => undefined });
       try {
         await service.connect(
-          { host: 'ftp.example.com', port: 21, username: 'user', type: 'ftp', jumpHosts: ['cred-bastion'] },
+          { host: 'ftp.example.com', port: 21, username: 'user', authMethod: 'password', type: 'ftp', jumpHosts: ['cred-bastion'] },
           { password: 'pass' }
         );
         expect(warn).toHaveBeenCalledWith(expect.stringMatching(/jump host/i));
@@ -162,7 +162,7 @@ describe('FtpService', () => {
       connectProviderRegistry.set({ warn, log: () => undefined });
       try {
         await service.connect(
-          { host: 'ftp.example.com', port: 21, username: 'user', type: 'ftp' },
+          { host: 'ftp.example.com', port: 21, username: 'user', authMethod: 'password', type: 'ftp' },
           { password: 'pass' }
         );
         expect(warn).not.toHaveBeenCalled();
@@ -175,7 +175,7 @@ describe('FtpService', () => {
   describe('uploadFile', () => {
     beforeEach(async () => {
       await service.connect(
-        { host: 'ftp.example.com', port: 21, username: 'user', type: 'ftp' },
+        { host: 'ftp.example.com', port: 21, username: 'user', authMethod: 'password', type: 'ftp' },
         { password: 'pass' }
       );
     });
@@ -258,7 +258,7 @@ describe('FtpService', () => {
   describe('get', () => {
     beforeEach(async () => {
       await service.connect(
-        { host: 'ftp.example.com', port: 21, username: 'user', type: 'ftp' },
+        { host: 'ftp.example.com', port: 21, username: 'user', authMethod: 'password', type: 'ftp' },
         { password: 'pass' }
       );
     });
@@ -283,7 +283,7 @@ describe('FtpService', () => {
   describe('listDirectory', () => {
     beforeEach(async () => {
       await service.connect(
-        { host: 'ftp.example.com', port: 21, username: 'user', type: 'ftp' },
+        { host: 'ftp.example.com', port: 21, username: 'user', authMethod: 'password', type: 'ftp' },
         { password: 'pass' }
       );
     });
@@ -317,7 +317,7 @@ describe('FtpService', () => {
   describe('listDirectoryDetailed', () => {
     beforeEach(async () => {
       await service.connect(
-        { host: 'ftp.example.com', port: 21, username: 'user', type: 'ftp' },
+        { host: 'ftp.example.com', port: 21, username: 'user', authMethod: 'password', type: 'ftp' },
         { password: 'pass' }
       );
     });
@@ -383,7 +383,7 @@ describe('FtpService', () => {
   describe('resolveRemotePath', () => {
     beforeEach(async () => {
       await service.connect(
-        { host: 'ftp.example.com', port: 21, username: 'user', type: 'ftp' },
+        { host: 'ftp.example.com', port: 21, username: 'user', authMethod: 'password', type: 'ftp' },
         { password: 'pass' }
       );
     });
@@ -403,7 +403,7 @@ describe('FtpService', () => {
   describe('statType', () => {
     beforeEach(async () => {
       await service.connect(
-        { host: 'ftp.example.com', port: 21, username: 'user', type: 'ftp' },
+        { host: 'ftp.example.com', port: 21, username: 'user', authMethod: 'password', type: 'ftp' },
         { password: 'pass' }
       );
     });
@@ -439,7 +439,7 @@ describe('FtpService', () => {
 
     it('creates the directory via ensureDir', async () => {
       await service.connect(
-        { host: 'ftp.example.com', port: 21, username: 'user', type: 'ftp' },
+        { host: 'ftp.example.com', port: 21, username: 'user', authMethod: 'password', type: 'ftp' },
         { password: 'pass' }
       );
       await service.mkdir('/remote/newdir');
@@ -448,7 +448,7 @@ describe('FtpService', () => {
 
     it('propagates the underlying error', async () => {
       await service.connect(
-        { host: 'ftp.example.com', port: 21, username: 'user', type: 'ftp' },
+        { host: 'ftp.example.com', port: 21, username: 'user', authMethod: 'password', type: 'ftp' },
         { password: 'pass' }
       );
       mockClient.ensureDir.mockRejectedValueOnce(new Error('550 Permission denied'));
@@ -463,7 +463,7 @@ describe('FtpService', () => {
 
     it('returns true for an existing directory (cd succeeds)', async () => {
       await service.connect(
-        { host: 'ftp.example.com', port: 21, username: 'user', type: 'ftp' },
+        { host: 'ftp.example.com', port: 21, username: 'user', authMethod: 'password', type: 'ftp' },
         { password: 'pass' }
       );
       mockClient.cd.mockResolvedValueOnce(undefined);
@@ -472,7 +472,7 @@ describe('FtpService', () => {
 
     it('returns true for an existing file (found in the parent listing)', async () => {
       await service.connect(
-        { host: 'ftp.example.com', port: 21, username: 'user', type: 'ftp' },
+        { host: 'ftp.example.com', port: 21, username: 'user', authMethod: 'password', type: 'ftp' },
         { password: 'pass' }
       );
       mockClient.cd.mockRejectedValueOnce(new Error('not a directory'));
@@ -484,7 +484,7 @@ describe('FtpService', () => {
 
     it('returns false when the path does not exist', async () => {
       await service.connect(
-        { host: 'ftp.example.com', port: 21, username: 'user', type: 'ftp' },
+        { host: 'ftp.example.com', port: 21, username: 'user', authMethod: 'password', type: 'ftp' },
         { password: 'pass' }
       );
       mockClient.cd.mockRejectedValueOnce(new Error('not a directory'));
@@ -496,7 +496,7 @@ describe('FtpService', () => {
   describe('stat', () => {
     beforeEach(async () => {
       await service.connect(
-        { host: 'ftp.example.com', port: 21, username: 'user', type: 'ftp' },
+        { host: 'ftp.example.com', port: 21, username: 'user', authMethod: 'password', type: 'ftp' },
         { password: 'pass' }
       );
     });
@@ -550,7 +550,7 @@ describe('FtpService', () => {
   describe('deleteFile', () => {
     beforeEach(async () => {
       await service.connect(
-        { host: 'ftp.example.com', port: 21, username: 'user', type: 'ftp' },
+        { host: 'ftp.example.com', port: 21, username: 'user', authMethod: 'password', type: 'ftp' },
         { password: 'pass' }
       );
     });
@@ -569,7 +569,7 @@ describe('FtpService', () => {
   describe('rename', () => {
     beforeEach(async () => {
       await service.connect(
-        { host: 'ftp.example.com', port: 21, username: 'user', type: 'ftp' },
+        { host: 'ftp.example.com', port: 21, username: 'user', authMethod: 'password', type: 'ftp' },
         { password: 'pass' }
       );
     });
@@ -599,7 +599,7 @@ describe('FtpService', () => {
   describe('deleteDirectory', () => {
     beforeEach(async () => {
       await service.connect(
-        { host: 'ftp.example.com', port: 21, username: 'user', type: 'ftp' },
+        { host: 'ftp.example.com', port: 21, username: 'user', authMethod: 'password', type: 'ftp' },
         { password: 'pass' }
       );
     });
@@ -613,7 +613,7 @@ describe('FtpService', () => {
   describe('disconnect', () => {
     it('closes the client', async () => {
       await service.connect(
-        { host: 'ftp.example.com', port: 21, username: 'user', type: 'ftp' },
+        { host: 'ftp.example.com', port: 21, username: 'user', authMethod: 'password', type: 'ftp' },
         { password: 'pass' }
       );
       await service.disconnect();
@@ -631,7 +631,7 @@ describe('FtpService', () => {
     beforeEach(async () => {
       mockClient.access.mockResolvedValue(undefined);
       await service.connect(
-        { host: 'ftp.example.com', port: 21, username: 'user', type: 'ftp' },
+        { host: 'ftp.example.com', port: 21, username: 'user', authMethod: 'password', type: 'ftp' },
         { password: 'pass' }
       );
     });

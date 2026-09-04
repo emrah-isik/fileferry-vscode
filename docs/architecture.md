@@ -180,7 +180,7 @@ FileFerry supports multiple protocols (SFTP, FTP, FTPS) through a shared `Transf
 ```typescript
 interface TransferService {
   readonly connected: boolean;
-  connect(server, credentials, options?): Promise<void>;
+  connect(target: ConnectTarget, credentials, options?): Promise<void>;
   uploadFile(localPath, remotePath): Promise<void>;
   get(remotePath): Promise<Buffer>;
   listDirectory(remotePath): Promise<Array<{ name: string; type: string }>>;
@@ -201,6 +201,8 @@ interface TransferService {
 **Implementations**: `SftpService` wraps `ssh2-sftp-client` for SSH-based transfers. `FtpService` wraps `basic-ftp` for plain FTP, FTPS with explicit TLS, and FTPS with implicit TLS.
 
 **Factory**: `createTransferService(type: ServerType)` returns the correct implementation based on the server's protocol type. All consumers (upload orchestrator, backup service, file date guard, diff service, remote browser) use this factory instead of instantiating a specific service directly.
+
+**Connect payload**: `connect()` takes a `ConnectTarget` (`src/connectTarget.ts`) — the credential's connection fields plus the *server's* `type`, which a credential does not carry (a credential is reusable across servers; the protocol belongs to the server). Every call site builds it with `toConnectTarget(credential, server.type)` rather than hand-assembling an object, and the interface requires `type`, so a bare `SshCredentialWithSecret` no longer type-checks as a payload. `FtpService.connect` decides its TLS mode from `type` (`ftps` → explicit, `ftps-implicit` → implicit); `SftpService.connect` ignores it. Before the feature 35 pre-work most paths passed the credential straight through, so `ftps` / `ftps-implicit` servers dialed with `secure: false` everywhere except the Servers-tree Test Connection.
 
 **Remote command execution is deliberately NOT on the interface.** Only SSH transports can exec, so `RemoteCommandRunner` (`execCommand`) is a separate capability implemented by `SftpService` alone; callers narrow with the `canExec()` type predicate; the ssh2 `Client` it execs on comes from `getRawClient()` (`src/ssh/rawClient.ts`), the single typed accessor for ssh2-sftp-client's unpublished `.client`. `execCommand` returns stdout, stderr, and the raw exit code without judging success — hook failure is decided on **exit code only**, never on stderr (servers print MOTD/banners to stderr on success). Deploy hooks (feature 27) are its only consumer; the SSH terminal (feature 20) deliberately does not go through it — it opens no SFTP session at all but dials its own raw client and execs on that (see *SSH terminal* below).
 

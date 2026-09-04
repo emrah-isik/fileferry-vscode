@@ -5,7 +5,7 @@ import type { CancellationToken } from 'vscode';
 import { PathResolver } from '../path/PathResolver';
 import { TransferService } from '../transferService';
 import { createTransferService } from '../transferServiceFactory';
-import { SshCredentialWithSecret } from '../models/SshCredential';
+import { toConnectTarget, ConnectTargetWithSecret } from '../connectTarget';
 import { UploadOrchestratorV2 } from '../services/UploadOrchestratorV2';
 import { BackupService } from '../services/BackupService';
 import { DryRunReporter } from '../services/DryRunReporter';
@@ -14,7 +14,7 @@ import { UploadHistoryService } from '../services/UploadHistoryService';
 import { summaryToHistoryEntries } from '../services/summaryToHistoryEntries';
 import { reconcile, LocalFileEntry, RemoteFileEntry } from '../services/SyncReconciler';
 import { walkLocalTree, walkRemoteTree } from '../services/SyncTreeWalker';
-import { ProjectConfig, ProjectServer, ServerType } from '../models/ProjectConfig';
+import { ProjectConfig, ProjectServer } from '../models/ProjectConfig';
 import { CredentialManager } from '../storage/CredentialManager';
 import { ProjectConfigManager } from '../storage/ProjectConfigManager';
 import { HookSecretManager } from '../storage/HookSecretManager';
@@ -40,7 +40,7 @@ interface SyncServerContext {
   serverConfig: ServerConfig;
   workspaceRoot: string;
   pathResolver: PathResolver;
-  credential: SshCredentialWithSecret;
+  target: ConnectTargetWithSecret;
 }
 
 // One sync run's bounds: which local dirs to walk, which remote subtree roots
@@ -158,7 +158,7 @@ function resolveFolderScope(
 }
 
 /**
- * Resolves the project config, default server, credential, and derived helpers
+ * Resolves the project config, default server, connect target, and derived helpers
  * shared by every sync scope. Surfaces an error and returns null when there is
  * no config, no default server, or no mappings.
  */
@@ -196,9 +196,9 @@ async function resolveSyncServerContext(
     mappings: server.mappings,
     excludedPaths: server.excludedPaths,
   };
-  const credential = await dependencies.credentialManager.getWithSecret(server.credentialId);
+  const target = toConnectTarget(await dependencies.credentialManager.getWithSecret(server.credentialId), server.type);
 
-  return { config, server, serverName, serverConfig, workspaceRoot, pathResolver, credential };
+  return { config, server, serverName, serverConfig, workspaceRoot, pathResolver, target };
 }
 
 /**
@@ -213,7 +213,7 @@ async function runSyncForScope(
   serverContext: SyncServerContext,
   scope: SyncScope
 ): Promise<void> {
-  const { config, server, serverName, serverConfig, workspaceRoot, pathResolver, credential } =
+  const { config, server, serverName, serverConfig, workspaceRoot, pathResolver, target } =
     serverContext;
   const { localRoots, remoteRoots, label } = scope;
 
@@ -233,7 +233,7 @@ async function runSyncForScope(
       },
       async (progress, token) => {
         progress.report({ message: 'Walking remote tree...' });
-        const remoteFiles = await gatherRemoteFiles(credential, server.type, remoteRoots, token);
+        const remoteFiles = await gatherRemoteFiles(target, remoteRoots, token);
         return reconcile(localFiles, remoteFiles, {
           timeOffsetMs: server.timeOffsetMs,
           isRemotePathExcluded: makeIsRemotePathExcluded(pathResolver, workspaceRoot, serverConfig),
@@ -358,20 +358,20 @@ async function runSyncForScope(
       // upload set only copies the ones that are genuine overwrites.
       if (willBackupOverwrites) {
         progress.report({ message: 'Backing up remote files before overwrite...' });
-        await backupService.backup(plan.toUpload, credential, serverName, workspaceRoot);
+        await backupService.backup(plan.toUpload, target, serverName, workspaceRoot);
       }
 
       // Back up each to-be-deleted remote file before pruning (safety #4).
       if (willBackupDeletes) {
         progress.report({ message: 'Backing up files before delete...' });
         const backupItems = deleteRemotePaths.map(remotePath => ({ localPath: '', remotePath }));
-        await backupService.backup(backupItems, credential, serverName, workspaceRoot);
+        await backupService.backup(backupItems, target, serverName, workspaceRoot);
       }
 
       progress.report({ message: 'Syncing...' });
       const result = await orchestrator.upload(
         plan.toUpload,
-        credential,
+        target,
         server,
         deleteRemotePaths,
         token,
@@ -505,15 +505,14 @@ function gatherLocalFilesUnder(
 
 /** Connects once and walks every mapped remote root into a flat file list. */
 async function gatherRemoteFiles(
-  credential: SshCredentialWithSecret,
-  serverType: ServerType,
+  target: ConnectTargetWithSecret,
   remoteRoots: string[],
   token: CancellationToken
 ): Promise<RemoteFileEntry[]> {
-  const transfer: TransferService = createTransferService(serverType);
-  await transfer.connect(credential, {
-    password: credential.password,
-    passphrase: credential.passphrase,
+  const transfer: TransferService = createTransferService(target.type);
+  await transfer.connect(target, {
+    password: target.password,
+    passphrase: target.passphrase,
   });
   try {
     const entries: RemoteFileEntry[] = [];

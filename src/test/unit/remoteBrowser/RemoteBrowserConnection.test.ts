@@ -957,4 +957,14 @@ describe('RemoteBrowserConnection', () => {
       expect(lostRoutes).toEqual([]);
     });
   });
+
+  it('connects with the server type on the payload — an FTPS server dials as FTPS (feature 35 pre-work)', async () => {
+    mockConfigManager.getServerById.mockResolvedValue({ name: 'Production', server: { ...fakeServer, type: 'ftps' as const } });
+
+    await connection.ensureConnected();
+
+    expect(mockSftp.connect.mock.calls[0][0]).toEqual(
+      expect.objectContaining({ type: 'ftps', host: 'example.com', username: 'deploy' })
+    );
+  });
 });

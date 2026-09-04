@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Writable } from 'stream';
 import { TransferService, FileEntry } from './transferService';
-import { ServerConfig } from './types';
+import type { ConnectTarget } from './connectTarget';
 import { connectProviderRegistry } from './ssh/connectProviders';
 
 // 553 = file name not allowed; some servers use it for write-denied temp
@@ -23,7 +23,7 @@ export class FtpService implements TransferService {
   }
 
   async connect(
-    server: Pick<ServerConfig, 'type' | 'host' | 'port' | 'username' | 'jumpHosts'>,
+    server: ConnectTarget,
     credentials: { password?: string; passphrase?: string },
     _options?: unknown
   ): Promise<void> {

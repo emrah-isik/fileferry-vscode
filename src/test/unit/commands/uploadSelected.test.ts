@@ -691,4 +691,28 @@ describe('uploadSelected command', () => {
       expect(mockHistoryLog).not.toHaveBeenCalled();
     });
   });
+
+  describe('FTPS type drop (feature 35 pre-work)', () => {
+    const ftpsServer = { ...serverFixture, type: 'ftps' };
+    const carriesType = expect.objectContaining({ type: 'ftps', host: 'example.com', password: 'secret' });
+
+    beforeEach(() => {
+      (mockConfigManager.getServerById as jest.Mock).mockResolvedValue({ name: 'Production', server: ftpsServer });
+      (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({
+        ...configFixture, backupBeforeOverwrite: true, servers: { Production: ftpsServer },
+      });
+    });
+
+    it('hands the date guard, backup, and orchestrator a connect target carrying the server type', async () => {
+      await uploadSelected(resource, undefined, dependencies());
+      expect(mockDateGuardCheck.mock.calls[0][1]).toEqual(carriesType);
+      expect(mockBackup.mock.calls[0][1]).toEqual(carriesType);
+      expect(mockUpload.mock.calls[0][1]).toEqual(carriesType);
+    });
+
+    it('upload only newer: the partition connect target carries the server type too', async () => {
+      await uploadSelected(resource, undefined, dependencies(), { onlyNewer: true });
+      expect(mockPartition.mock.calls[0][1]).toEqual(carriesType);
+    });
+  });
 });

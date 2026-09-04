@@ -2,7 +2,8 @@ import SftpClient from 'ssh2-sftp-client';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { ServerConfig, UploadPair, UploadResult } from './types';
+import { UploadPair, UploadResult } from './types';
+import type { ConnectTarget } from './connectTarget';
 import { resolveAgentSocket } from './ssh/agentResolver';
 import { getRawClient } from './ssh/rawClient';
 import {
@@ -64,7 +65,7 @@ export class SftpService implements TransferService, RemoteCommandRunner {
    * default `readyTimeout`.
    */
   async connect(
-    server: ServerConfig,
+    server: ConnectTarget,
     credentials: { password?: string; passphrase?: string },
     options?: {
       /**
@@ -114,7 +115,7 @@ export class SftpService implements TransferService, RemoteCommandRunner {
   }
 
   private async connectAttempt(
-    server: ServerConfig,
+    server: ConnectTarget,
     credentials: { password?: string; passphrase?: string },
     options: Parameters<TransferService['connect']>[2],
     allowKeychainAutoAnswer: boolean,

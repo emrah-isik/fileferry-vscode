@@ -312,3 +312,16 @@ describe('FileDateGuard', () => {
     });
   });
 });
+
+describe('FileDateGuard — connect target (FTPS type drop, feature 35 pre-work)', () => {
+  it.each(['check', 'partitionByNewerLocal'] as const)('%s forwards the target — server type included — to the transport untouched', async (method) => {
+    jest.clearAllMocks();
+    mockSftp.stat.mockResolvedValue(null);
+    const target = { ...credential, type: 'ftps' };
+
+    await new FileDateGuard(mockSftp as any)[method]([item('a.php')], target);
+
+    expect(mockSftp.connect.mock.calls[0][0]).toBe(target);
+    expect(mockSftp.connect.mock.calls[0][0]).toEqual(expect.objectContaining({ type: 'ftps' }));
+  });
+});

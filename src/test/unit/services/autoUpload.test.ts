@@ -193,4 +193,16 @@ describe('autoUploadFile', () => {
       expect(outcome.status).toBe('uploaded');
     });
   });
+
+  describe('FTPS type drop (feature 35 pre-work)', () => {
+    it('hands the date guard and the orchestrator a connect target carrying the server type', async () => {
+      (mockConfigManager.getServerById as jest.Mock).mockResolvedValue({ name: 'Production', server: { ...server, type: 'ftps' } });
+
+      await autoUploadFile('/workspace/dist/app.js', '/workspace', config, deps(), 'save', { applyGitIgnore: false });
+
+      const carriesType = expect.objectContaining({ type: 'ftps', password: 'secret' });
+      expect(mockDateGuardCheck.mock.calls[0][1]).toEqual(carriesType);
+      expect(mockUpload.mock.calls[0][1]).toEqual(carriesType);
+    });
+  });
 });

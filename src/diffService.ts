@@ -1,7 +1,7 @@
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import * as crypto from 'crypto';
-import { ServerConfig } from './types';
+import type { ConnectTarget } from './connectTarget';
 import { TransferService } from './transferService';
 
 // DiffService downloads the remote version of a file to a local temp directory
@@ -29,11 +29,11 @@ export class DiffService {
   // Downloads the remote file and writes it to the temp directory.
   // Returns the local temp path — ready to open in VSCode's diff editor.
   async downloadRemoteFile(
-    server: ServerConfig,
+    target: ConnectTarget,
     credentials: { password?: string; passphrase?: string },
     remotePath: string
   ): Promise<string> {
-    await this.sftpService.connect(server, credentials);
+    await this.sftpService.connect(target, credentials);
     try {
       const content = await this.sftpService.get(remotePath);
       const tempPath = this.getTempPath(remotePath);
