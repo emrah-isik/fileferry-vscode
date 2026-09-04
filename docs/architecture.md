@@ -20,7 +20,7 @@ Project Config  (per workspace — .vscode/fileferry.json)
 **Project Config** (`.vscode/fileferry.json`) is workspace-local. It contains:
 
 - `defaultServerId` — UUID of the active server
-- `uploadOnSave` — optional per-project toggle
+- `uploadOnSave` — optional per-project toggle; a server's own optional `uploadOnSave` overrides it while that server is the default (feature 35a). `resolveUploadOnSave(config, server)` (`src/services/uploadOnSaveResolution.ts`) is the one place the rule lives — `UploadOnSaveService`, the status bar, and the toggle command all read the default server's resolution from it
 - `dryRun` — optional toggle (defaults to `false`); when true, upload commands resolve paths and report the plan but skip all transfers and connections
 - `fileDateGuard` — optional toggle (defaults to `true`); when false, skips the remote mtime check before upload
 - `backupBeforeOverwrite` — optional toggle (defaults to `false`); when true, downloads remote files to `.vscode/fileferry-backups/` before uploading
