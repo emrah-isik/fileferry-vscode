@@ -4,6 +4,7 @@ import { CredentialManager } from '../storage/CredentialManager';
 import { ProjectConfigManager } from '../storage/ProjectConfigManager';
 import { autoUploadFile } from './autoUpload';
 import { showVerificationRequiredWarning } from '../ui/verificationRequiredWarning';
+import { resolveUploadOnSave } from './uploadOnSaveResolution';
 
 interface Dependencies {
   credentialManager: CredentialManager;
@@ -37,7 +38,13 @@ export class UploadOnSaveService {
     }
 
     const config = await this.dependencies.configManager.getConfig();
-    if (!config?.uploadOnSave) {
+    if (!config) {
+      return;
+    }
+    // The default server's own uploadOnSave wins over the project toggle
+    // (feature 35a); autoUploadFile handles a missing server itself.
+    const defaultServer = (await this.dependencies.configManager.getServerById(config.defaultServerId))?.server;
+    if (!resolveUploadOnSave(config, defaultServer).enabled) {
       return;
     }
 
