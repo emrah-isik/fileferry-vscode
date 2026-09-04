@@ -27,6 +27,7 @@ export interface ProjectServer {
   filePermissions?: number;       // octal mode applied to uploaded files (e.g. 0o644)
   directoryPermissions?: number;  // octal mode applied to created directories (e.g. 0o755)
   timeOffsetMs?: number;          // clock skew in ms (remote minus local); detected via Test Connection
+  uploadOnSave?: boolean;         // per-server override of ProjectConfig.uploadOnSave; absent = inherit (feature 35a)
   hooks?: {                       // commands run before/after a deliberate deploy (#27)
     preDeploy?: HookCommand[];
     postDeploy?: HookCommand[];
