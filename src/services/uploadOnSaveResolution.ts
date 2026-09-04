@@ -21,3 +21,17 @@ export function resolveUploadOnSave(
   }
   return { enabled: config.uploadOnSave === true, source: 'project' };
 }
+
+/** Notification for the project-level toggle command: honest when the default server overrides it. */
+export function uploadOnSaveToggleMessage(
+  newProjectValue: boolean,
+  defaultServerName: string | undefined,
+  resolution: UploadOnSaveResolution
+): string {
+  const verb = newProjectValue ? 'enabled' : 'disabled';
+  if (resolution.source !== 'server') {
+    return `FileFerry: Upload on save ${verb}.`;
+  }
+  const serverValue = resolution.enabled ? 'ON' : 'OFF';
+  return `FileFerry: Upload on save ${verb} for the project — but "${defaultServerName ?? 'the default server'}" sets it to ${serverValue} itself (Deployment Settings → Connection).`;
+}

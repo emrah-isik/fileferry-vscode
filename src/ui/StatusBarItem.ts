@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { ProjectConfigManager } from '../storage/ProjectConfigManager';
+import { resolveUploadOnSave } from '../services/uploadOnSaveResolution';
 
 interface MenuAction {
   label: string;
@@ -10,6 +11,7 @@ interface MenuAction {
 export class StatusBarItem implements vscode.Disposable {
   private readonly item: vscode.StatusBarItem;
   private uploadOnSave = false;
+  private uploadOnSaveSetOnServer = false;
   private dryRun = false;
 
   constructor(
@@ -35,6 +37,7 @@ export class StatusBarItem implements vscode.Disposable {
     const config = await this.configManager.getConfig();
     if (!config) {
       this.uploadOnSave = false;
+      this.uploadOnSaveSetOnServer = false;
       this.dryRun = false;
       this.item.text = '$(server) FileFerry';
       this.item.tooltip = 'FileFerry: Click to open Deployment Settings';
@@ -43,7 +46,11 @@ export class StatusBarItem implements vscode.Disposable {
     }
     const match = await this.configManager.getServerById(config.defaultServerId);
     const name = match?.name ?? 'FileFerry';
-    this.uploadOnSave = config.uploadOnSave === true;
+    // Effective state for the DEFAULT server (feature 35a): its own
+    // uploadOnSave wins over the project toggle.
+    const resolution = resolveUploadOnSave(config, match?.server);
+    this.uploadOnSave = resolution.enabled;
+    this.uploadOnSaveSetOnServer = resolution.source === 'server';
     this.dryRun = config.dryRun === true;
 
     if (this.dryRun) {
@@ -52,9 +59,14 @@ export class StatusBarItem implements vscode.Disposable {
     } else {
       const icon = this.uploadOnSave ? '$(cloud-upload)' : '$(server)';
       this.item.text = `${icon} ${name}`;
-      this.item.tooltip = `FileFerry: ${name} — Upload on save: ${this.uploadOnSave ? 'ON' : 'OFF'}`;
+      this.item.tooltip = `FileFerry: ${name} — Upload on save: ${this.describeUploadOnSave()}`;
     }
     this.item.show();
+  }
+
+  private describeUploadOnSave(): string {
+    const state = this.uploadOnSave ? 'ON' : 'OFF';
+    return this.uploadOnSaveSetOnServer ? `${state} (set on this server)` : state;
   }
 
   async showMenu(): Promise<void> {
@@ -67,7 +79,7 @@ export class StatusBarItem implements vscode.Disposable {
       {
         label: '$(cloud-upload) Upload on Save',
         id: 'toggleUploadOnSave',
-        description: this.uploadOnSave ? 'ON' : 'OFF',
+        description: this.describeUploadOnSave(),
       },
       {
         label: '$(sync) Sync to Remote',
