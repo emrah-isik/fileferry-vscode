@@ -3,7 +3,7 @@ import { TransferService, FileEntry } from '../transferService';
 import { createTransferService } from '../transferServiceFactory';
 import { CredentialManager } from '../storage/CredentialManager';
 import { ProjectConfigManager } from '../storage/ProjectConfigManager';
-import { ServerConfig } from '../types';
+import { toConnectTarget } from '../connectTarget';
 import { JumpHostPool } from '../ssh/JumpHostPool';
 import { ConnectionCancelledError } from '../ssh/connectErrors';
 import { ProjectServer } from '../models/ProjectConfig';
@@ -204,28 +204,14 @@ export class RemoteBrowserConnection {
 
     const credential = await this.credentialManager.getWithSecret(server.credentialId);
 
-    const serverConfig: ServerConfig = {
-      id: server.id,
-      name: serverName,
-      type: server.type,
-      host: credential.host,
-      port: credential.port,
-      username: credential.username,
-      authMethod: credential.authMethod,
-      privateKeyPath: credential.privateKeyPath,
-      agentSocketPath: credential.agentSocketPath,
-      useSshConfig: credential.useSshConfig,
-      jumpHosts: credential.jumpHosts,
-      mappings: [],
-      excludedPaths: [],
-    };
+    const target = toConnectTarget(credential, server.type);
 
     // Host-key verification and keyboard-interactive prompts are not wired
     // here: SftpService.connect() applies the registered connect providers
     // (src/ssh/connectProviders.ts) to every SSH connect, and FTP/FTPS have
     // no host keys to verify. The signal lets abortInFlightConnect cancel
     // this dial — an open prompt included.
-    await service.connect(serverConfig, {
+    await service.connect(target, {
       password: credential.password,
       passphrase: credential.passphrase,
     }, { interactive, signal });

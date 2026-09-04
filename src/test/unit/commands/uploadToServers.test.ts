@@ -531,4 +531,25 @@ describe('uploadToServers command', () => {
       expect(mockHistoryLog).not.toHaveBeenCalled();
     });
   });
+
+  describe('FTPS type drop (feature 35 pre-work)', () => {
+    it('hands each server\'s date guard, backup, and orchestrator a connect target carrying THAT server\'s type', async () => {
+      (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({
+        ...configFixture,
+        backupBeforeOverwrite: true,
+        servers: {
+          Production: { ...prodServer, type: 'ftps' },
+          Staging: { ...stagingServer, type: 'ftps-implicit' },
+        },
+      });
+
+      await uploadToServers(resource, undefined, dependencies());
+
+      const typesSeenBy = (mock: jest.Mock) => mock.mock.calls.map(call => `${call[1].host}:${call[1].type}`).sort();
+      const expected = ['prod.example.com:ftps', 'staging.example.com:ftps-implicit'];
+      expect(typesSeenBy(mockDateGuardCheck)).toEqual(expected);
+      expect(typesSeenBy(mockBackup)).toEqual(expected);
+      expect(typesSeenBy(mockUpload)).toEqual(expected);
+    });
+  });
 });

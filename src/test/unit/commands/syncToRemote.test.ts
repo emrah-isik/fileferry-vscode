@@ -361,4 +361,23 @@ describe('syncToRemote', () => {
     expect(vscode.window.showErrorMessage).toHaveBeenCalled();
     expect(mockUpload).not.toHaveBeenCalled();
   });
+
+  describe('FTPS type drop (feature 35 pre-work)', () => {
+    it('the remote walk, backup, and orchestrator all receive a connect target carrying the server type', async () => {
+      const ftpsServer = { ...server, type: 'ftps' as const };
+      (mockConfigManager.getServerById as jest.Mock).mockResolvedValue({ name: 'Production', server: ftpsServer });
+      (mockConfigManager.getConfig as jest.Mock).mockResolvedValue(
+        makeConfig({ backupBeforeOverwrite: true, servers: { Production: ftpsServer } })
+      );
+      mockReconcile.mockReturnValue(planWith({ toUpload: [uploadItem] }));
+
+      await syncToRemote(dependencies);
+
+      const carriesType = expect.objectContaining({ type: 'ftps', password: 'secret' });
+      expect(mockCreateTransferService).toHaveBeenCalledWith('ftps');
+      expect(mockConnect.mock.calls[0][0]).toEqual(carriesType); // the remote walk
+      expect(mockBackup.mock.calls[0][1]).toEqual(carriesType);
+      expect(mockUpload.mock.calls[0][1]).toEqual(carriesType);
+    });
+  });
 });

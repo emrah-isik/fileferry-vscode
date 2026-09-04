@@ -1,6 +1,6 @@
 import type { CancellationToken, OutputChannel } from 'vscode';
 import { TransferService, canExec } from '../transferService';
-import { SshCredentialWithSecret } from '../models/SshCredential';
+import { ConnectTargetWithSecret } from '../connectTarget';
 import { ResolvedUploadItem } from '../path/PathResolver';
 import { ProjectServer } from '../models/ProjectConfig';
 import { runHooks, preflightHookSecrets, HookSecretSource } from './HookRunner';
@@ -45,7 +45,7 @@ export class UploadOrchestratorV2 {
 
   async upload(
     items: ResolvedUploadItem[],
-    credential: SshCredentialWithSecret,
+    target: ConnectTargetWithSecret,
     server: ServerWithHooks | null,
     deleteRemotePaths: string[] = [],
     token?: CancellationToken,
@@ -120,9 +120,9 @@ export class UploadOrchestratorV2 {
       }
     }
 
-    await this.sftp.connect(credential, {
-      password: credential.password,
-      passphrase: credential.passphrase,
+    await this.sftp.connect(target, {
+      password: target.password,
+      passphrase: target.passphrase,
     }, { interactive: options?.interactive !== false });
 
     // Remote hooks run over the deploy's own connection — SFTP only. On FTP/FTPS

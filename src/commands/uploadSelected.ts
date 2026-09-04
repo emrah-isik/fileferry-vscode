@@ -13,6 +13,7 @@ import { DryRunReporter } from '../services/DryRunReporter';
 import { UploadHistoryService } from '../services/UploadHistoryService';
 import { summaryToHistoryEntries } from '../services/summaryToHistoryEntries';
 import { HookSecretManager } from '../storage/HookSecretManager';
+import { toConnectTarget } from '../connectTarget';
 
 interface Dependencies {
   credentialManager: CredentialManager;
@@ -114,10 +115,10 @@ export async function uploadSelected(
   // so the preview reflects what would actually move.
   let skippedNewer: SkippedItem[] = [];
   if (options?.onlyNewer) {
-    const onlyNewerCredential = await dependencies.credentialManager.getWithSecret(server.credentialId);
+    const onlyNewerTarget = toConnectTarget(await dependencies.credentialManager.getWithSecret(server.credentialId), server.type);
     const partition = await new FileDateGuard(createTransferService(server.type)).partitionByNewerLocal(
       uploadItems,
-      onlyNewerCredential,
+      onlyNewerTarget,
       server.timeOffsetMs
     );
     uploadItems = partition.toUpload;
@@ -163,7 +164,7 @@ export async function uploadSelected(
     return;
   }
 
-  const credential = await dependencies.credentialManager.getWithSecret(server.credentialId);
+  const target = toConnectTarget(await dependencies.credentialManager.getWithSecret(server.credentialId), server.type);
   const fileDateGuardEnabled = config.fileDateGuard !== false;
 
   // Deploy over the transport that matches the server's protocol (SFTP vs
@@ -182,7 +183,7 @@ export async function uploadSelected(
       // only-newer mode — the partition above already removed every such file.
       if (fileDateGuardEnabled && !options?.onlyNewer) {
         progress.report({ message: 'Checking remote files...' });
-        const newerOnRemote = await new FileDateGuard(createTransferService(server.type)).check(uploadItems, credential, server.timeOffsetMs);
+        const newerOnRemote = await new FileDateGuard(createTransferService(server.type)).check(uploadItems, target, server.timeOffsetMs);
         if (newerOnRemote.length > 0) {
           const fileNames = newerOnRemote.map(f => path.basename(f.localPath)).join(', ');
           const choice = await vscode.window.showWarningMessage(
@@ -202,11 +203,11 @@ export async function uploadSelected(
         const maxSizeMB = config.backupMaxSizeMB ?? 100;
         const backupService = new BackupService(createTransferService(server.type));
         await backupService.cleanup(workspaceRoot, retentionDays, maxSizeMB);
-        await backupService.backup(uploadItems, credential, serverName, workspaceRoot);
+        await backupService.backup(uploadItems, target, serverName, workspaceRoot);
       }
 
       progress.report({ message: 'Uploading...' });
-      const result = await orchestrator.upload(uploadItems, credential, server, deleteRemotePaths, token, {
+      const result = await orchestrator.upload(uploadItems, target, server, deleteRemotePaths, token, {
         workspaceRoot,
         dryRun: !!config.dryRun,
         isTrusted: vscode.workspace.isTrusted,

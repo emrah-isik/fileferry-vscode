@@ -490,3 +490,15 @@ describe('UploadOrchestratorV2 — deploy hooks', () => {
     });
   });
 });
+
+describe('UploadOrchestratorV2 — connect target (FTPS type drop, feature 35 pre-work)', () => {
+  it('forwards the target — server type included — to the transport untouched', async () => {
+    jest.clearAllMocks();
+    const target = { ...credential, type: 'ftps' };
+
+    await new UploadOrchestratorV2(mockSftp as any).upload([item('a.php')], target, null);
+
+    expect(mockSftp.connect.mock.calls[0][0]).toBe(target);
+    expect(mockSftp.connect.mock.calls[0][0]).toEqual(expect.objectContaining({ type: 'ftps' }));
+  });
+});

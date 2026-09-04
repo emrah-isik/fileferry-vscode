@@ -4,6 +4,7 @@ import { randomBytes } from 'crypto';
 import { CredentialManager } from '../../storage/CredentialManager';
 import { ProjectConfigManager } from '../../storage/ProjectConfigManager';
 import { createTransferService } from '../../transferServiceFactory';
+import { toConnectTarget } from '../../connectTarget';
 import { generateId } from '../../utils/uuid';
 import { SshCredential, SshCredentialWithSecret } from '../../models/SshCredential';
 import { validateSshCredential } from '../../utils/validation';
@@ -289,7 +290,7 @@ export class SshCredentialPanel {
 
     const service = createTransferService('sftp');
     try {
-      await service.connect(tempCredential, { password: tempCredential.password, passphrase: tempCredential.passphrase });
+      await service.connect(toConnectTarget(tempCredential, 'sftp'), { password: tempCredential.password, passphrase: tempCredential.passphrase });
       await service.disconnect();
       this.panel.webview.postMessage({ command: 'testResult', success: true, message: 'Connected successfully' });
     } catch (err: unknown) {

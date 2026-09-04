@@ -20,7 +20,7 @@ import { UploadHistoryPanel } from './ui/webviews/UploadHistoryPanel';
 import { SshCredentialPanel } from './ui/webviews/SshCredentialPanel';
 import { RemoteBrowserConnection } from './remoteBrowser/RemoteBrowserConnection';
 import { RemoteFileItem } from './remoteBrowser/RemoteFileItem';
-import { ServerConfig } from './types';
+import { toConnectTarget } from './connectTarget';
 import { RemoteBrowserProvider } from './remoteBrowser/RemoteBrowserProvider';
 import { ServersProvider } from './remoteBrowser/ServersProvider';
 import { openRemoteFile } from './commands/openRemoteFile';
@@ -460,9 +460,7 @@ export function activate(context: vscode.ExtensionContext): void {
         const transfer = createTransferService(entry.server.type);
         try {
           await transfer.connect(
-            // SshCredentialWithSecret carries the fields connect() reads; add the
-            // server type so an FTP/FTPS transport picks the right TLS mode.
-            { ...(credential as unknown as ServerConfig), type: entry.server.type },
+            toConnectTarget(credential, entry.server.type),
             { password: credential.password, passphrase: credential.passphrase }
           );
           await transfer.disconnect();

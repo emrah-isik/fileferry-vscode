@@ -10,6 +10,7 @@ import { InteractionRequiredError } from '../ssh/connectErrors';
 import { CredentialManager } from '../storage/CredentialManager';
 import { ProjectConfigManager } from '../storage/ProjectConfigManager';
 import { ProjectConfig } from '../models/ProjectConfig';
+import { toConnectTarget } from '../connectTarget';
 
 interface Dependencies {
   credentialManager: CredentialManager;
@@ -76,7 +77,7 @@ export async function autoUploadFile(
   }
 
   try {
-    const credential = await dependencies.credentialManager.getWithSecret(server.credentialId);
+    const target = toConnectTarget(await dependencies.credentialManager.getWithSecret(server.credentialId), server.type);
 
     // File date guard — skip if the remote is newer. Non-blocking on errors,
     // EXCEPT a verification refusal: that would hit the orchestrator's
@@ -87,7 +88,7 @@ export async function autoUploadFile(
     try {
       const newerOnRemote = fileDateGuardEnabled
         ? await new FileDateGuard(createTransferService(server.type))
-          .check([resolved], credential, server.timeOffsetMs, { interactive: false })
+          .check([resolved], target, server.timeOffsetMs, { interactive: false })
         : [];
       if (newerOnRemote.length > 0) {
         return { status: 'skipped', reason: 'remote-newer', fileName };
@@ -112,7 +113,7 @@ export async function autoUploadFile(
     // hook-free; only deliberate deploys (uploadSelected / uploadToServers / sync)
     // supply a hook context.
     const summary = await orchestrator.upload(
-      [resolved], credential, null, [], undefined, undefined, { interactive: false }
+      [resolved], target, null, [], undefined, undefined, { interactive: false }
     );
 
     const historyMaxEntries = config.historyMaxEntries ?? 10000;

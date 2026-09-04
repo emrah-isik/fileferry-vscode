@@ -14,6 +14,7 @@ import { UploadHistoryService } from '../services/UploadHistoryService';
 import { summaryToHistoryEntries } from '../services/summaryToHistoryEntries';
 import { UploadConfirmation } from '../uploadConfirmation';
 import { HookSecretManager } from '../storage/HookSecretManager';
+import { toConnectTarget } from '../connectTarget';
 
 interface Dependencies {
   credentialManager: CredentialManager;
@@ -178,8 +179,8 @@ export async function uploadToServers(
         const approvedPlans: ServerPlan[] = [];
         for (const plan of plans) {
           if (plan.uploadItems.length > 0) {
-            const credential = await dependencies.credentialManager.getWithSecret(plan.server.credentialId);
-            const newerOnRemote = await new FileDateGuard(createTransferService(plan.server.type)).check(plan.uploadItems, credential, plan.server.timeOffsetMs);
+            const target = toConnectTarget(await dependencies.credentialManager.getWithSecret(plan.server.credentialId), plan.server.type);
+            const newerOnRemote = await new FileDateGuard(createTransferService(plan.server.type)).check(plan.uploadItems, target, plan.server.timeOffsetMs);
             if (newerOnRemote.length > 0) {
               const fileNames = newerOnRemote.map(f => path.basename(f.localPath)).join(', ');
               const choice = await vscode.window.showWarningMessage(
@@ -212,9 +213,9 @@ export async function uploadToServers(
           .cleanup(workspaceRoot, retentionDays, maxSizeMB);
         for (const plan of plans) {
           if (plan.uploadItems.length > 0) {
-            const backupCredential = await dependencies.credentialManager.getWithSecret(plan.server.credentialId);
+            const backupTarget = toConnectTarget(await dependencies.credentialManager.getWithSecret(plan.server.credentialId), plan.server.type);
             await new BackupService(createTransferService(plan.server.type))
-              .backup(plan.uploadItems, backupCredential, plan.serverName, workspaceRoot);
+              .backup(plan.uploadItems, backupTarget, plan.serverName, workspaceRoot);
           }
         }
       }
@@ -223,10 +224,10 @@ export async function uploadToServers(
       const results: ServerUploadResult[] = await Promise.all(
         plans.map(async (plan): Promise<ServerUploadResult> => {
           try {
-            const credential = await dependencies.credentialManager.getWithSecret(plan.server.credentialId);
+            const target = toConnectTarget(await dependencies.credentialManager.getWithSecret(plan.server.credentialId), plan.server.type);
             const orchestrator = new UploadOrchestratorV2(createTransferService(plan.server.type));
             const summary = await orchestrator.upload(
-              plan.uploadItems, credential, plan.server, plan.deleteRemotePaths, token, {
+              plan.uploadItems, target, plan.server, plan.deleteRemotePaths, token, {
                 workspaceRoot,
                 dryRun: !!config.dryRun,
                 isTrusted: vscode.workspace.isTrusted,

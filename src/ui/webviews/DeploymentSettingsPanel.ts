@@ -4,6 +4,7 @@ import { randomBytes } from 'crypto';
 import { CredentialManager } from '../../storage/CredentialManager';
 import { ProjectConfigManager } from '../../storage/ProjectConfigManager';
 import { createTransferService } from '../../transferServiceFactory';
+import { toConnectTarget } from '../../connectTarget';
 import { generateId } from '../../utils/uuid';
 import { ProjectServer, HookCommand } from '../../models/ProjectConfig';
 import { ServerType } from '../../types';
@@ -491,9 +492,10 @@ export class DeploymentSettingsPanel {
       return;
     }
 
-    const service = createTransferService((server.type ?? 'sftp') as ServerType);
+    const serverType = (server.type ?? 'sftp') as ServerType;
+    const service = createTransferService(serverType);
     try {
-      await service.connect(credential, { password: credential.password, passphrase: credential.passphrase });
+      await service.connect(toConnectTarget(credential, serverType), { password: credential.password, passphrase: credential.passphrase });
 
       // The session must not outlive this handler: a throw out of detect()
       // (reachable via a cancelled prompt since 18a-1) or the probe would
@@ -546,9 +548,10 @@ export class DeploymentSettingsPanel {
     }
 
     const credential = await this.dependencies.credentialManager.getWithSecret(server.credentialId);
-    const service = createTransferService((server.type ?? 'sftp') as ServerType);
+    const serverType = (server.type ?? 'sftp') as ServerType;
+    const service = createTransferService(serverType);
     try {
-      await service.connect(credential, { password: credential.password, passphrase: credential.passphrase });
+      await service.connect(toConnectTarget(credential, serverType), { password: credential.password, passphrase: credential.passphrase });
 
       // Same leak guard as handleTestConnection (L5).
       let timeOffsetMs: number;
@@ -625,9 +628,10 @@ export class DeploymentSettingsPanel {
       return;
     }
 
-    const sftp = createTransferService((serverType ?? 'sftp') as ServerType);
+    const resolvedType = (serverType ?? 'sftp') as ServerType;
+    const sftp = createTransferService(resolvedType);
     try {
-      await sftp.connect(credential, { password: credential.password, passphrase: credential.passphrase });
+      await sftp.connect(toConnectTarget(credential, resolvedType), { password: credential.password, passphrase: credential.passphrase });
     } catch (err: unknown) {
       this.panel.webview.postMessage({ command: 'browseError', message: `Connection failed: ${(err as Error).message}` });
       return;

@@ -218,4 +218,14 @@ describe('showRemoteDiff command', () => {
     expect(vscode.commands.executeCommand).toHaveBeenCalledWith('vscode.diff', expect.anything(), expect.anything(), expect.anything());
     expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
   });
+
+  it('hands DiffService a connect target carrying the server type (FTPS type drop, feature 35 pre-work)', async () => {
+    (mockConfigManager.getServerById as jest.Mock).mockResolvedValue({ name: 'Production', server: { ...serverFixture, type: 'ftps' } });
+
+    await showRemoteDiff(resource, deps());
+
+    expect(mockDownloadRemoteFile.mock.calls[0][0]).toEqual(
+      expect.objectContaining({ type: 'ftps', host: 'example.com' })
+    );
+  });
 });

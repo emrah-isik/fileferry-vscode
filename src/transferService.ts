@@ -1,5 +1,6 @@
 import type { ResolverDeps } from './ssh/SshConfigResolver';
 import type { KeyboardInteractiveProvider } from './ssh/connectProviders';
+import type { ConnectTarget } from './connectTarget';
 export interface FileEntry {
   name: string;
   type: 'd' | '-' | 'l';
@@ -15,7 +16,8 @@ export interface TransferService {
   readonly connected: boolean;
 
   connect(
-    server: unknown,
+    // Requires the server `type` (not on a credential) — see src/connectTarget.ts.
+    server: ConnectTarget,
     credentials: { password?: string; passphrase?: string },
     options?: {
       /** ssh2 callback form ONLY — return `undefined`, verdict via `verify(permitted)`. See SftpService. */
