@@ -106,6 +106,7 @@ In the **Connection** tab:
 2. Select the protocol: **SFTP** (recommended), **FTP**, **FTPS (Explicit TLS)**, or **FTPS (Implicit TLS)**
 3. Pick the credential you just created (FTP/FTPS only shows password-auth credentials without jump hosts)
 4. Set the **Root Path** to the base directory on the server (e.g. `/var/www`)
+5. Optionally pin **Upload on Save** for this server (*On* / *Off*), or leave it on *Use project setting* — see [Upload on Save](#upload-on-save)
 
 Click **Save**. Use **Test Connection** to verify everything works before deploying.
 
@@ -162,6 +163,8 @@ With a file open in the editor, press `Alt+U` to upload it directly.
 Enable this in **Project Settings** (`FileFerry: Project Settings`) to automatically upload files every time you save. This respects your `.gitignore` — ignored files are never auto-uploaded.
 
 Toggle it quickly from the status bar without opening settings.
+
+**Per-server override.** A server can pin its own setting in Deployment Settings → **Connection** → **Upload on Save**: *Use project setting* (the default — inherits the toggle above), *On for this server*, or *Off for this server*. The server's choice wins whenever it is the default server, so you can keep upload-on-save armed for a dev box and force it **off** for production — switching the default server to production then stops auto-uploads immediately, without touching the project toggle. The status bar shows the state that is actually in effect (marked *set on this server* when the server decided), and toggling the project setting tells you when the default server overrides it.
 
 Upload on save runs in the background, so it never shows connection prompts. If the server's host key isn't trusted yet — or the connection would need a 2FA/verification prompt — the save is not uploaded; instead a warning appears (*host not yet trusted or verification required*) with a **Test Connection** button. Verify the host once (Test Connection, or any manual deploy) and later saves upload silently. Other connection failures show a regular error notification.
 

@@ -108,6 +108,7 @@
 
 - SSH jump hosts — single and chained hops, MFA/2FA prompts on any hop, `ProxyJump` honoured from `~/.ssh/config`
 - Open an SSH terminal to the active server, through the same jump hosts, in the current remote folder
+- Per-server upload-on-save — pin it on or off for one server (keep it armed for dev, force it off for production) instead of one project-wide switch
 - Import your config from vscode-sftp (`.vscode/sftp.json`) — servers, mappings, and ignore patterns carry over in one command, and plaintext passwords move into the OS keychain
 
 ### Later

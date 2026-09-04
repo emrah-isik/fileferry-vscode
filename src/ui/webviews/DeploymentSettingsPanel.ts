@@ -400,6 +400,10 @@ export class DeploymentSettingsPanel {
       excludedPaths: payload.excludedPaths ?? existing?.excludedPaths ?? [],
       ...(payload.filePermissions !== undefined ? { filePermissions: payload.filePermissions } : {}),
       ...(payload.directoryPermissions !== undefined ? { directoryPermissions: payload.directoryPermissions } : {}),
+      // Per-server upload-on-save override (35a): the Connection tab always
+      // sends the select's state, so an absent field means "inherit" and
+      // deliberately drops any previous override.
+      ...(payload.uploadOnSave !== undefined ? { uploadOnSave: payload.uploadOnSave } : {}),
       ...(existing?.timeOffsetMs !== undefined ? { timeOffsetMs: existing.timeOffsetMs } : {}),
     };
 

@@ -26,7 +26,7 @@ No extra configuration needed — the schema is registered via `contributes.json
 | --- | --- | --- | --- | --- |
 | `defaultServerId` | `string` (UUID) | yes | — | UUID of the server used for `Alt+U` uploads, upload-on-save, and `Ctrl+Alt+U`. Must match the `id` of one of the entries in `servers`. |
 | `servers` | `object` | yes | — | Server definitions, keyed by display name. See [Server Fields](#server-fields). |
-| `uploadOnSave` | `boolean` | no | `false` | When `true`, files are uploaded to the default server every time they're saved. Respects `.gitignore`. |
+| `uploadOnSave` | `boolean` | no | `false` | When `true`, files are uploaded to the default server every time they're saved. Respects `.gitignore`. A server's own `uploadOnSave` (see [Server Fields](#server-fields)) overrides this while that server is the default. |
 | `dryRun` | `boolean` | no | `false` | When `true`, upload commands write a structured plan to the FileFerry output channel without opening any connections. |
 | `fileDateGuard` | `boolean` | no | `true` | When `false`, skips the remote mtime check that warns before overwriting newer remote files. |
 | `backupBeforeOverwrite` | `boolean` | no | `false` | When `true`, downloads each existing remote file to `.vscode/fileferry-backups/<timestamp>-<server>/` before uploading the replacement. |
@@ -87,6 +87,7 @@ Each entry in the `servers` object is keyed by its display name (the name you se
 | `filePermissions` | `integer` 0–511 | no | (server default) | Decimal representation of an octal permission mode applied to uploaded files. `0644` is `420`, `0600` is `384`. SFTP only; FTP makes a best-effort `SITE CHMOD`. |
 | `directoryPermissions` | `integer` 0–511 | no | (server default) | Same as above, for created directories. `0755` is `493`, `0700` is `448`. |
 | `timeOffsetMs` | `integer` | no | `0` | Clock skew in milliseconds (`remote − local`). Detected automatically during Test Connection; `FileDateGuard` subtracts this before comparing timestamps. |
+| `uploadOnSave` | `boolean` | no | (inherit) | Per-server override of the project-level `uploadOnSave` toggle, in effect while this server is the default. `true`/`false` wins over the project setting; omit the field to inherit it. Set from Deployment Settings → Connection → **Upload on Save**. |
 | `hooks` | `object` | no | — | Commands run automatically before/after a deliberate deploy to this server. See [Deploy Hooks](#deploy-hooks). |
 
 ### Path Mappings

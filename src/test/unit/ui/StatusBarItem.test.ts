@@ -285,3 +285,47 @@ describe('StatusBarItem', () => {
     });
   });
 });
+
+describe('StatusBarItem — per-server uploadOnSave override (feature 35a)', () => {
+  function makeStatusBar(projectToggle: boolean, serverOverride: boolean | undefined): StatusBarItem {
+    const server = { ...serverFixture, ...(serverOverride !== undefined ? { uploadOnSave: serverOverride } : {}) };
+    (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({
+      defaultServerId: 'srv-1', uploadOnSave: projectToggle, servers: { Production: server },
+    });
+    (mockConfigManager.getServerById as jest.Mock).mockResolvedValue({ name: 'Production', server });
+    return new StatusBarItem(makeContext(), mockConfigManager);
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockItem = { text: '', tooltip: '', command: '', show: jest.fn(), hide: jest.fn(), dispose: jest.fn() };
+    (vscode.window.createStatusBarItem as jest.Mock).mockReturnValue(mockItem);
+    (vscode.workspace.onDidSaveTextDocument as jest.Mock).mockReturnValue({ dispose: jest.fn() });
+  });
+
+  it('shows the EFFECTIVE state: server override ON beats project OFF (icon, tooltip, menu)', async () => {
+    const statusBar = makeStatusBar(false, true);
+    await statusBar.refresh();
+    expect(mockItem.text).toBe('$(cloud-upload) Production');
+    expect(mockItem.tooltip).toContain('Upload on save: ON (set on this server)');
+
+    (vscode.window.showQuickPick as jest.Mock).mockResolvedValue(undefined);
+    await statusBar.showMenu();
+    const items = (vscode.window.showQuickPick as jest.Mock).mock.calls[0][0];
+    expect(items.find((item: any) => item.id === 'toggleUploadOnSave').description).toBe('ON (set on this server)');
+  });
+
+  it('shows the EFFECTIVE state: server override OFF beats project ON', async () => {
+    const statusBar = makeStatusBar(true, false);
+    await statusBar.refresh();
+    expect(mockItem.text).toBe('$(server) Production');
+    expect(mockItem.tooltip).toContain('Upload on save: OFF (set on this server)');
+  });
+
+  it('shows plain ON / OFF when the server inherits the project toggle', async () => {
+    const statusBar = makeStatusBar(true, undefined);
+    await statusBar.refresh();
+    expect(mockItem.tooltip).toContain('Upload on save: ON');
+    expect(mockItem.tooltip).not.toContain('set on this server');
+  });
+});

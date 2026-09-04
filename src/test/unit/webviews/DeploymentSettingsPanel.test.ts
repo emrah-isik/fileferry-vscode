@@ -1207,4 +1207,33 @@ describe('DeploymentSettingsPanel message handling', () => {
       }));
     });
   });
+
+  describe('per-server uploadOnSave override (feature 35a)', () => {
+    const base = { id: 'srv-1', name: 'Production', type: 'sftp', credentialId: 'cred-1', rootPath: '/var/www' };
+
+    beforeEach(() => {
+      // Earlier tests mutate the shared fixture in place (renames, emptied
+      // mappings) — start from a pristine config.
+      (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({
+        defaultServerId: 'srv-1', servers: { Production: { ...serverFixture, mappings: [...serverFixture.mappings] } },
+      });
+    });
+
+    it.each([true, false])('saveServer persists an explicit uploadOnSave=%s on the server', async (value) => {
+      DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+      await messageHandler({ command: 'saveServer', payload: { ...base, uploadOnSave: value } });
+      const savedConfig = (mockConfigManager.saveConfig as jest.Mock).mock.calls[0][0];
+      expect(savedConfig.servers.Production.uploadOnSave).toBe(value);
+    });
+
+    it('saveServer without uploadOnSave in the payload writes no field (inherit) — and drops a previous override', async () => {
+      (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({
+        defaultServerId: 'srv-1', servers: { Production: { ...serverFixture, uploadOnSave: true } },
+      });
+      DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+      await messageHandler({ command: 'saveServer', payload: base });
+      const savedConfig = (mockConfigManager.saveConfig as jest.Mock).mock.calls[0][0];
+      expect(savedConfig.servers.Production).not.toHaveProperty('uploadOnSave');
+    });
+  });
 });
