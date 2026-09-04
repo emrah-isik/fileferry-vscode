@@ -21,3 +21,21 @@ describe('resolveUploadOnSave', () => {
     expect(resolveUploadOnSave({}, undefined)).toEqual({ enabled: false, source: 'project' });
   });
 });
+
+import { uploadOnSaveToggleMessage } from '../../../services/uploadOnSaveResolution';
+
+describe('uploadOnSaveToggleMessage (the project-toggle command, feature 35a)', () => {
+  it('reports the new project value plainly when the default server inherits it', () => {
+    expect(uploadOnSaveToggleMessage(true, 'Production', { enabled: true, source: 'project' }))
+      .toBe('FileFerry: Upload on save enabled.');
+    expect(uploadOnSaveToggleMessage(false, 'Production', { enabled: false, source: 'project' }))
+      .toBe('FileFerry: Upload on save disabled.');
+  });
+
+  it('says so when the default server overrides the project toggle — the toggle changed nothing for it', () => {
+    expect(uploadOnSaveToggleMessage(true, 'Production', { enabled: false, source: 'server' }))
+      .toBe('FileFerry: Upload on save enabled for the project — but "Production" sets it to OFF itself (Deployment Settings → Connection).');
+    expect(uploadOnSaveToggleMessage(false, 'Production', { enabled: true, source: 'server' }))
+      .toBe('FileFerry: Upload on save disabled for the project — but "Production" sets it to ON itself (Deployment Settings → Connection).');
+  });
+});
