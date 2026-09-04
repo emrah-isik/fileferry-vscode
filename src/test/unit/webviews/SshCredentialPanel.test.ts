@@ -196,6 +196,19 @@ describe('SshCredentialPanel message handling', () => {
     }));
   });
 
+  it('saveCredential passes the credential\'s jump hosts to the summary so an ignored ProxyJump is noted (18b, Q5-1)', async () => {
+    (mockCredentialManager.getAll as jest.Mock).mockResolvedValue([
+      credentialFixture,
+      { id: 'cred-hop', name: 'Hop', host: 'hop.example.com', port: 22, username: 'jump', authMethod: 'password' },
+    ]);
+    SshCredentialPanel.createOrShow(mockContext, deps());
+    await messageHandler({
+      command: 'saveCredential',
+      payload: { credential: { ...credentialFixture, host: 'prod', useSshConfig: true, jumpHosts: ['cred-hop'] }, password: 'mypassword' },
+    });
+    expect(mockDescribeResolution).toHaveBeenCalledWith(expect.objectContaining({ host: 'prod', jumpHosts: ['cred-hop'] }));
+  });
+
   it('saveCredential does not post an sshConfigSummary when useSshConfig is off', async () => {
     SshCredentialPanel.createOrShow(mockContext, deps());
     await messageHandler({

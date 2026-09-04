@@ -69,14 +69,18 @@ Host prod
 Tick **Resolve from `~/.ssh/config`** on the credential, then enter the alias (`prod`) in the **Host** field. At connect time FileFerry reads your SSH config and fills in `HostName`, `Port`, `User`, and `IdentityFile`. You can leave Username and Private Key Path blank when the config provides them.
 
 - **Config wins, your entries are the fallback.** A value in the matching `Host` block takes effect; anything the block omits falls back to what you typed. (If the block sets no `HostName`, the alias is used as the host.)
-- **You always see what happened.** On **Save** and **Test Connection**, a summary shows the resolved target — e.g. `✓ Resolved "prod" → deploy@203.0.113.10:2222 · key ~/.ssh/prod_ed25519` — or warns when no `~/.ssh/config` exists or no `Host` block matched (in which case your entered values are used as-is). If a catch-all `Host *` block overrides a value you typed, that's called out too.
-- **Supported directives:** `HostName`, `Port`, `User`, `IdentityFile`, with `*`/`?` wildcard `Host` patterns. `ProxyJump`/`ProxyCommand` are not resolved yet. SFTP only — FTP/FTPS ignore this setting.
+- **You always see what happened.** On **Save** and **Test Connection**, a summary shows the resolved target — e.g. `✓ Resolved "prod" → deploy@203.0.113.10:2222 · key ~/.ssh/prod_ed25519` — or warns when no `~/.ssh/config` exists or no `Host` block matched (in which case your entered values are used as-is). If a catch-all `Host *` block overrides a value you typed, that's called out too. When the alias has a `ProxyJump`, the summary adds the route it resolved to (`Route: local → jump@bastion.example.com:2222 → deploy@203.0.113.10:2222`) — or the reason it couldn't follow it.
+- **`ProxyJump` is honoured.** If the `Host` block says `ProxyJump bastion`, FileFerry tunnels through `bastion` exactly as `ssh prod` would: each jump is looked up as its own `Host` block (its `HostName`, `Port`, `User`, `IdentityFile` — and its own `ProxyJump`, so nested chains work), comma-separated lists (`ProxyJump a,b`) and literal `user@host:port` entries are accepted, and chains are capped at 8 hops (a loop is refused with a clear message). Hops that come from your SSH config are **not** stored as FileFerry credentials, so they authenticate the way `ssh` would: with the block's `IdentityFile` if there is one, else through your SSH agent, else by prompting you (`SSH login: jump@bastion:2222`) — a password is never remembered for them. If a bastion needs a *stored* password, define it as a FileFerry credential and add it under **Jump hosts** instead (see below — explicit jump hosts take precedence over `ProxyJump`). Everything that opens a connection follows the config chain: deploys, Test Connection, the Remote Files panel, and the SSH terminal; the Servers panel tooltip shows the resolved route.
+- **`ProxyCommand` is not supported.** FileFerry never runs external commands to reach a host. A `Host` block with `ProxyCommand` connects *directly* to its `HostName`, and you get a warning once per session (`ProxyCommand isn't supported — use ProxyJump or explicit jump hosts`) plus a line in the output channel. Replace it with `ProxyJump` or with explicit jump hosts. (When a block has both, whichever comes first in the file is the one in effect — OpenSSH's rule.)
+- **Supported directives:** `HostName`, `Port`, `User`, `IdentityFile`, `ProxyJump`, with `*`/`?` wildcard `Host` patterns. `Match` blocks are not evaluated (a `Match` line ends the preceding `Host` block — nothing in it is applied), `Include` is not followed, and `ForwardAgent` is ignored. SFTP only — FTP/FTPS ignore this setting.
 
 #### Jump hosts (SFTP only)
 
 If a server is only reachable through a bastion (jump host), configure the chain on the **target's credential**: each hop is itself a normal credential (host, user, auth method — password, key, agent, or keyboard-interactive), and the target credential lists the hops in order, first hop → last hop before the target.
 
 Create the hop credential(s) first, then open the target credential and use the **Jump hosts** picker on the form: add hops from the dropdown, reorder them with the ↑/↓ buttons (the connection tunnels through them top-to-bottom), and remove one with ✕. The dropdown only offers credentials that can legally be a hop — chains are flat, so a credential that has jump hosts of its own is not offered, and a credential that others already use as a hop cannot be given hops itself (the form tells you who uses it). The same rules are enforced again when you save.
+
+**Jump hosts vs `ProxyJump`.** A credential that ticks **Resolve from `~/.ssh/config`** may get its chain from *either* source, never both: if the credential lists jump hosts here, they are used and a `ProxyJump` in the alias's `Host` block is ignored (the save summary says so, and the output channel notes it once per session); with no jump hosts listed, the `ProxyJump` chain applies. Jump-host credentials that themselves resolve from `~/.ssh/config` are resolved on their own (host, port, user, key) — but chains stay flat, so a `ProxyJump` on a *hop's* alias is not followed; put the extra hop on the target credential's list instead.
 
 **Test Connection runs the whole chain** and, when it fails, names the hop that failed (`✗ Jump host bastion.example.com (hop 1) failed: …`) rather than leaving you guessing which login broke.
 
@@ -313,13 +317,13 @@ See all configured servers at a glance. The active server shows a filled circle 
 
 - Click a server to switch to it
 - Right-click for options: **Edit Server**, **Test Connection**, **Open SSH Terminal** (a shell on that server, in its root path — see below)
-- Hover a server to see its connection route — `Route: local → jump@bastion:2222 → deploy@target:22` for a jump-host chain, with a hop whose credential was deleted shown as `(missing jump host)`
+- Hover a server to see its connection route — `Route: local → jump@bastion:2222 → deploy@target:22` for a jump-host chain, with a hop whose credential was deleted shown as `(missing jump host)`; for an `~/.ssh/config` alias the route shows its resolved `ProxyJump` hops and target
 
 ---
 
 ## Open SSH Terminal
 
-Open a shell on an SFTP server without leaving VS Code — and without an `ssh` binary. The terminal uses the same credential (keychain password, key, agent, or keyboard-interactive), the same host-key verification, the same `~/.ssh/config` resolution, and the same jump-host chain as your deploys. A server that is only reachable through a bastion with MFA is therefore one click away, and because bastion logins are pooled, a bastion that a deploy or the Remote Files panel already opened is reused without asking again.
+Open a shell on an SFTP server without leaving VS Code — and without an `ssh` binary. The terminal uses the same credential (keychain password, key, agent, or keyboard-interactive), the same host-key verification, the same `~/.ssh/config` resolution (including its `ProxyJump` chain), and the same jump-host chain as your deploys. A server that is only reachable through a bastion with MFA is therefore one click away, and because bastion logins are pooled, a bastion that a deploy or the Remote Files panel already opened is reused without asking again.
 
 Three ways in, each deciding where the shell starts:
 
@@ -698,6 +702,14 @@ The server's SSH host key differs from the one saved on first connection. See [H
 ### "Host not yet trusted or verification required"
 
 A background connection (upload on save, the file watcher, an autosave-triggered remote-edit save) needed a host-key or 2FA prompt it is not allowed to show. Click **Test Connection** in the warning — or run any manual deploy — and answer the prompts once; background uploads then work. The Remote Files panel shows the same situation as a **Host not verified — click to connect** row: click it to connect with the prompts.
+
+### "Jump host … failed" for a host that comes from `~/.ssh/config`
+
+A `ProxyJump` hop from your SSH config is not a FileFerry credential, so nothing is stored for it: it authenticates with the block's `IdentityFile`, else your SSH agent, else by prompting you — and a background connection (upload on save, the watcher, the Remote Files tree) cannot prompt, so it fails with the *verification required* warning until you connect once manually. If the hop refuses all of those (`no IdentityFile, no agent`, or *All configured authentication methods failed* with a hint about ProxyJump hosts), either add an `IdentityFile` to its `Host` block, load its key into your agent, or define the bastion as a FileFerry credential (with its password in the keychain) and list it under **Jump hosts** on the target credential — explicit jump hosts take precedence over `ProxyJump`.
+
+### "ProxyCommand isn't supported"
+
+The `Host` block FileFerry resolved has a `ProxyCommand`. FileFerry never runs external commands to reach a server, so it connected to the block's `HostName` directly (this warning appears once per session). Replace the `ProxyCommand` with `ProxyJump bastion` — or add the bastion as a FileFerry credential under **Jump hosts**.
 
 ### The SSH terminal opens in my home directory
 

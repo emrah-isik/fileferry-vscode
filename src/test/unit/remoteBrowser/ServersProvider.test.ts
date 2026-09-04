@@ -89,10 +89,28 @@ describe('ServersProvider', () => {
       const children = await provider.getChildren();
       const production = children.find(c => c.data.serverName === 'Production')!;
 
-      expect(production.data.hopCredentials).toEqual([bastion, undefined]);
+      expect(production.data.route).toBe(
+        'local → jump@bastion.example.com:2222 → (missing jump host) → deploy@example.com:22'
+      );
       expect(production.tooltip).toBe(
         'Route: local → jump@bastion.example.com:2222 → (missing jump host) → deploy@example.com:22'
       );
+    });
+
+    it('shows the ~/.ssh/config ProxyJump route for an alias credential (18b)', async () => {
+      mockCredentialManager.getAll.mockResolvedValue([
+        { ...credA, host: 'prod', username: '', useSshConfig: true },
+        credB,
+      ]);
+      const sshConfig = {
+        localUser: 'localdev',
+        readFile: () => 'Host prod\n  HostName 10.0.0.5\n  User deploy\n  ProxyJump bastion\nHost bastion\n  HostName bastion.example.com\n  Port 2222\n  User jump\n',
+      };
+      provider = new ServersProvider(mockConfigManager as any, mockCredentialManager as any, sshConfig);
+
+      const children = await provider.getChildren();
+      const production = children.find(c => c.data.serverName === 'Production')!;
+      expect(production.tooltip).toBe('Route: local → jump@bastion.example.com:2222 → deploy@10.0.0.5:22');
     });
 
     it('marks the default server as active', async () => {

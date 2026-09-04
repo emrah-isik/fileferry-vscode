@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { EventEmitter } from 'events';
 import type { Client } from 'ssh2';
-import { describeRoute, openSshTerminal, OpenSshTerminalDependencies } from '../../../commands/openSshTerminal';
+import { openSshTerminal, OpenSshTerminalDependencies } from '../../../commands/openSshTerminal';
 import { SshTerminal } from '../../../terminal/SshTerminal';
 import { KeyboardInteractiveCoordinator } from '../../../ssh/connectProviders';
 import { SshCredential, SshCredentialWithSecret } from '../../../models/SshCredential';
@@ -48,22 +48,6 @@ class NeverReadyClient extends EventEmitter {
     return this;
   }
 }
-
-describe('describeRoute', () => {
-  it('lists local, every hop in order, then the target', () => {
-    expect(describeRoute([bastion], chained)).toBe('local → jump@bastion.example.com:2222 → deploy@target.internal:22');
-  });
-
-  it('is just local → target for a direct credential', () => {
-    expect(describeRoute([], direct)).toBe('local → www@direct.example.com:22');
-  });
-
-  it('marks a hop whose credential was deleted', () => {
-    expect(describeRoute([undefined, bastion], chained)).toBe(
-      'local → (missing jump host) → jump@bastion.example.com:2222 → deploy@target.internal:22'
-    );
-  });
-});
 
 describe('openSshTerminal', () => {
   let config: ProjectConfig | null;

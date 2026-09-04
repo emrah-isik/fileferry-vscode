@@ -8,6 +8,7 @@ import {
   KeyboardInteractiveProvider,
 } from '../../../ssh/connectProviders';
 import { SshCredentialWithSecret } from '../../../models/SshCredential';
+import { resetRouteNoticesForTests } from '../../../ssh/routeResolution';
 
 // ─── Fakes ───────────────────────────────────────────────────────────────────
 
@@ -523,6 +524,66 @@ describe('SshTerminal', () => {
       expect(targetClients[0].ended).toBe(true);
       expect(writes).toEqual([]);
       expect(closes).toEqual([]);
+    });
+  });
+
+  // 18b: an ~/.ssh/config alias brings its own ProxyJump chain — the same
+  // route resolution SftpService uses, so the terminal and a deploy take the
+  // same hops. Explicit jump hosts on the credential win (Q5-1).
+  describe('through a ProxyJump chain from ~/.ssh/config (18b)', () => {
+    const SSH_CONFIG = [
+      'Host prod', '  HostName target.example.com', '  User deploy', '  ProxyJump cfg-bastion',
+      'Host cfg-bastion', '  HostName cfg-bastion.example.com', '  Port 2200', '  User cfgjump',
+    ].join('\n');
+    const aliasCredential: SshCredentialWithSecret = { ...targetCredential, host: 'prod', username: '', useSshConfig: true };
+    let savedAgentSocket: string | undefined;
+
+    function configDependencies(): SshTerminalDependencies {
+      return { ...dependencies(), sshConfig: { localUser: 'localdev', readFile: () => SSH_CONFIG } };
+    }
+
+    async function openThroughConfig(credential: SshCredentialWithSecret): Promise<{ client: FakeTargetClient; terminal: SshTerminal }> {
+      const terminal = new SshTerminal(options({ credential, route: 'banner' }), configDependencies());
+      terminal.onDidWrite(() => undefined);
+      terminal.open(undefined);
+      await flush();
+      return { client: targetClients[targetClients.length - 1], terminal };
+    }
+
+    beforeEach(() => {
+      resetRouteNoticesForTests();
+      savedAgentSocket = process.env.SSH_AUTH_SOCK;
+      process.env.SSH_AUTH_SOCK = '/tmp/fake-agent.sock'; // Q15: the config hop authenticates via the agent
+    });
+
+    afterEach(() => {
+      if (savedAgentSocket === undefined) {
+        delete process.env.SSH_AUTH_SOCK;
+      } else {
+        process.env.SSH_AUTH_SOCK = savedAgentSocket;
+      }
+    });
+
+    it('leases the config-derived hop and dials the resolved target over its forward', async () => {
+      const { client, terminal } = await openThroughConfig(aliasCredential);
+
+      expect(hopClients).toHaveLength(1);
+      expect(hopClients[0].forwardOutCalls).toEqual([{ destinationHost: 'target.example.com', destinationPort: 22 }]);
+      expect(client.connectConfig).toMatchObject({ host: 'target.example.com', username: 'deploy' });
+      expect(client.connectConfig?.sock).toEqual(expect.objectContaining({ fakeSock: 'target.example.com:22' }));
+      expect(logLines).toContain('route: local → cfgjump@cfg-bastion.example.com:2200 → deploy@target.example.com:22');
+      terminal.close();
+    });
+
+    it('explicit jump hosts win over the alias\'s ProxyJump, noted once per session', async () => {
+      const explicit: SshCredentialWithSecret = { ...aliasCredential, jumpHosts: ['cred-bastion'] };
+      const first = await openThroughConfig(explicit);
+      const second = await openThroughConfig(explicit);
+
+      expect(logLines.filter((line) => line.includes('route: local → jump@bastion.example.com:2222 → deploy@target.example.com:22'))).toHaveLength(2);
+      expect(logLines.filter((line) => line.startsWith('ProxyJump for "prod" in ~/.ssh/config ignored'))).toHaveLength(1);
+      first.terminal.close();
+      second.terminal.close();
     });
   });
 

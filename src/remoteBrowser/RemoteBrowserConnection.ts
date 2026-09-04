@@ -240,7 +240,9 @@ export class RemoteBrowserConnection {
     this.currentServerId = server.id;
     this.currentCredentialId = server.credentialId;
     this.currentRootPath = server.rootPath;
-    this.currentRouteKeys = await this.computeRouteKeys(credential.jumpHosts);
+    // Q34: the service knows its real route — explicit hops or config-derived
+    // ProxyJump hops alike (18b) — so evictions match what was actually dialed.
+    this.currentRouteKeys = new Set(service.routeKeys ?? []);
     this.output.appendLine(`[remote-browser] Connected to ${serverName} (${credential.host})`);
   }
 
@@ -258,24 +260,6 @@ export class RemoteBrowserConnection {
     // The owner's await handles the rejection; this guard only covers the
     // window where the owner's frame was already torn down.
     inFlight.promise.catch(() => undefined);
-  }
-
-  // Canonical pool keys for this session's hops, so pool evictions can be
-  // matched against the route (Q34). Ids resolve through the credential list
-  // — a dangling id simply contributes no key.
-  private async computeRouteKeys(jumpHostIds: string[] | undefined): Promise<Set<string>> {
-    const keys = new Set<string>();
-    if (!jumpHostIds || jumpHostIds.length === 0) {
-      return keys;
-    }
-    const all = await this.credentialManager.getAll();
-    for (const hopId of jumpHostIds) {
-      const hop = all.find(c => c.id === hopId);
-      if (hop) {
-        keys.add(JumpHostPool.keyFor({ username: hop.username, host: hop.host, port: hop.port }));
-      }
-    }
-    return keys;
   }
 
   async listDirectory(remotePath: string): Promise<FileEntry[]> {

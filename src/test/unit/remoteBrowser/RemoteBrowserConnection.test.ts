@@ -19,6 +19,7 @@ const mockSftp = {
   mkdir: jest.fn(),
   exists: jest.fn(),
   connected: false,
+  routeKeys: [] as string[],
 };
 
 (createTransferService as jest.Mock).mockReturnValue(mockSftp);
@@ -91,6 +92,7 @@ describe('RemoteBrowserConnection', () => {
     saveListeners.length = 0;
     credentialChangeListeners.length = 0;
     mockSftp.connected = false;
+    mockSftp.routeKeys = [];
     mockConfigManager.getConfig.mockResolvedValue(fakeConfig);
     mockConfigManager.getServerById.mockResolvedValue({ name: 'Production', server: fakeServer });
     mockCredentialManager.getWithSecret.mockResolvedValue(fakeCredential);
@@ -911,6 +913,9 @@ describe('RemoteBrowserConnection', () => {
         jumpHosts: ['cred-bastion'],
       });
       mockCredentialManager.getAll.mockResolvedValue([fakeCredential, bastionCredential]);
+      // 18b: the route comes from the service (what was actually dialed),
+      // not recomputed from the credential list.
+      mockSftp.routeKeys = ['jump@bastion.example.com:2222'];
       routedConnection = new RemoteBrowserConnection(
         mockCredentialManager as any,
         mockConfigManager as any,
@@ -946,6 +951,7 @@ describe('RemoteBrowserConnection', () => {
 
     it('a session without jump hosts never reacts to evictions', async () => {
       mockCredentialManager.getWithSecret.mockResolvedValue(fakeCredential);
+      mockSftp.routeKeys = [];
       await routedConnection.ensureConnected();
       fireEvict('jump@bastion.example.com:2222');
       expect(lostRoutes).toEqual([]);

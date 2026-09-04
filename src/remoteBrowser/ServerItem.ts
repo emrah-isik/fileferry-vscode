@@ -7,11 +7,11 @@ export interface ServerItemData {
   server: ProjectServer;
   credential: SshCredential | undefined;
   /**
-   * Resolved credentials for `credential.jumpHosts`, in chain order (18a-2b).
-   * `undefined` entries mark hops whose credential no longer exists. Absent
-   * or empty for direct connections.
+   * `local → hop… → target` for the tooltip (18a-2b), from `describeRoute`:
+   * explicit jump hosts by credential (a deleted one as `(missing jump
+   * host)`) or, for an `~/.ssh/config` alias, its ProxyJump chain (18b).
    */
-  hopCredentials?: Array<SshCredential | undefined>;
+  route?: string;
   isDefault: boolean;
 }
 
@@ -35,11 +35,7 @@ export class ServerItem extends vscode.TreeItem {
       this.description = `${data.credential.username}@${data.credential.host}:${data.server.rootPath}`;
       // Route tooltip (18a-2b): every hop between local and the target, in
       // connect order — the tree row itself only shows the target.
-      const stops = (data.hopCredentials ?? []).map(hop =>
-        hop ? `${hop.username}@${hop.host}:${hop.port}` : '(missing jump host)'
-      );
-      stops.push(`${data.credential.username}@${data.credential.host}:${data.credential.port}`);
-      this.tooltip = `Route: local → ${stops.join(' → ')}`;
+      this.tooltip = `Route: ${data.route ?? `local → ${data.credential.username}@${data.credential.host}:${data.credential.port}`}`;
     } else {
       this.description = 'credential missing';
     }

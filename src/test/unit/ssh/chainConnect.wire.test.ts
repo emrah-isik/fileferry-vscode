@@ -1,3 +1,6 @@
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import * as net from 'net';
 import { Client as Ssh2Client, Server as Ssh2Server, utils as ssh2Utils } from 'ssh2';
 import type { Connection } from 'ssh2';
@@ -214,5 +217,102 @@ describe('chain wire test (in-process ssh2 servers)', () => {
     const serverWithDeadTarget: ServerConfig = { ...chainedServer, port: unreachablePort };
     await expect(service.connect(serverWithDeadTarget, { password: 'target-pass' })).rejects.toThrow();
     expect(service.connected).toBe(false);
+  });
+});
+
+// ─── 18b: a hop derived from ~/.ssh/config ProxyJump, end to end ─────────────
+
+describe('chain wire test — ProxyJump hop from ~/.ssh/config (18b)', () => {
+  let bastion: TestServer;
+  let target: TestServer;
+  let pool: JumpHostPool;
+  let bastionKeyAuths: number;
+  let tempDirectory: string;
+
+  /** Bastion that accepts ONLY publickey auth with the generated hop key — what an IdentityFile hop must use. */
+  function createKeyBastion(): Ssh2Server {
+    const hopKey = ssh2Utils.generateKeyPairSync('ed25519');
+    fs.writeFileSync(path.join(tempDirectory, 'bastion_ed25519'), hopKey.private);
+    const allowed = ssh2Utils.parseKey(hopKey.public);
+    if (allowed instanceof Error) {
+      throw allowed;
+    }
+    return new Ssh2Server({ hostKeys: [hostKey.private] }, (connection: Connection) => {
+      connection.on('authentication', (context) => {
+        if (context.method === 'publickey' && context.key.algo === allowed.type
+          && context.key.data.equals(allowed.getPublicSSH())) {
+          if (!context.signature || allowed.verify(context.blob!, context.signature, context.hashAlgo) === true) {
+            bastionKeyAuths += context.signature ? 1 : 0;
+            context.accept();
+            return;
+          }
+        }
+        context.reject(['publickey']);
+      });
+      connection.on('ready', () => {
+        connection.on('tcpip', (accept, _reject, info) => {
+          const channel = accept();
+          const socket = net.connect(info.destPort, info.destIP);
+          socket.on('connect', () => {
+            channel.pipe(socket);
+            socket.pipe(channel);
+          });
+          socket.on('error', () => channel.end());
+          channel.on('close', () => socket.destroy());
+        });
+      });
+    });
+  }
+
+  beforeEach(async () => {
+    bastionKeyAuths = 0;
+    tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'fileferry-18b-wire-'));
+    bastion = await listen(createKeyBastion());
+    target = await listen(createTarget());
+    pool = new JumpHostPool({ createClient: () => new Ssh2Client(), log: () => undefined });
+    connectProviderRegistry.clear();
+    connectProviderRegistry.set({
+      log: () => undefined,
+      jumpHosts: { pool, resolveCredential: async () => null },
+    });
+  });
+
+  afterEach(async () => {
+    connectProviderRegistry.clear();
+    pool.dispose();
+    await bastion.close();
+    await target.close();
+    fs.rmSync(tempDirectory, { recursive: true, force: true });
+  });
+
+  it('opens an SFTP session through a ProxyJump hop that authenticates with its IdentityFile', async () => {
+    const sshConfigPath = path.join(tempDirectory, 'config');
+    fs.writeFileSync(sshConfigPath, [
+      'Host wire-target',
+      `  HostName 127.0.0.1`,
+      `  Port ${target.port}`,
+      '  User deploy',
+      '  ProxyJump wire-bastion',
+      'Host wire-bastion',
+      '  HostName 127.0.0.1',
+      `  Port ${bastion.port}`,
+      '  User jumpuser',
+      `  IdentityFile ${path.join(tempDirectory, 'bastion_ed25519')}`,
+    ].join('\n'));
+
+    const aliasServer: ServerConfig = {
+      id: 'wire-alias', name: 'Wire Alias', type: 'sftp',
+      host: 'wire-target', port: 22, username: '', authMethod: 'password', useSshConfig: true,
+      mappings: [], excludedPaths: [],
+    };
+
+    const service = new SftpService();
+    await service.connect(aliasServer, { password: 'target-pass' }, { sshConfig: { configPath: sshConfigPath } });
+    expect(service.connected).toBe(true);
+    expect(await service.resolveRemotePath('.')).toBe('/var/www');
+    expect(bastionKeyAuths).toBe(1);
+    expect(service.routeKeys).toEqual([`jumpuser@127.0.0.1:${bastion.port}`]);
+    await service.disconnect();
+    pool.drain();
   });
 });

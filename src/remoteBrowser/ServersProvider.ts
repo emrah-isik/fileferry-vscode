@@ -2,6 +2,8 @@ import * as vscode from 'vscode';
 import { ServerItem, ServerItemData } from './ServerItem';
 import { ProjectConfigManager } from '../storage/ProjectConfigManager';
 import { CredentialManager } from '../storage/CredentialManager';
+import { describeRoute } from '../ssh/routeDescription';
+import type { ResolverDeps } from '../ssh/SshConfigResolver';
 
 export class ServersProvider implements vscode.TreeDataProvider<ServerItem> {
   private readonly _onDidChangeTreeData = new vscode.EventEmitter<ServerItem | undefined | void>();
@@ -9,7 +11,9 @@ export class ServersProvider implements vscode.TreeDataProvider<ServerItem> {
 
   constructor(
     private readonly configManager: ProjectConfigManager,
-    private readonly credentialManager: CredentialManager
+    private readonly credentialManager: CredentialManager,
+    /** `~/.ssh/config` access for the route tooltip (18b) — tests inject a reader. */
+    private readonly sshConfig?: ResolverDeps
   ) {}
 
   getTreeItem(element: ServerItem): vscode.TreeItem {
@@ -32,11 +36,9 @@ export class ServersProvider implements vscode.TreeDataProvider<ServerItem> {
         serverName: name,
         server,
         credential,
-        // Chain order preserved; a dangling id maps to undefined so the
-        // tooltip can mark the missing hop (18a-2b).
-        hopCredentials: credential?.jumpHosts?.map(
-          hopId => credentials.find(c => c.id === hopId)
-        ),
+        // Tooltip route (18a-2b/18b): explicit hops by credential, or the
+        // alias's ProxyJump chain — the same resolution the connect uses.
+        route: credential ? describeRoute(credential, credentials, this.sshConfig) : undefined,
         isDefault: server.id === defaultServerId,
       };
       return new ServerItem(data);

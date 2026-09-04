@@ -6,7 +6,8 @@ import { chainConnect, ChainConnectResult, ChainConnectTarget } from '../ssh/cha
 import { ConnectionCancelledError } from '../ssh/connectErrors';
 import { ConnectProviders, KeyboardInteractiveCoordinator } from '../ssh/connectProviders';
 import { dialClient } from '../ssh/dialClient';
-import { applySshConfig, resolveHostAlias } from '../ssh/SshConfigResolver';
+import { ChainHop, reportRouteNotices, resolveRoute } from '../ssh/routeResolution';
+import type { ResolverDeps } from '../ssh/SshConfigResolver';
 
 /**
  * Open SSH Terminal (feature 20, Q10/Q29/R7): a `vscode.Pseudoterminal` over an
@@ -42,6 +43,8 @@ export interface SshTerminalDependencies {
   providers: ConnectProviders;
   coordinator: KeyboardInteractiveCoordinator;
   createClient: () => Client;
+  /** `~/.ssh/config` access (18b) — unset in production (the real file); tests inject a reader. */
+  sshConfig?: ResolverDeps;
 }
 
 /** R8-13: VS Code may call `open(undefined)`; the pty must still have a size. */
@@ -128,23 +131,25 @@ export class SshTerminal implements vscode.Pseudoterminal {
   private async connect(): Promise<void> {
     const signal = this.abortController.signal;
     try {
-      let credential = await this.options.resolveCredential();
-      if (credential.useSshConfig) {
-        credential = applySshConfig(credential, resolveHostAlias(credential.host));
-      }
+      // The same route resolution as SftpService.connect() (18b): alias
+      // credentials get ~/.ssh/config applied and their ProxyJump chain —
+      // explicit jump hosts win — so a server is reached the same way here.
+      const route = resolveRoute(await this.options.resolveCredential(), this.dependencies.sshConfig);
+      const credential = route.target;
+      reportRouteNotices(route, this.dependencies.providers);
       const target: ChainConnectTarget = {
         username: credential.username,
         host: credential.host,
         port: credential.port,
       };
-      const hopIds = credential.jumpHosts ?? [];
+      const hops = route.hops;
 
       const client = await dialClient(
         credential,
         {
           interactive: true,
           signal,
-          openSock: hopIds.length > 0 ? () => this.openChain(target, hopIds) : undefined,
+          openSock: hops.length > 0 ? () => this.openChain(target, hops) : undefined,
         },
         this.dependencies
       );
@@ -179,7 +184,7 @@ export class SshTerminal implements vscode.Pseudoterminal {
    * is acquired BEFORE the previous one is released so a drain-marked hop is
    * never closed and re-dialed between attempts.
    */
-  private async openChain(target: ChainConnectTarget, hopIds: string[]): Promise<ClientChannel> {
+  private async openChain(target: ChainConnectTarget, hops: ChainHop[]): Promise<ClientChannel> {
     const support = this.dependencies.providers.jumpHosts;
     if (!support) {
       throw new Error('This connection uses jump hosts, but jump-host support is not initialised in this context');
@@ -187,13 +192,14 @@ export class SshTerminal implements vscode.Pseudoterminal {
     const previous = this.chain;
     const chain = await chainConnect(
       target,
-      hopIds,
+      hops,
       { interactive: true, signal: this.abortController.signal },
       {
         pool: support.pool,
         resolveHopCredential: (id) => support.resolveCredential(id),
         providers: this.dependencies.providers,
         coordinator: this.dependencies.coordinator,
+        sshConfig: this.dependencies.sshConfig,
       }
     );
     previous?.release();
