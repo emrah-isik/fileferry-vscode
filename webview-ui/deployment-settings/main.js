@@ -346,6 +346,16 @@ function renderConnectionTab(server) {
     </div>
 
     <div class="form-group">
+      <label for="f-upload-on-save">Upload on Save</label>
+      <select id="f-upload-on-save">
+        <option value="" ${server.uploadOnSave === undefined ? 'selected' : ''}>Use project setting${state.config?.uploadOnSave ? ' (currently ON)' : ' (currently OFF)'}</option>
+        <option value="on" ${server.uploadOnSave === true ? 'selected' : ''}>On for this server</option>
+        <option value="off" ${server.uploadOnSave === false ? 'selected' : ''}>Off for this server</option>
+      </select>
+      <span class="field-hint">Overrides the project-wide Upload on Save toggle while this server is the default. Leave on the project setting to inherit it.</span>
+    </div>
+
+    <div class="form-group">
       <label>Remote Time Offset</label>
       <div class="input-row">
         <span id="time-offset-display" class="field-value">${escapeHtml(formatTimeOffset(server.timeOffsetMs))}</span>
@@ -428,6 +438,9 @@ function renderConnectionTab(server) {
     };
     if (filePermStr) { payload.filePermissions = parseInt(filePermStr, 8); }
     if (dirPermStr) { payload.directoryPermissions = parseInt(dirPermStr, 8); }
+    const uploadOnSaveChoice = document.getElementById('f-upload-on-save')?.value ?? '';
+    if (uploadOnSaveChoice === 'on') { payload.uploadOnSave = true; }
+    if (uploadOnSaveChoice === 'off') { payload.uploadOnSave = false; }
     // For a brand-new server there's no id to target a standalone saveMapping,
     // so persist any mappings entered on the Mappings tab as part of this save.
     if (!server.id) {
