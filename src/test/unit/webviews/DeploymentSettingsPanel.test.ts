@@ -339,6 +339,28 @@ describe('DeploymentSettingsPanel message handling', () => {
     });
   });
 
+  // Issue #14 slice 4: clicking another server used to throw away unsaved
+  // mapping rows without a word. The webview asks first; the extension owns
+  // the dialog (webviews cannot show confirm()) and echoes the intended
+  // navigation back so the webview can carry it out.
+  it('confirmDiscardMappings: Discard echoes the intended navigation back to the webview', async () => {
+    (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue('Discard');
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    const next = { selectedServerName: 'Staging', editingNew: false };
+    await messageHandler({ command: 'confirmDiscardMappings', next });
+    expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+      expect.stringContaining('unsaved'), 'Discard', 'Cancel'
+    );
+    expect(mockWebview.postMessage).toHaveBeenCalledWith({ command: 'discardMappingsConfirmed', next });
+  });
+
+  it('confirmDiscardMappings: Cancel posts nothing back', async () => {
+    (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue('Cancel');
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    await messageHandler({ command: 'confirmDiscardMappings', next: { editingNew: true } });
+    expect(mockWebview.postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ command: 'discardMappingsConfirmed' }));
+  });
+
   it('saveMapping shows info notification with server name after save', async () => {
     DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
     const mappings = [{ localPath: '/', remotePath: '/var/www' }];

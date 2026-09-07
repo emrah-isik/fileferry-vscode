@@ -16,6 +16,7 @@ let state = {
   secretNames: [],        // hook secret NAMEs stored in the OS keychain (values never reach the webview)
   secretsSectionOpen: null, // user's explicit open/collapse choice; null = auto (open when a secret is missing)
   pendingSecretSave: null,  // NAME awaiting a secretsUpdated ack, so we can confirm the save on its row
+  mappingsDirty: false,     // Mappings tab edited since the last render; leaving the server asks first
 };
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────
@@ -93,6 +94,13 @@ window.addEventListener('message', ({ data: msg }) => {
 
     case 'validationError':
       showValidationErrors(msg.errors);
+      break;
+
+    // The user confirmed throwing away unsaved mapping edits; carry out the
+    // navigation that was held back (see navigateAwayFromMappings).
+    case 'discardMappingsConfirmed':
+      state.mappingsDirty = false;
+      applyNavigation(msg.next || {});
       break;
 
     case 'hookSecretWarning':
@@ -219,19 +227,12 @@ function renderServerList() {
   `;
 
   document.getElementById('add-server-btn')?.addEventListener('click', () => {
-    state.editingNew = true;
-    state.selectedServerName = null;
-    state.testStatus = null;
-    state.activeTab = 'connection';
-    render();
+    navigateAwayFromMappings({ editingNew: true, selectedServerName: null, activeTab: 'connection' });
   });
 
   document.querySelectorAll('.server-item[data-name]').forEach(el => {
     el.addEventListener('click', () => {
-      state.selectedServerName = el.dataset.name;
-      state.editingNew = false;
-      state.testStatus = null;
-      render();
+      navigateAwayFromMappings({ editingNew: false, selectedServerName: el.dataset.name });
     });
   });
 
@@ -241,6 +242,25 @@ function renderServerList() {
       vscode.postMessage({ command: 'cloneServer', id: btn.dataset.id });
     });
   });
+}
+
+// Every re-render rebuilds the Mappings tab from saved config, so unsaved
+// rows there are lost. Ask before switching server (issue #14: they vanished
+// silently); the extension shows the dialog and echoes `next` back on Discard.
+function navigateAwayFromMappings(next) {
+  if (state.mappingsDirty) {
+    vscode.postMessage({ command: 'confirmDiscardMappings', next });
+    return;
+  }
+  applyNavigation(next);
+}
+
+function applyNavigation(next) {
+  state.editingNew = !!next.editingNew;
+  state.selectedServerName = next.selectedServerName ?? null;
+  state.testStatus = null;
+  if (next.activeTab) state.activeTab = next.activeTab;
+  render();
 }
 
 function renderDetailPanel() {
@@ -488,6 +508,9 @@ function renderMappingsTab(server) {
   // payload (see the Connection tab's Save handler).
   const isNew = !server.id;
 
+  // Freshly rendered from saved config: nothing unsaved yet.
+  state.mappingsDirty = false;
+
   // Mappings and excludedPaths live directly on the server object now
   const mappings = server.mappings || [];
   const excludedPaths = server.excludedPaths || [];
@@ -526,10 +549,16 @@ function renderMappingsTab(server) {
   document.getElementById('btn-add-mapping')?.addEventListener('click', () => {
     const tbody = document.getElementById('mappings-body');
     tbody.insertAdjacentHTML('beforeend', mappingRowHtml({ localPath: '', remotePath: '' }, tbody.children.length));
+    state.mappingsDirty = true;
     wireRemoveButtons();
   });
 
   wireRemoveButtons();
+
+  // Any typing on this tab (rows or excluded paths) counts as unsaved. Row
+  // additions/removals set the flag in their own handlers. Property
+  // assignment, not addEventListener: `el` survives re-renders.
+  el.oninput = () => { state.mappingsDirty = true; };
 
   // The `/` is a fixed prefix on the local-path input, so a typed or pasted
   // leading slash would otherwise show as `//src`. Delegated on the body so
@@ -600,6 +629,7 @@ function wireRemoveButtons() {
     btn.replaceWith(clone);
     clone.addEventListener('click', () => {
       clone.closest('tr')?.remove();
+      state.mappingsDirty = true;
     });
   });
 }

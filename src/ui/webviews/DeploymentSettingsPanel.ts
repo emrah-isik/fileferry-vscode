@@ -41,6 +41,9 @@ interface DeploymentSettingsMessage {
   newName?: string;
   value?: string;
   hookCommand?: string;
+  // confirmDiscardMappings: the navigation the webview wants to make once the
+  // user confirms; echoed back untouched, the webview owns its meaning.
+  next?: unknown;
 }
 
 export class DeploymentSettingsPanel {
@@ -147,6 +150,19 @@ export class DeploymentSettingsPanel {
         await this.dependencies.configManager.saveConfig(config);
         this.panel.webview.postMessage({ command: 'configUpdated', config });
         vscode.window.showInformationMessage(`FileFerry: Mappings saved for "${entry.name}".`);
+        break;
+      }
+
+      // The Mappings tab has unsaved edits and the user is navigating away.
+      // Webviews cannot show confirm(), so the dialog lives here; on Discard
+      // the intended navigation is echoed back for the webview to carry out.
+      case 'confirmDiscardMappings': {
+        const answer = await vscode.window.showWarningMessage(
+          'Discard unsaved mapping changes?',
+          'Discard', 'Cancel'
+        );
+        if (answer !== 'Discard') break;
+        this.panel.webview.postMessage({ command: 'discardMappingsConfirmed', next: msg.next });
         break;
       }
 
