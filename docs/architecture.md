@@ -121,8 +121,8 @@ Using `ready`→`init` rather than injecting data into the HTML means the webvie
 
 | Direction | Panel | Commands |
 | --------- | ----- | -------- |
-| Webview → Extension | Deployment Settings | `ready`, `saveServer`, `deleteServer`, `setDefaultServer`, `cloneServer`, `saveMapping`, `deleteMapping`, `testConnection`, `browseDirectory`, `openCredentials` |
-| Extension → Webview | Deployment Settings | `init` (`{ config, credentials }`), `configUpdated` (`{ config }`), `credentialsUpdated`, `testResult`, `validationError`, `directorySelected`, `browseDone`, `browseError` |
+| Webview → Extension | Deployment Settings | `ready`, `saveServer`, `deleteServer`, `setDefaultServer`, `cloneServer`, `saveMapping`, `deleteMapping`, `confirmDiscardMappings` (`{ next }` — the navigation to carry out if the user confirms), `testConnection`, `browseDirectory`, `openCredentials` |
+| Extension → Webview | Deployment Settings | `init` (`{ config, credentials }`), `configUpdated` (`{ config }`), `credentialsUpdated`, `testResult`, `validationError`, `discardMappingsConfirmed` (`{ next }` echoed back), `directorySelected`, `browseDone`, `browseError` |
 | Webview → Extension | SSH Credentials | `ready`, `saveCredential`, `deleteCredential`, `cloneCredential`, `testConnection`, `browsePrivateKey` |
 | Extension → Webview | SSH Credentials | `init` (optionally `{ selectedId }` to preselect — Deployment Settings' Manage… link passes the server's current credential), `selectCredential` (switches selection when the panel is already open), `credentialSaved`, `credentialDeleted`, `testResult` (a jump-host failure additionally carries `{ hopIndex, hopHost }` so the webview can name the failing hop — 18a-2b), `validationError`, `warning`, `privateKeySelected` |
 | Webview → Extension | Project Settings | `ready`, `toggleDryRun`, `toggleUploadOnSave`, `toggleFileDateGuard`, `toggleBackupBeforeOverwrite`, `setBackupRetentionDays`, `setBackupMaxSizeMB` |
@@ -130,7 +130,7 @@ Using `ready`→`init` rather than injecting data into the HTML means the webvie
 | Webview → Extension | Upload History | `ready`, `filter` (`{ serverId?, result?, search? }`), `clear` |
 | Extension → Webview | Upload History | `init` (`{ entries, servers }`), `filtered` (`{ entries }`), `cleared` |
 
-**Validation flow**: All validation runs in the extension process (pure `src/utils/validation.ts` functions with no VSCode dependencies). The webview receives `{ command: 'validationError', errors: { [field]: message } }` and renders inline field errors. This keeps the webview thin and ensures validation logic is unit-testable without a webview environment.
+**Validation flow**: All validation runs in the extension process (pure `src/utils/validation.ts` functions with no VSCode dependencies). The webview receives `{ command: 'validationError', errors: { [field]: message } }` and renders inline field errors. This keeps the webview thin and ensures validation logic is unit-testable without a webview environment. Two invariants, both from issue #14: (1) the webview's error router must place **every** key — named fields go to their slot, `mappings[i].localPath|remotePath` under that row, `excludedPaths[i]` under that field, and anything unrecognised into the owning tab's banner (an allowlist silently dropped the mapping errors up to 0.14.1); (2) user-typed mappings pass through `normalizeMappings` (leading `/` added, trimmed, empty = `/`) **before** `validateMappings`, on both `saveMapping` and `saveServer` — the two routes must never disagree on what is valid.
 
 **CSP**: All four panels use `default-src 'none'; style-src ${cspSource}; script-src 'nonce-${nonce}'` — no inline scripts, no external resources, bundled JS loaded via nonce.
 
