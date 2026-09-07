@@ -336,6 +336,38 @@ button.btn-danger:hover:not(:disabled) {
   text-align: center;
 }
 
+/* Local-path input with a fixed `/` prefix: the two parts share one border
+   so they read as a single field. */
+.path-input {
+  display: flex;
+  align-items: stretch;
+}
+
+.path-input .path-prefix {
+  display: flex;
+  align-items: center;
+  padding: 0 4px 0 8px;
+  background: var(--vscode-input-background);
+  color: var(--vscode-descriptionForeground);
+  border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+  border-right: none;
+  font-family: var(--vscode-editor-font-family, monospace);
+  user-select: none;
+}
+
+.path-input input[type="text"] {
+  border-left: none;
+  padding-left: 2px;
+}
+
+.path-input:has(.input-error) .path-prefix {
+  border-color: var(--vscode-inputValidation-errorBorder, #f44);
+}
+
+.hint code {
+  font-family: var(--vscode-editor-font-family, monospace);
+}
+
 .btn-remove-mapping {
   background: transparent;
   border: none;

@@ -493,7 +493,7 @@ function renderMappingsTab(server) {
   const excludedPaths = server.excludedPaths || [];
 
   el.innerHTML = `
-    <p class="hint">Map local paths (relative to workspace root) to remote paths on the server.</p>
+    <p class="hint">Map local folders (relative to the workspace root &mdash; the leading <code>/</code> is added for you; leave it empty for the whole project) to remote paths relative to the server's root path.</p>
     <div class="field-error error-banner" id="mappings-banner"></div>
 
     <div class="section-title">Path Mappings</div>
@@ -531,6 +531,16 @@ function renderMappingsTab(server) {
 
   wireRemoveButtons();
 
+  // The `/` is a fixed prefix on the local-path input, so a typed or pasted
+  // leading slash would otherwise show as `//src`. Delegated on the body so
+  // rows added later are covered too.
+  document.getElementById('mappings-body')?.addEventListener('input', (event) => {
+    const input = event.target;
+    if (!input.classList?.contains('m-local')) return;
+    const stripped = input.value.replace(/^\/+/, '');
+    if (stripped !== input.value) input.value = stripped;
+  });
+
   document.getElementById('btn-save-mappings')?.addEventListener('click', () => {
     clearValidationErrors();
     const { mappings, excludedPaths } = collectMappingInputs();
@@ -547,10 +557,14 @@ function renderMappingsTab(server) {
 // rejected save can point at the exact field (issue #14: errors used to be
 // dropped on the floor because the Mappings tab had nowhere to show them).
 function mappingRowHtml(mapping, index) {
+  const localWithoutSlash = (mapping.localPath || '').replace(/^\/+/, '');
   return `
     <tr data-index="${index}">
       <td>
-        <input class="m-local" type="text" value="${escapeHtml(mapping.localPath)}" placeholder="/">
+        <div class="path-input">
+          <span class="path-prefix" aria-hidden="true">/</span>
+          <input class="m-local" type="text" value="${escapeHtml(localWithoutSlash)}" placeholder="whole project" aria-label="Local path, relative to the workspace root">
+        </div>
         <span class="field-error err-local"></span>
       </td>
       <td>
@@ -568,7 +582,9 @@ function collectMappingInputs() {
   const tbody = document.getElementById('mappings-body');
   const mappings = tbody
     ? Array.from(tbody.querySelectorAll('tr')).map(row => ({
-        localPath: row.querySelector('.m-local').value.trim() || '/',
+        // The prefix is visual only; put it back so the stored form always
+        // starts with `/` and an empty field is the root mapping.
+        localPath: '/' + row.querySelector('.m-local').value.trim().replace(/^\/+/, ''),
         remotePath: row.querySelector('.m-remote').value.trim(),
       }))
     : [];
