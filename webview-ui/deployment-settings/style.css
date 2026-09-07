@@ -151,6 +151,19 @@ body {
   color: var(--vscode-tab-activeForeground, var(--vscode-foreground, #cccccc));
 }
 
+/* A tab holding a validation error gets a dot after its label, so an error
+   on a tab the user is not looking at is still noticed. */
+.tab-btn.has-error::after {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 6px;
+  border-radius: 50%;
+  vertical-align: middle;
+  background: var(--vscode-inputValidation-errorBorder, var(--vscode-errorForeground, #f44));
+}
+
 .tab-content {
   display: none;
   flex: 1;
@@ -207,6 +220,18 @@ select:focus {
 
 .field-error:empty {
   display: none;
+}
+
+/* Whole-form errors, and the catch-all for keys no field slot claims. */
+.error-banner {
+  margin: 0 0 12px;
+  padding: 6px 10px;
+  border: 1px solid var(--vscode-inputValidation-errorBorder, #f44);
+  background: var(--vscode-inputValidation-errorBackground, transparent);
+}
+
+input.input-error {
+  border-color: var(--vscode-inputValidation-errorBorder, #f44);
 }
 
 /* ─── Buttons ─────────────────────────────────────────────────── */
