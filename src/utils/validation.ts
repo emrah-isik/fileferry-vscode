@@ -199,25 +199,49 @@ export function validateOctalFileMode(rawMode: string): string | null {
   return null;
 }
 
+export interface PathMapping {
+  localPath: string;
+  remotePath: string;
+}
+
+// Brings user-typed mappings into the stored form before validation. The
+// leading slash on localPath carries no meaning (PathResolver strips it to
+// match), so a missing one is added rather than rejected — issue #14 was a
+// second row typed as `src`, silently refused. Empty means the whole project.
+// remotePath is only trimmed: it is relative to the server root and may be
+// empty or keep a trailing slash (PathResolver strips that itself).
+export function normalizeMappings(mappings: PathMapping[]): PathMapping[] {
+  return mappings.map(({ localPath, remotePath }) => {
+    let local = localPath.trim().replace(/^\/+/, '');
+    local = '/' + local.replace(/\/+$/, '');
+    return { localPath: local, remotePath: remotePath.trim() };
+  });
+}
+
+export interface ValidateMappingsOptions {
+  // The new-server save sends whatever the Mappings tab holds, which may be
+  // nothing — and no mappings is valid (files map straight to rootPath).
+  allowEmpty?: boolean;
+}
+
 export function validateMappings(
-  mappings: Array<{ localPath: string; remotePath: string }>,
-  excludedPaths: string[]
+  mappings: PathMapping[],
+  excludedPaths: string[],
+  options: ValidateMappingsOptions = {}
 ): ValidationError[] {
   const errors: ValidationError[] = [];
 
-  if (mappings.length === 0) {
+  if (mappings.length === 0 && !options.allowEmpty) {
     errors.push({ field: 'mappings', message: 'At least one path mapping is required' });
   }
 
   const seenLocal = new Set<string>();
   for (let i = 0; i < mappings.length; i++) {
-    const { localPath } = mappings[i];
-    if (!localPath.trim().startsWith('/')) {
-      errors.push({ field: `mappings[${i}].localPath`, message: 'Local path must start with /' });
-    } else if (seenLocal.has(localPath.trim())) {
+    const localPath = mappings[i].localPath.trim();
+    if (seenLocal.has(localPath)) {
       errors.push({ field: `mappings[${i}].localPath`, message: 'Duplicate local path' });
     } else {
-      seenLocal.add(localPath.trim());
+      seenLocal.add(localPath);
     }
     // remotePath is relative to the server root — empty string or a subdirectory name
     // like 'html' or 'public_html' are all valid.

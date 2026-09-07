@@ -8,7 +8,7 @@ import { toConnectTarget } from '../../connectTarget';
 import { generateId } from '../../utils/uuid';
 import { ProjectServer, HookCommand } from '../../models/ProjectConfig';
 import { ServerType } from '../../types';
-import { validateProjectServer, validateMappings } from '../../utils/validation';
+import { validateProjectServer, validateMappings, normalizeMappings } from '../../utils/validation';
 import { TimeOffsetDetector } from '../../services/TimeOffsetDetector';
 import { detectSecret, findSecretLiteral } from '../../utils/detectSecret';
 import { HookSecretManager } from '../../storage/HookSecretManager';
@@ -130,7 +130,8 @@ export class DeploymentSettingsPanel {
         if (!msg.serverId || !msg.mappings || !msg.excludedPaths) break;
         const entry = await this.dependencies.configManager.getServerById(msg.serverId);
         if (!entry) break;
-        const mappingErrors = validateMappings(msg.mappings, msg.excludedPaths);
+        const mappings = normalizeMappings(msg.mappings);
+        const mappingErrors = validateMappings(mappings, msg.excludedPaths);
         if (mappingErrors.length > 0) {
           const errors = Object.fromEntries(mappingErrors.map((e: { field: string; message: string }) => [e.field, e.message]));
           this.panel.webview.postMessage({ command: 'validationError', errors });
@@ -140,7 +141,7 @@ export class DeploymentSettingsPanel {
         if (!config) break;
         config.servers[entry.name] = {
           ...entry.server,
-          mappings: msg.mappings,
+          mappings,
           excludedPaths: msg.excludedPaths,
         };
         await this.dependencies.configManager.saveConfig(config);
@@ -367,13 +368,21 @@ export class DeploymentSettingsPanel {
       }
     }
 
-    const validationErrors = validateProjectServer(
-      payload.name ?? '',
-      payload,
-      existingServerNames,
-      existingCredentials,
-      currentName
-    );
+    // The Mappings tab rides along in this payload for a brand-new server, so
+    // it gets the same normalise-then-validate treatment as a standalone
+    // saveMapping — the two routes used to disagree (issue #14). An empty list
+    // is fine here: no mappings means files map straight to rootPath.
+    const mappings = payload.mappings ? normalizeMappings(payload.mappings) : undefined;
+    const validationErrors = [
+      ...validateProjectServer(
+        payload.name ?? '',
+        payload,
+        existingServerNames,
+        existingCredentials,
+        currentName
+      ),
+      ...(mappings ? validateMappings(mappings, payload.excludedPaths ?? [], { allowEmpty: true }) : []),
+    ];
     if (validationErrors.length > 0) {
       const errors = Object.fromEntries(validationErrors.map(e => [e.field, e.message]));
       this.panel.webview.postMessage({ command: 'validationError', errors });
@@ -396,7 +405,7 @@ export class DeploymentSettingsPanel {
       // The Mappings tab is editable before the first save now, so honour
       // payload-supplied mappings/excludedPaths (new servers and edits alike),
       // falling back to the saved values when the payload omits them.
-      mappings: payload.mappings ?? existing?.mappings ?? [],
+      mappings: mappings ?? existing?.mappings ?? [],
       excludedPaths: payload.excludedPaths ?? existing?.excludedPaths ?? [],
       ...(payload.filePermissions !== undefined ? { filePermissions: payload.filePermissions } : {}),
       ...(payload.directoryPermissions !== undefined ? { directoryPermissions: payload.directoryPermissions } : {}),

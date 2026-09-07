@@ -2,6 +2,7 @@ import {
   validateSshCredential,
   validateProjectServer,
   validateMappings,
+  normalizeMappings,
   validateRemoteEntryName,
   validateOctalFileMode,
 } from '../../utils/validation';
@@ -408,9 +409,20 @@ describe('validateMappings', () => {
     expect(errors.length).toBeGreaterThan(0);
   });
 
-  it('rejects localPath not starting with /', () => {
+  // A missing leading slash is normalised away before validation (issue #14);
+  // the validator no longer has an opinion about it.
+  it('accepts localPath without a leading / (normalisation is the caller\'s job)', () => {
     const errors = validateMappings([{ localPath: 'src', remotePath: '/var/www' }], []);
-    expect(errors.some(e => e.field.includes('localPath'))).toBe(true);
+    expect(errors.some(e => e.field.includes('localPath'))).toBe(false);
+  });
+
+  it('allows an empty mappings list when allowEmpty is set (new-server save, no mappings entered)', () => {
+    expect(validateMappings([], [], { allowEmpty: true })).toHaveLength(0);
+  });
+
+  it('still validates excluded paths when allowEmpty is set', () => {
+    const errors = validateMappings([], ['node_modules', 'node_modules'], { allowEmpty: true });
+    expect(errors.some(e => e.field === 'excludedPaths[1]')).toBe(true);
   });
 
   it('accepts relative remotePath (no leading / required)', () => {
@@ -515,5 +527,59 @@ describe('validateOctalFileMode (feature 33e, decision L1)', () => {
     ['6 44'],
   ])('rejects anything but 3-4 octal digits: %j', (mode) => {
     expect(validateOctalFileMode(mode as string)).not.toBeNull();
+  });
+});
+
+// ─── normalizeMappings ────────────────────────────────────────────────────────
+
+describe('normalizeMappings', () => {
+  it('prepends a leading / to a localPath that lacks one', () => {
+    expect(normalizeMappings([{ localPath: 'src', remotePath: 'html' }]))
+      .toEqual([{ localPath: '/src', remotePath: 'html' }]);
+  });
+
+  it('leaves a localPath that already starts with / unchanged', () => {
+    expect(normalizeMappings([{ localPath: '/src', remotePath: 'html' }]))
+      .toEqual([{ localPath: '/src', remotePath: 'html' }]);
+  });
+
+  it('trims whitespace from both paths', () => {
+    expect(normalizeMappings([{ localPath: '  src ', remotePath: ' html ' }]))
+      .toEqual([{ localPath: '/src', remotePath: 'html' }]);
+  });
+
+  it('turns an empty or whitespace-only localPath into the root mapping /', () => {
+    expect(normalizeMappings([{ localPath: '', remotePath: 'html' }, { localPath: '   ', remotePath: '' }]))
+      .toEqual([{ localPath: '/', remotePath: 'html' }, { localPath: '/', remotePath: '' }]);
+  });
+
+  it('strips a trailing / from a non-root localPath but keeps the bare root', () => {
+    expect(normalizeMappings([{ localPath: 'src/', remotePath: '' }, { localPath: '/', remotePath: '' }]))
+      .toEqual([{ localPath: '/src', remotePath: '' }, { localPath: '/', remotePath: '' }]);
+  });
+
+  it('collapses repeated leading slashes', () => {
+    expect(normalizeMappings([{ localPath: '//src', remotePath: '' }]))
+      .toEqual([{ localPath: '/src', remotePath: '' }]);
+  });
+
+  it('does not touch remotePath beyond trimming (relative to the server root, may be empty)', () => {
+    expect(normalizeMappings([{ localPath: '/', remotePath: 'public_html/' }]))
+      .toEqual([{ localPath: '/', remotePath: 'public_html/' }]);
+  });
+
+  it('returns a new array and leaves the input untouched', () => {
+    const input = [{ localPath: 'src', remotePath: 'html' }];
+    const output = normalizeMappings(input);
+    expect(output).not.toBe(input);
+    expect(input[0].localPath).toBe('src');
+  });
+
+  it('makes src and /src duplicates of each other in validateMappings', () => {
+    const errors = validateMappings(
+      normalizeMappings([{ localPath: '/src', remotePath: 'a' }, { localPath: 'src', remotePath: 'b' }]),
+      []
+    );
+    expect(errors.some(e => e.field === 'mappings[1].localPath' && e.message === 'Duplicate local path')).toBe(true);
   });
 });
