@@ -120,7 +120,9 @@ If your project structure maps 1:1 to the server, you can skip this — files wi
 | `/` | `html` | `src/app.php` -> `/var/www/html/src/app.php` |
 | `/public` | `public_html` | `public/index.php` -> `/var/www/public_html/index.php` |
 
-More specific paths (longer prefix) take priority.
+The leading `/` on the local path is shown as a fixed prefix — type `public`, not `/public`, and leave the field empty for the whole project. More specific paths (longer prefix) take priority.
+
+Click **Save Mappings**. If a row can't be saved (for example two rows with the same local path), the reason appears in red under the field and the **Mappings** tab shows a dot until you fix it. Switching to another server while you have unsaved rows asks whether to discard them.
 
 ### 4. Your First Upload
 
@@ -568,7 +570,7 @@ In the Mappings tab of Deployment Settings, you can override a server's root pat
 
 ### How Mappings Work
 
-Mappings translate local workspace paths to remote server paths. Each mapping has a local path (relative to your workspace root) and a remote path (relative to the server's root path).
+Mappings translate local workspace paths to remote server paths. Each mapping has a local path (relative to your workspace root, stored with a leading `/` — FileFerry adds it if you leave it out) and a remote path (relative to the server's root path).
 
 **Example:** With root path `/var/www` and this mapping:
 
@@ -680,6 +682,14 @@ FileFerry creates missing remote directories automatically. If this still fails,
 ### Upload or compare goes to the wrong path
 
 Check your path mappings in **Deployment Settings**. The most specific (longest) matching local path wins. If no mappings are set, files map directly to the server root.
+
+### "No mapping found" after adding mappings
+
+Once a server has any mapping, only files under a mapped local path deploy — there is no catch-all. Add a `/` row (empty local path in the Mappings tab) to cover everything else, or a row for the folder in question.
+
+### A mapping row won't save
+
+Look for red text under the row and a dot on the **Mappings** tab: the usual cause is two rows with the same local path. Versions up to 0.14.1 showed nothing at all in this situation and the row silently disappeared on the next click.
 
 ### SSH key not working
 

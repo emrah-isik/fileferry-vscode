@@ -182,6 +182,67 @@ describe('DeploymentSettingsPanel message handling', () => {
     expect(savedConfig.servers.Staging.excludedPaths).toEqual(['node_modules', '*.log']);
   });
 
+  // Issue #14 extra finding: the new-server route never validated mappings, so
+  // it silently accepted what the edit route rejected. Same rules on both.
+  it('saveServer normalises payload mappings before saving a new server', async () => {
+    (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({ defaultServerId: '', servers: {} });
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    const payload = {
+      name: 'Staging', type: 'sftp', credentialId: 'cred-1', rootPath: '/var/www/staging',
+      mappings: [{ localPath: 'src', remotePath: 'html' }],
+      excludedPaths: [],
+    };
+    await messageHandler({ command: 'saveServer', payload });
+    const savedConfig = (mockConfigManager.saveConfig as jest.Mock).mock.calls[0][0];
+    expect(savedConfig.servers.Staging.mappings).toEqual([{ localPath: '/src', remotePath: 'html' }]);
+  });
+
+  it('saveServer rejects duplicate payload mappings on a new server and writes nothing', async () => {
+    (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({ defaultServerId: '', servers: {} });
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    const payload = {
+      name: 'Staging', type: 'sftp', credentialId: 'cred-1', rootPath: '/var/www/staging',
+      mappings: [{ localPath: '/', remotePath: 'html' }, { localPath: '', remotePath: 'app' }],
+      excludedPaths: [],
+    };
+    await messageHandler({ command: 'saveServer', payload });
+    expect(mockConfigManager.saveConfig).not.toHaveBeenCalled();
+    expect(mockWebview.postMessage).toHaveBeenCalledWith({
+      command: 'validationError',
+      errors: { 'mappings[1].localPath': 'Duplicate local path' },
+    });
+  });
+
+  it('saveServer still accepts a new server with no mappings at all (files map straight to rootPath)', async () => {
+    (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({ defaultServerId: '', servers: {} });
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    const payload = {
+      name: 'Staging', type: 'sftp', credentialId: 'cred-1', rootPath: '/var/www/staging',
+      mappings: [],
+      excludedPaths: [],
+    };
+    await messageHandler({ command: 'saveServer', payload });
+    expect(mockConfigManager.saveConfig).toHaveBeenCalled();
+    expect(mockWebview.postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ command: 'validationError' }));
+  });
+
+  it('saveServer reports connection-field and mapping errors together in one validationError', async () => {
+    (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({ defaultServerId: '', servers: {} });
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    const payload = {
+      name: '', type: 'sftp', credentialId: 'cred-1', rootPath: '/var/www/staging',
+      mappings: [{ localPath: '/', remotePath: 'html' }, { localPath: '/', remotePath: 'app' }],
+      excludedPaths: [],
+    };
+    await messageHandler({ command: 'saveServer', payload });
+    expect(mockConfigManager.saveConfig).not.toHaveBeenCalled();
+    const posted = (mockWebview.postMessage as jest.Mock).mock.calls.find(c => c[0].command === 'validationError')?.[0];
+    expect(posted.errors).toEqual(expect.objectContaining({
+      name: expect.any(String),
+      'mappings[1].localPath': 'Duplicate local path',
+    }));
+  });
+
   it('saveServer updates mappings and excludedPaths when the payload provides them on edit', async () => {
     DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
     const payload = {
@@ -238,6 +299,66 @@ describe('DeploymentSettingsPanel message handling', () => {
     expect(savedConfig.servers.Production.mappings).toEqual(mappings);
     expect(savedConfig.servers.Production.excludedPaths).toEqual(excludedPaths);
     expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({ command: 'configUpdated' }));
+  });
+
+  // Issue #14: a second row typed without a leading slash (the tab's hint says
+  // "relative to workspace root", so `src` is what people type) used to be
+  // rejected — and the rejection was never displayed. Normalise it instead.
+  it('saveMapping normalises a localPath without a leading slash and saves it', async () => {
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    const mappings = [{ localPath: '/public', remotePath: 'public_html' }, { localPath: 'src ', remotePath: 'app' }];
+    await messageHandler({ command: 'saveMapping', serverId: 'srv-1', mappings, excludedPaths: [] });
+    const savedConfig = (mockConfigManager.saveConfig as jest.Mock).mock.calls[0][0];
+    expect(savedConfig.servers.Production.mappings).toEqual([
+      { localPath: '/public', remotePath: 'public_html' },
+      { localPath: '/src', remotePath: 'app' },
+    ]);
+    expect(mockWebview.postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ command: 'validationError' }));
+  });
+
+  it('saveMapping rejects a duplicate localPath with a row-addressed validationError and writes nothing', async () => {
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    const mappings = [{ localPath: '/', remotePath: 'html' }, { localPath: '', remotePath: 'app' }];
+    await messageHandler({ command: 'saveMapping', serverId: 'srv-1', mappings, excludedPaths: [] });
+    expect(mockConfigManager.saveConfig).not.toHaveBeenCalled();
+    expect(mockWebview.postMessage).toHaveBeenCalledWith({
+      command: 'validationError',
+      errors: { 'mappings[1].localPath': 'Duplicate local path' },
+    });
+    expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
+  });
+
+  it('saveMapping reports excluded-path errors under their own index', async () => {
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    const mappings = [{ localPath: '/', remotePath: 'html' }];
+    await messageHandler({ command: 'saveMapping', serverId: 'srv-1', mappings, excludedPaths: ['node_modules', 'node_['] });
+    expect(mockConfigManager.saveConfig).not.toHaveBeenCalled();
+    expect(mockWebview.postMessage).toHaveBeenCalledWith({
+      command: 'validationError',
+      errors: { 'excludedPaths[1]': 'Invalid glob pattern: unclosed bracket' },
+    });
+  });
+
+  // Issue #14 slice 4: clicking another server used to throw away unsaved
+  // mapping rows without a word. The webview asks first; the extension owns
+  // the dialog (webviews cannot show confirm()) and echoes the intended
+  // navigation back so the webview can carry it out.
+  it('confirmDiscardMappings: Discard echoes the intended navigation back to the webview', async () => {
+    (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue('Discard');
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    const next = { selectedServerName: 'Staging', editingNew: false };
+    await messageHandler({ command: 'confirmDiscardMappings', next });
+    expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+      expect.stringContaining('unsaved'), 'Discard', 'Cancel'
+    );
+    expect(mockWebview.postMessage).toHaveBeenCalledWith({ command: 'discardMappingsConfirmed', next });
+  });
+
+  it('confirmDiscardMappings: Cancel posts nothing back', async () => {
+    (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue('Cancel');
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    await messageHandler({ command: 'confirmDiscardMappings', next: { editingNew: true } });
+    expect(mockWebview.postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ command: 'discardMappingsConfirmed' }));
   });
 
   it('saveMapping shows info notification with server name after save', async () => {

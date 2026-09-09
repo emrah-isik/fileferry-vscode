@@ -16,6 +16,7 @@ let state = {
   secretNames: [],        // hook secret NAMEs stored in the OS keychain (values never reach the webview)
   secretsSectionOpen: null, // user's explicit open/collapse choice; null = auto (open when a secret is missing)
   pendingSecretSave: null,  // NAME awaiting a secretsUpdated ack, so we can confirm the save on its row
+  mappingsDirty: false,     // Mappings tab edited since the last render; leaving the server asks first
 };
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────
@@ -93,6 +94,13 @@ window.addEventListener('message', ({ data: msg }) => {
 
     case 'validationError':
       showValidationErrors(msg.errors);
+      break;
+
+    // The user confirmed throwing away unsaved mapping edits; carry out the
+    // navigation that was held back (see navigateAwayFromMappings).
+    case 'discardMappingsConfirmed':
+      state.mappingsDirty = false;
+      applyNavigation(msg.next || {});
       break;
 
     case 'hookSecretWarning':
@@ -219,19 +227,12 @@ function renderServerList() {
   `;
 
   document.getElementById('add-server-btn')?.addEventListener('click', () => {
-    state.editingNew = true;
-    state.selectedServerName = null;
-    state.testStatus = null;
-    state.activeTab = 'connection';
-    render();
+    navigateAwayFromMappings({ editingNew: true, selectedServerName: null, activeTab: 'connection' });
   });
 
   document.querySelectorAll('.server-item[data-name]').forEach(el => {
     el.addEventListener('click', () => {
-      state.selectedServerName = el.dataset.name;
-      state.editingNew = false;
-      state.testStatus = null;
-      render();
+      navigateAwayFromMappings({ editingNew: false, selectedServerName: el.dataset.name });
     });
   });
 
@@ -241,6 +242,25 @@ function renderServerList() {
       vscode.postMessage({ command: 'cloneServer', id: btn.dataset.id });
     });
   });
+}
+
+// Every re-render rebuilds the Mappings tab from saved config, so unsaved
+// rows there are lost. Ask before switching server (issue #14: they vanished
+// silently); the extension shows the dialog and echoes `next` back on Discard.
+function navigateAwayFromMappings(next) {
+  if (state.mappingsDirty) {
+    vscode.postMessage({ command: 'confirmDiscardMappings', next });
+    return;
+  }
+  applyNavigation(next);
+}
+
+function applyNavigation(next) {
+  state.editingNew = !!next.editingNew;
+  state.selectedServerName = next.selectedServerName ?? null;
+  state.testStatus = null;
+  if (next.activeTab) state.activeTab = next.activeTab;
+  render();
 }
 
 function renderDetailPanel() {
@@ -269,23 +289,25 @@ function renderDetailPanel() {
     `;
   }
 
-  // Wire tab buttons
+  // Wire tab buttons. A re-render rebuilds every tab's content, so any error
+  // markers on the buttons are stale by now.
   detail.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.tab === state.activeTab);
-    btn.addEventListener('click', () => {
-      state.activeTab = btn.dataset.tab;
-      detail.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === state.activeTab));
-      detail.querySelectorAll('.tab-content').forEach(t => t.classList.toggle('active', t.id === `${state.activeTab}-tab`));
-    });
+    btn.classList.remove('has-error');
+    btn.addEventListener('click', () => activateTab(btn.dataset.tab));
   });
-
-  detail.querySelectorAll('.tab-content').forEach(t => {
-    t.classList.toggle('active', t.id === `${state.activeTab}-tab`);
-  });
+  activateTab(state.activeTab);
 
   renderConnectionTab(server);
   renderMappingsTab(server);
   renderHooksTab(server);
+}
+
+function activateTab(name) {
+  state.activeTab = name;
+  const detail = document.getElementById('server-detail-panel');
+  if (!detail) return;
+  detail.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+  detail.querySelectorAll('.tab-content').forEach(t => t.classList.toggle('active', t.id === `${name}-tab`));
 }
 
 function renderConnectionTab(server) {
@@ -296,6 +318,7 @@ function renderConnectionTab(server) {
   const isNew = !server.id;
 
   el.innerHTML = `
+    <div class="field-error error-banner" id="connection-banner"></div>
     <div class="form-group">
       <label for="f-name">Name</label>
       <input id="f-name" type="text" value="${escapeHtml(server._name)}" placeholder="e.g. Production">
@@ -485,12 +508,16 @@ function renderMappingsTab(server) {
   // payload (see the Connection tab's Save handler).
   const isNew = !server.id;
 
+  // Freshly rendered from saved config: nothing unsaved yet.
+  state.mappingsDirty = false;
+
   // Mappings and excludedPaths live directly on the server object now
   const mappings = server.mappings || [];
   const excludedPaths = server.excludedPaths || [];
 
   el.innerHTML = `
-    <p class="hint">Map local paths (relative to workspace root) to remote paths on the server.</p>
+    <p class="hint">Map local folders (relative to the workspace root &mdash; the leading <code>/</code> is added for you; leave it empty for the whole project) to remote paths relative to the server's root path.</p>
+    <div class="field-error error-banner" id="mappings-banner"></div>
 
     <div class="section-title">Path Mappings</div>
     <table class="mappings-table">
@@ -502,13 +529,7 @@ function renderMappingsTab(server) {
         </tr>
       </thead>
       <tbody id="mappings-body">
-        ${mappings.map((m, i) => `
-          <tr data-index="${i}">
-            <td><input class="m-local" type="text" value="${escapeHtml(m.localPath)}" placeholder="/"></td>
-            <td><input class="m-remote" type="text" value="${escapeHtml(m.remotePath)}" placeholder="html"></td>
-            <td><button class="btn-remove-mapping" data-index="${i}" title="Remove">\u00d7</button></td>
-          </tr>
-        `).join('')}
+        ${mappings.map((m, i) => mappingRowHtml(m, i)).join('')}
       </tbody>
     </table>
     <button id="btn-add-mapping" class="btn-secondary">+ Add Mapping</button>
@@ -516,6 +537,7 @@ function renderMappingsTab(server) {
     <div class="section-title" style="margin-top:24px">Excluded Paths</div>
     <p class="hint">Glob patterns separated by commas (e.g. node_modules, *.log, vendor)</p>
     <input id="f-excluded" type="text" value="${escapeHtml(excludedPaths.join(', '))}">
+    <span class="field-error" id="err-excluded"></span>
 
     <div class="form-actions">
       ${isNew
@@ -526,21 +548,30 @@ function renderMappingsTab(server) {
 
   document.getElementById('btn-add-mapping')?.addEventListener('click', () => {
     const tbody = document.getElementById('mappings-body');
-    const idx = tbody.children.length;
-    const row = document.createElement('tr');
-    row.dataset.index = idx;
-    row.innerHTML = `
-      <td><input class="m-local" type="text" value="" placeholder="/"></td>
-      <td><input class="m-remote" type="text" value="" placeholder="html"></td>
-      <td><button class="btn-remove-mapping" data-index="${idx}" title="Remove">\u00d7</button></td>
-    `;
-    tbody.appendChild(row);
+    tbody.insertAdjacentHTML('beforeend', mappingRowHtml({ localPath: '', remotePath: '' }, tbody.children.length));
+    state.mappingsDirty = true;
     wireRemoveButtons();
   });
 
   wireRemoveButtons();
 
+  // Any typing on this tab (rows or excluded paths) counts as unsaved. Row
+  // additions/removals set the flag in their own handlers. Property
+  // assignment, not addEventListener: `el` survives re-renders.
+  el.oninput = () => { state.mappingsDirty = true; };
+
+  // The `/` is a fixed prefix on the local-path input, so a typed or pasted
+  // leading slash would otherwise show as `//src`. Delegated on the body so
+  // rows added later are covered too.
+  document.getElementById('mappings-body')?.addEventListener('input', (event) => {
+    const input = event.target;
+    if (!input.classList?.contains('m-local')) return;
+    const stripped = input.value.replace(/^\/+/, '');
+    if (stripped !== input.value) input.value = stripped;
+  });
+
   document.getElementById('btn-save-mappings')?.addEventListener('click', () => {
+    clearValidationErrors();
     const { mappings, excludedPaths } = collectMappingInputs();
     vscode.postMessage({
       command: 'saveMapping',
@@ -551,13 +582,38 @@ function renderMappingsTab(server) {
   });
 }
 
+// One editable mapping row. Each input carries its own error slot so a
+// rejected save can point at the exact field (issue #14: errors used to be
+// dropped on the floor because the Mappings tab had nowhere to show them).
+function mappingRowHtml(mapping, index) {
+  const localWithoutSlash = (mapping.localPath || '').replace(/^\/+/, '');
+  return `
+    <tr data-index="${index}">
+      <td>
+        <div class="path-input">
+          <span class="path-prefix" aria-hidden="true">/</span>
+          <input class="m-local" type="text" value="${escapeHtml(localWithoutSlash)}" placeholder="whole project" aria-label="Local path, relative to the workspace root">
+        </div>
+        <span class="field-error err-local"></span>
+      </td>
+      <td>
+        <input class="m-remote" type="text" value="${escapeHtml(mapping.remotePath)}" placeholder="html">
+        <span class="field-error err-remote"></span>
+      </td>
+      <td><button class="btn-remove-mapping" data-index="${index}" title="Remove">\u00d7</button></td>
+    </tr>
+  `;
+}
+
 // Reads the current Mappings-tab inputs out of the DOM. Both tab contents are
 // always present (just hidden), so this works even if the tab was never opened.
 function collectMappingInputs() {
   const tbody = document.getElementById('mappings-body');
   const mappings = tbody
     ? Array.from(tbody.querySelectorAll('tr')).map(row => ({
-        localPath: row.querySelector('.m-local').value.trim() || '/',
+        // The prefix is visual only; put it back so the stored form always
+        // starts with `/` and an empty field is the root mapping.
+        localPath: '/' + row.querySelector('.m-local').value.trim().replace(/^\/+/, ''),
         remotePath: row.querySelector('.m-remote').value.trim(),
       }))
     : [];
@@ -573,6 +629,7 @@ function wireRemoveButtons() {
     btn.replaceWith(clone);
     clone.addEventListener('click', () => {
       clone.closest('tr')?.remove();
+      state.mappingsDirty = true;
     });
   });
 }
@@ -1190,21 +1247,85 @@ function renderTimeOffset(offsetMs) {
   if (el) el.textContent = formatTimeOffset(offsetMs);
 }
 
+// Routes every error the extension posts to a visible slot. Keys the router
+// does not recognise land in the owning tab's banner rather than being
+// dropped — the Mappings tab errors of issue #14 were lost exactly because
+// the old version only knew three Connection-tab fields.
+//
+// Key shapes (see src/utils/validation.ts):
+//   name | credentialId | rootPath          → Connection tab field slots
+//   mappings[i].localPath | .remotePath     → slot under that row's input
+//   excludedPaths[i]                        → the excluded-paths slot
+//   mappings                                → Mappings tab banner
+//   anything else                           → Connection tab banner
+const CONNECTION_FIELD_SLOTS = { name: 'err-name', credentialId: 'err-credential', rootPath: 'err-root-path' };
+
 function showValidationErrors(errors) {
-  if (errors.name) {
-    const el = document.getElementById('err-name');
-    if (el) el.textContent = errors.name;
+  const banners = { connection: [], mappings: [] };
+  const tabsWithErrors = new Set();
+  const mappingRows = Array.from(document.querySelectorAll('#mappings-body tr'));
+  const excludedMessages = [];
+
+  for (const [field, message] of Object.entries(errors || {})) {
+    let tab = 'connection';
+    let placed = false;
+
+    const rowMatch = field.match(/^mappings\[(\d+)\]\.(localPath|remotePath)$/);
+    const excludedMatch = field.match(/^excludedPaths\[(\d+)\]$/);
+
+    if (rowMatch) {
+      tab = 'mappings';
+      const row = mappingRows[Number(rowMatch[1])];
+      const input = row?.querySelector(rowMatch[2] === 'localPath' ? '.m-local' : '.m-remote');
+      const slot = row?.querySelector(rowMatch[2] === 'localPath' ? '.err-local' : '.err-remote');
+      if (slot) {
+        slot.textContent = message;
+        input?.classList.add('input-error');
+        placed = true;
+      }
+    } else if (excludedMatch) {
+      tab = 'mappings';
+      excludedMessages.push(`Entry ${Number(excludedMatch[1]) + 1}: ${message}`);
+      placed = true;
+    } else if (field === 'mappings') {
+      tab = 'mappings';
+    } else if (CONNECTION_FIELD_SLOTS[field]) {
+      const slot = document.getElementById(CONNECTION_FIELD_SLOTS[field]);
+      if (slot) {
+        slot.textContent = message;
+        placed = true;
+      }
+    }
+
+    if (!placed) {
+      banners[tab].push(field === 'mappings' ? message : `${field}: ${message}`);
+    }
+    tabsWithErrors.add(tab);
   }
-  if (errors.credentialId) {
-    const el = document.getElementById('err-credential');
-    if (el) el.textContent = errors.credentialId;
+
+  if (excludedMessages.length > 0) {
+    const slot = document.getElementById('err-excluded');
+    if (slot) slot.textContent = excludedMessages.join(' \u00b7 ');
+    document.getElementById('f-excluded')?.classList.add('input-error');
   }
-  if (errors.rootPath) {
-    const el = document.getElementById('err-root-path');
-    if (el) el.textContent = errors.rootPath;
+  for (const [tab, messages] of Object.entries(banners)) {
+    const banner = document.getElementById(`${tab}-banner`);
+    if (banner) banner.textContent = messages.join(' \u00b7 ');
+  }
+
+  // Mark every tab that holds an error, and bring the first one into view if
+  // the user is looking at a tab without any — an error hidden behind another
+  // tab is as good as no error.
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.classList.toggle('has-error', tabsWithErrors.has(btn.dataset.tab));
+  });
+  if (tabsWithErrors.size > 0 && !tabsWithErrors.has(state.activeTab)) {
+    activateTab(tabsWithErrors.has('connection') ? 'connection' : 'mappings');
   }
 }
 
 function clearValidationErrors() {
   document.querySelectorAll('.field-error').forEach(el => el.textContent = '');
+  document.querySelectorAll('.input-error').forEach(el => el.classList.remove('input-error'));
+  document.querySelectorAll('.tab-btn.has-error').forEach(el => el.classList.remove('has-error'));
 }
