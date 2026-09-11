@@ -88,6 +88,25 @@ describe('detectVscodeSftp', () => {
     expect(contexts[VSCODE_SFTP_DETECTED_CONTEXT]).toBe(false);
   });
 
+  it('logs the decision and the answer so the output channel shows what happened', async () => {
+    const lines: string[] = [];
+    answer = 'Not now';
+    await detectVscodeSftp({ ...dependencies(), log: (line) => { lines.push(line); } });
+    expect(lines).toEqual([
+      expect.stringMatching(/sftp\.json found.*no fileferry\.json.*offering/i),
+      expect.stringMatching(/answered "Not now"/),
+    ]);
+    lines.length = 0;
+    await detectVscodeSftp({ ...dependencies(), log: (line) => { lines.push(line); } });
+    expect(lines).toEqual([expect.stringMatching(/already offered.*Not now/i)]);
+  });
+
+  it('logs a dismissed toast as unanswered', async () => {
+    const lines: string[] = [];
+    await detectVscodeSftp({ ...dependencies(), log: (line) => { lines.push(line); } });
+    expect(lines[1]).toMatch(/closed without an answer/i);
+  });
+
   it('does nothing without a workspace', async () => {
     const result = await detectVscodeSftp({ ...dependencies(), workspaceRoot: undefined });
     expect(result).toEqual({ showToast: false, showHint: false });

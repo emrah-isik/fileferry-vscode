@@ -430,6 +430,7 @@ export function activate(context: vscode.ExtensionContext): void {
       'Not now'
     )),
     runImport: async () => { await runVscodeSftpImport(); },
+    log: (line) => output.appendLine(`[info] ${line}`),
   }).catch(err => {
     output.appendLine(`[warn] vscode-sftp detection failed: ${err instanceof Error ? err.message : String(err)}`);
   });

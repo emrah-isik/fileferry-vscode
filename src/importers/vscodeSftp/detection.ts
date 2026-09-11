@@ -37,6 +37,8 @@ export interface DetectionDependencies {
   showToast: () => Promise<ToastAnswer>;
   runImport: () => Promise<void>;
   joinPath: (...segments: string[]) => string;
+  /** Output-channel line; says what was decided and how the offer was answered. */
+  log?: (line: string) => void;
 }
 
 export async function detectVscodeSftp(dependencies: DetectionDependencies): Promise<DetectionDecision> {
@@ -44,16 +46,25 @@ export async function detectVscodeSftp(dependencies: DetectionDependencies): Pro
     return { showToast: false, showHint: false };
   }
   const vscodeFolder = dependencies.joinPath(dependencies.workspaceRoot, '.vscode');
-  const decision = decideDetection({
+  const state: DetectionState = {
     sftpJsonExists: await dependencies.fileExists(dependencies.joinPath(vscodeFolder, 'sftp.json')),
     fileferryJsonExists: await dependencies.fileExists(dependencies.joinPath(vscodeFolder, 'fileferry.json')),
     dismissed: dependencies.workspaceState.get<boolean>(VSCODE_SFTP_DISMISSED_KEY) === true,
-  });
+  };
+  const decision = decideDetection(state);
   await dependencies.setContext(VSCODE_SFTP_DETECTED_CONTEXT, decision.showHint);
+  const log = dependencies.log ?? (() => undefined);
   if (!decision.showToast) {
+    if (decision.showHint) {
+      log(state.fileferryJsonExists
+        ? 'vscode-sftp: .vscode/sftp.json found; fileferry.json already exists, so the import is not offered (run FileFerry: Import from vscode-sftp when you want it)'
+        : 'vscode-sftp: .vscode/sftp.json found; the import was already offered for this workspace (Not now), so the toast is not repeated');
+    }
     return decision;
   }
+  log('vscode-sftp: .vscode/sftp.json found and no fileferry.json; offering the import (toast)');
   const answer = await dependencies.showToast();
+  log(answer ? `vscode-sftp: import offer answered "${answer}"` : 'vscode-sftp: import offer closed without an answer; it will be offered again next time');
   if (answer === 'Not now') {
     await dependencies.workspaceState.update(VSCODE_SFTP_DISMISSED_KEY, true);
   } else if (answer === 'Import') {
