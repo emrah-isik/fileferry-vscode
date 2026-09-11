@@ -563,6 +563,39 @@ describe('SshCredentialPanel message handling', () => {
     expect(savedCred.name).toMatch(/^Prod SSH \(copy \d+\)$/);
   });
 
+  // 35b manual B5 follow-up: a credential saved outside the panel (the
+  // vscode-sftp import) while the panel is open must refresh its list; the
+  // panel's own saves already post credentialSaved, so they are skipped.
+  describe('credentials changed outside the panel', () => {
+    let fireChange: (event: { id: string; kind: 'save' | 'delete' }) => void = () => {};
+    const onDidChange = (listener: typeof fireChange) => {
+      fireChange = listener;
+      return { dispose: jest.fn() };
+    };
+
+    it('pushes credentialsUpdated with the fresh list when onDidChange fires', async () => {
+      SshCredentialPanel.createOrShow(mockContext, { ...deps(), credentialManager: { ...(mockCredentialManager as any), onDidChange } });
+      jest.clearAllMocks();
+      (mockCredentialManager.getAll as jest.Mock).mockResolvedValue([credentialFixture, keyCredentialFixture]);
+      fireChange({ id: 'cred-2', kind: 'save' });
+      await new Promise(process.nextTick);
+      expect(mockWebview.postMessage).toHaveBeenCalledWith({ command: 'credentialsUpdated', credentials: [credentialFixture, keyCredentialFixture] });
+    });
+
+    it('does not push credentialsUpdated for the panel\'s own save', async () => {
+      const credentialManager = { ...(mockCredentialManager as any), onDidChange };
+      // The real manager fires onDidChange from inside save().
+      credentialManager.save = jest.fn(async (credential: any) => { fireChange({ id: credential.id, kind: 'save' }); });
+      SshCredentialPanel.createOrShow(mockContext, { ...deps(), credentialManager });
+      jest.clearAllMocks();
+      await messageHandler({ command: 'saveCredential', payload: { credential: { ...credentialFixture, id: '', name: 'Fresh SSH' }, password: 'pw' } });
+      await new Promise(process.nextTick);
+      const commands = (mockWebview.postMessage as jest.Mock).mock.calls.map(call => call[0].command);
+      expect(commands).toContain('credentialSaved');
+      expect(commands).not.toContain('credentialsUpdated');
+    });
+  });
+
   it('browsePrivateKey opens file dialog and sends path back to webview', async () => {
     const fakeUri = { fsPath: '/home/user/.ssh/id_rsa.pem' };
     (vscode.window.showOpenDialog as jest.Mock).mockResolvedValue([fakeUri]);

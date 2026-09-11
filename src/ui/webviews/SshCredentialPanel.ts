@@ -13,6 +13,8 @@ import { HopConnectError } from '../../ssh/connectErrors';
 
 // Change notification is NOT a panel concern (18a-2b): CredentialManager
 // fires onDidChange on every save/delete; subscribers wire up in extension.ts.
+// The panel is one such subscriber (35b): a save from outside it (the
+// vscode-sftp import) refreshes its list; its own saves post credentialSaved.
 interface Deps {
   credentialManager: CredentialManager;
   configManager: ProjectConfigManager;
@@ -90,10 +92,31 @@ export class SshCredentialPanel {
       this.disposables
     );
 
+    deps.credentialManager.onDidChange?.(() => {
+      if (!this.handlingOwnMessage) { void this.pushUpdatedCredentials(); }
+    }, null, this.disposables);
+
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
   }
 
+  private handlingOwnMessage = false;
+
   private async handleMessage(msg: SshCredentialMessage): Promise<void> {
+    this.handlingOwnMessage = true;
+    try {
+      await this.dispatchMessage(msg);
+    } finally {
+      this.handlingOwnMessage = false;
+    }
+  }
+
+  // Secret fields never reach the webview: getAll() carries none.
+  private async pushUpdatedCredentials(): Promise<void> {
+    const credentials = await this.deps.credentialManager.getAll();
+    this.panel.webview.postMessage({ command: 'credentialsUpdated', credentials });
+  }
+
+  private async dispatchMessage(msg: SshCredentialMessage): Promise<void> {
     switch (msg.command) {
       case 'ready':
         await this.sendInitialState();

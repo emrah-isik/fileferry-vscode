@@ -40,6 +40,20 @@ window.addEventListener('message', ({ data: msg }) => {
       render();
       break;
 
+    case 'credentialsUpdated':
+      // Saved outside this panel (e.g. the vscode-sftp import). Refresh the
+      // list only; the detail form (and any edit in progress) is left alone
+      // unless the credential it shows is gone.
+      state.credentials = msg.credentials || [];
+      if (!state.editingNew && state.selectedId && !state.credentials.some(c => c.id === state.selectedId)) {
+        state.selectedId = state.credentials[0]?.id ?? null;
+        state.draftJumpHosts = null;
+        render();
+      } else {
+        renderList();
+      }
+      break;
+
     case 'selectCredential':
       if (state.credentials.some(c => c.id === msg.id)) {
         state.selectedId = msg.id;
