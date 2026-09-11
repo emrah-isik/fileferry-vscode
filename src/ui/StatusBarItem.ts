@@ -31,6 +31,12 @@ export class StatusBarItem implements vscode.Disposable {
         }
       })
     );
+
+    // Writes that go through the config manager (Deployment Settings save,
+    // Set as Default, panel toggles) never pass through an editor save, so
+    // listen to the manager itself. Otherwise a per-server Upload on Save
+    // change (35a) stayed stale until the next server click or command.
+    context.subscriptions.push(this.configManager.onDidSaveConfig(() => this.refresh()));
   }
 
   async refresh(): Promise<void> {
