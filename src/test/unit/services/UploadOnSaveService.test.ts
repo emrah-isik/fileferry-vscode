@@ -446,3 +446,57 @@ describe('UploadOnSaveService', () => {
     });
   });
 });
+
+describe('UploadOnSaveService — per-server uploadOnSave override (feature 35a)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockDateGuardCheck.mockResolvedValue([]);
+    (vscode.workspace.onDidSaveTextDocument as jest.Mock).mockImplementation((cb: any) => {
+      saveCallback = cb;
+      return mockDisposable;
+    });
+    (vscode.workspace as any).workspaceFolders = [{ uri: { fsPath: '/workspace' } }];
+    mockResolve.mockReturnValue({ localPath: '/workspace/src/app.php', remotePath: '/var/www/src/app.php' });
+    mockUpload.mockResolvedValue({ succeeded: [], failed: [], deleted: [], deleteFailed: [] });
+    mockExecFile.mockImplementation((_cmd: string, _args: string[], _opts: any, cb: (error: Error | null, stdout: string, stderr: string) => void) => {
+      cb(Object.assign(new Error('not ignored'), { code: 1 }), '', '');
+    });
+  });
+
+  async function saveWith(projectToggle: boolean | undefined, serverOverride: boolean | undefined): Promise<void> {
+    const server = { ...serverFixture, ...(serverOverride !== undefined ? { uploadOnSave: serverOverride } : {}) };
+    (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({
+      defaultServerId: 'srv-1', uploadOnSave: projectToggle, servers: { Production: server },
+    });
+    (mockConfigManager.getServerById as jest.Mock).mockResolvedValue({ name: 'Production', server });
+    createService().register();
+    await saveCallback(makeSavedDoc('/workspace/src/app.php'));
+  }
+
+  it('uploads when the default server overrides ON while the project toggle is OFF', async () => {
+    await saveWith(false, true);
+    expect(mockUpload).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not upload when the default server overrides OFF while the project toggle is ON (switch-to-prod footgun)', async () => {
+    await saveWith(true, false);
+    expect(mockUpload).not.toHaveBeenCalled();
+  });
+
+  it('inherits the project toggle when the server has no override', async () => {
+    await saveWith(true, undefined);
+    expect(mockUpload).toHaveBeenCalledTimes(1);
+    mockUpload.mockClear();
+    await saveWith(false, undefined);
+    expect(mockUpload).not.toHaveBeenCalled();
+  });
+
+  it('with no default server resolvable, an ON project toggle still leads to the no-server skip, never a crash', async () => {
+    (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({ defaultServerId: 'missing', uploadOnSave: true, servers: {} });
+    (mockConfigManager.getServerById as jest.Mock).mockResolvedValue(undefined);
+    createService().register();
+    await saveCallback(makeSavedDoc('/workspace/src/app.php'));
+    expect(mockUpload).not.toHaveBeenCalled();
+    expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
+  });
+});

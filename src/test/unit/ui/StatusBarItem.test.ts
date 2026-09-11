@@ -2,9 +2,14 @@ import * as vscode from 'vscode';
 import { StatusBarItem } from '../../../ui/StatusBarItem';
 import type { ProjectConfigManager } from '../../../storage/ProjectConfigManager';
 
+let configSaveListeners: Array<() => void> = [];
 const mockConfigManager = {
   getConfig: jest.fn(),
   getServerById: jest.fn(),
+  onDidSaveConfig: jest.fn((listener: () => void) => {
+    configSaveListeners.push(listener);
+    return { dispose: jest.fn() };
+  }),
 } as unknown as ProjectConfigManager;
 
 const serverFixture = {
@@ -283,5 +288,79 @@ describe('StatusBarItem', () => {
       expect(mockItem.text).not.toContain('DRY RUN');
       expect(mockItem.text).toContain('$(server)');
     });
+  });
+});
+
+describe('StatusBarItem — per-server uploadOnSave override (feature 35a)', () => {
+  function makeStatusBar(projectToggle: boolean, serverOverride: boolean | undefined): StatusBarItem {
+    const server = { ...serverFixture, ...(serverOverride !== undefined ? { uploadOnSave: serverOverride } : {}) };
+    (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({
+      defaultServerId: 'srv-1', uploadOnSave: projectToggle, servers: { Production: server },
+    });
+    (mockConfigManager.getServerById as jest.Mock).mockResolvedValue({ name: 'Production', server });
+    return new StatusBarItem(makeContext(), mockConfigManager);
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockItem = { text: '', tooltip: '', command: '', show: jest.fn(), hide: jest.fn(), dispose: jest.fn() };
+    (vscode.window.createStatusBarItem as jest.Mock).mockReturnValue(mockItem);
+    (vscode.workspace.onDidSaveTextDocument as jest.Mock).mockReturnValue({ dispose: jest.fn() });
+  });
+
+  it('shows the EFFECTIVE state: server override ON beats project OFF (icon, tooltip, menu)', async () => {
+    const statusBar = makeStatusBar(false, true);
+    await statusBar.refresh();
+    expect(mockItem.text).toBe('$(cloud-upload) Production');
+    expect(mockItem.tooltip).toContain('Upload on save: ON (set on this server)');
+
+    (vscode.window.showQuickPick as jest.Mock).mockResolvedValue(undefined);
+    await statusBar.showMenu();
+    const items = (vscode.window.showQuickPick as jest.Mock).mock.calls[0][0];
+    expect(items.find((item: any) => item.id === 'toggleUploadOnSave').description).toBe('ON (set on this server)');
+  });
+
+  it('shows the EFFECTIVE state: server override OFF beats project ON', async () => {
+    const statusBar = makeStatusBar(true, false);
+    await statusBar.refresh();
+    expect(mockItem.text).toBe('$(server) Production');
+    expect(mockItem.tooltip).toContain('Upload on save: OFF (set on this server)');
+  });
+
+  it('shows plain ON / OFF when the server inherits the project toggle', async () => {
+    const statusBar = makeStatusBar(true, undefined);
+    await statusBar.refresh();
+    expect(mockItem.tooltip).toContain('Upload on save: ON');
+    expect(mockItem.tooltip).not.toContain('set on this server');
+  });
+});
+
+describe('StatusBarItem — refreshes when the config manager saves (35a follow-up)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    configSaveListeners = [];
+    mockItem = { text: '', tooltip: '', command: '', show: jest.fn(), hide: jest.fn(), dispose: jest.fn() };
+    (vscode.window.createStatusBarItem as jest.Mock).mockReturnValue(mockItem);
+    (vscode.workspace.onDidSaveTextDocument as jest.Mock).mockReturnValue({ dispose: jest.fn() });
+  });
+
+  it('a Deployment Settings save (configManager.onDidSaveConfig) re-reads the default server override without any editor save or server click', async () => {
+    const server = { ...serverFixture };
+    (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({ defaultServerId: 'srv-1', uploadOnSave: true, servers: { Production: server } });
+    (mockConfigManager.getServerById as jest.Mock).mockResolvedValue({ name: 'Production', server });
+    const statusBar = new StatusBarItem(makeContext(), mockConfigManager);
+    await statusBar.refresh();
+    expect(mockItem.tooltip).toContain('Upload on save: ON');
+
+    // The panel saves the server with an OFF override through the config manager.
+    const overridden = { ...server, uploadOnSave: false };
+    (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({ defaultServerId: 'srv-1', uploadOnSave: true, servers: { Production: overridden } });
+    (mockConfigManager.getServerById as jest.Mock).mockResolvedValue({ name: 'Production', server: overridden });
+    expect(configSaveListeners).toHaveLength(1);
+    configSaveListeners[0]();
+    await new Promise(resolve => setImmediate(resolve));
+
+    expect(mockItem.tooltip).toContain('Upload on save: OFF (set on this server)');
+    expect(mockItem.text).toBe('$(server) Production');
   });
 });

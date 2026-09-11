@@ -21,6 +21,7 @@ import { SshCredentialPanel } from './ui/webviews/SshCredentialPanel';
 import { RemoteBrowserConnection } from './remoteBrowser/RemoteBrowserConnection';
 import { RemoteFileItem } from './remoteBrowser/RemoteFileItem';
 import { toConnectTarget } from './connectTarget';
+import { resolveUploadOnSave, uploadOnSaveToggleMessage } from './services/uploadOnSaveResolution';
 import { RemoteBrowserProvider } from './remoteBrowser/RemoteBrowserProvider';
 import { ServersProvider } from './remoteBrowser/ServersProvider';
 import { openRemoteFile } from './commands/openRemoteFile';
@@ -293,8 +294,16 @@ export function activate(context: vscode.ExtensionContext): void {
       withErrorHandling('toggleUploadOnSave', async () => {
         const newValue = await configManager.toggleUploadOnSave();
         statusBar.refresh();
+        // The default server may override the project toggle (35a) — say so
+        // instead of claiming a change that has no effect on it.
+        const config = await configManager.getConfig();
+        const defaultServer = config ? await configManager.getServerById(config.defaultServerId) : undefined;
         vscode.window.showInformationMessage(
-          `FileFerry: Upload on save ${newValue ? 'enabled' : 'disabled'}.`
+          uploadOnSaveToggleMessage(
+            newValue,
+            defaultServer?.name,
+            resolveUploadOnSave({ uploadOnSave: newValue }, defaultServer?.server)
+          )
         );
       })
     ),

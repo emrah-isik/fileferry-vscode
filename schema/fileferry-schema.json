@@ -10,7 +10,7 @@
     },
     "uploadOnSave": {
       "type": "boolean",
-      "description": "When true, files are automatically uploaded to the default server on save"
+      "description": "When true, files are automatically uploaded to the default server on save. A server's own uploadOnSave field overrides this while that server is the default."
     },
     "dryRun": {
       "type": "boolean",
@@ -135,6 +135,10 @@
           "timeOffsetMs": {
             "type": "integer",
             "description": "Clock skew offset in milliseconds (remote minus local). Detected automatically via Test Connection."
+          },
+          "uploadOnSave": {
+            "type": "boolean",
+            "description": "Per-server override of the project-level uploadOnSave toggle, in effect while this server is the default. true/false wins over the project setting; omit to inherit it."
           },
           "hooks": {
             "type": "object",
