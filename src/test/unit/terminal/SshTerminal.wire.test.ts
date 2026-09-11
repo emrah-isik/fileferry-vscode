@@ -1,5 +1,6 @@
 import * as net from 'net';
-import { Client as Ssh2Client, Server as Ssh2Server, utils as ssh2Utils } from 'ssh2';
+import { Client as Ssh2Client, Server as Ssh2Server } from 'ssh2';
+import { generateParsableKeyPair } from '../ssh/testKeys';
 import type { Connection, PseudoTtyInfo, WindowChangeInfo } from 'ssh2';
 import { SshTerminal, TERMINAL_TYPE, buildShellCommand } from '../../../terminal/SshTerminal';
 import { JumpHostPool } from '../../../ssh/JumpHostPool';
@@ -16,7 +17,7 @@ import { SshCredentialWithSecret } from '../../../models/SshCredential';
 
 jest.setTimeout(20000);
 
-const hostKey = ssh2Utils.generateKeyPairSync('ed25519');
+const hostKey = generateParsableKeyPair();
 
 interface TestServer {
   server: Ssh2Server;
