@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { importFromVscodeSftp, ImportFromVscodeSftpDependencies, vscodePrompts } from '../../../commands/importFromVscodeSftp';
 import { ImportPrompts } from '../../../importers/vscodeSftp/mapper';
 import { ProjectConfig } from '../../../models/ProjectConfig';
@@ -6,6 +7,11 @@ import { SshCredential } from '../../../models/SshCredential';
 
 // Feature 35b: the command is thin glue — read, parse, resolve ignoreFile,
 // map with prompts, write credentials then config, refresh, report.
+
+// The command joins with the platform separator (Windows CI), so the fake
+// file map is keyed the same way.
+const SFTP_JSON = path.join('/work', '.vscode', 'sftp.json');
+const IGNORE_FILE = path.resolve('/work', '.sftpignore');
 
 describe('importFromVscodeSftp', () => {
   let files: Record<string, string>;
@@ -68,7 +74,7 @@ describe('importFromVscodeSftp', () => {
   });
 
   it('errors on invalid JSON, logging the reason', async () => {
-    files['/work/.vscode/sftp.json'] = '{ nope';
+    files[SFTP_JSON] = '{ nope';
     expect(await importFromVscodeSftp(dependencies())).toBe('invalid');
     expect(showErrorMessage).toHaveBeenCalledWith(expect.stringMatching(/not valid JSON/));
     expect(outputLines[0]).toMatch(/\[error\] Import from vscode-sftp: .*not valid JSON/);
@@ -76,33 +82,35 @@ describe('importFromVscodeSftp', () => {
   });
 
   it('imports: credentials first, then the config, then afterWrite; report to output, summary as a notification', async () => {
-    files['/work/.vscode/sftp.json'] = JSON.stringify({ name: 'Prod', host: 'h', username: 'u', password: 'p', remotePath: '/var/www' });
+    files[SFTP_JSON] = JSON.stringify({ name: 'Prod', host: 'h', username: 'u', password: 'p', remotePath: '/var/www' });
     expect(await importFromVscodeSftp(dependencies())).toBe('imported');
     expect(writes).toEqual(['credential:Prod', 'config']);
     expect(afterWriteCalls).toBe(1);
     expect(config?.servers.Prod).toMatchObject({ rootPath: '/var/www', credentialName: 'Prod' });
     expect(config?.defaultServerId).toBe(config?.servers.Prod.id);
     expect(secrets[storedCredentials[0].id]).toEqual({ password: 'p', passphrase: undefined });
-    expect(outputLines.join('\n')).toMatch(/IMPORT FROM VSCODE-SFTP[\s\S]*Source: \/work\/\.vscode\/sftp\.json[\s\S]*Imported servers \(1\)/);
+    expect(outputLines[0]).toMatch(/IMPORT FROM VSCODE-SFTP/);
+    expect(outputLines[1]).toBe(`Source: ${SFTP_JSON}`);
+    expect(outputLines.join('\n')).toMatch(/Imported servers \(1\)/);
     expect(showInformationMessage).toHaveBeenCalledWith(expect.stringMatching(/imported 1 server from sftp\.json/));
   });
 
   it('never modifies sftp.json', async () => {
     const original = JSON.stringify({ name: 'Prod', host: 'h', username: 'u', password: 'p', remotePath: '/x' });
-    files['/work/.vscode/sftp.json'] = original;
+    files[SFTP_JSON] = original;
     await importFromVscodeSftp(dependencies());
-    expect(files['/work/.vscode/sftp.json']).toBe(original);
+    expect(files[SFTP_JSON]).toBe(original);
   });
 
   it('resolves ignoreFile relative to the workspace root and inlines it', async () => {
-    files['/work/.vscode/sftp.json'] = JSON.stringify({ name: 'Prod', host: 'h', username: 'u', password: 'p', remotePath: '/x', ignoreFile: '.sftpignore' });
-    files['/work/.sftpignore'] = 'node_modules\n';
+    files[SFTP_JSON] = JSON.stringify({ name: 'Prod', host: 'h', username: 'u', password: 'p', remotePath: '/x', ignoreFile: '.sftpignore' });
+    files[IGNORE_FILE] = 'node_modules\n';
     await importFromVscodeSftp(dependencies());
     expect(config?.servers.Prod.excludedPaths).toEqual(['node_modules']);
   });
 
   it('routes the Q13/Q14 prompts through the injected prompts', async () => {
-    files['/work/.vscode/sftp.json'] = JSON.stringify({ name: 'Prod', host: 'h', username: 'u', remotePath: './' });
+    files[SFTP_JSON] = JSON.stringify({ name: 'Prod', host: 'h', username: 'u', remotePath: './' });
     await importFromVscodeSftp(dependencies());
     expect(config?.servers.Prod.rootPath).toBe('/srv/typed');
     expect(secrets[storedCredentials[0].id].password).toBe('typed');
@@ -110,7 +118,7 @@ describe('importFromVscodeSftp', () => {
 
   it('writes nothing and warns when every entry was skipped', async () => {
     prompts = { askPassword: async () => undefined, askRootPath: async () => undefined };
-    files['/work/.vscode/sftp.json'] = JSON.stringify({ name: 'Prod', host: 'h', username: 'u', remotePath: './' });
+    files[SFTP_JSON] = JSON.stringify({ name: 'Prod', host: 'h', username: 'u', remotePath: './' });
     expect(await importFromVscodeSftp(dependencies())).toBe('nothing-imported');
     expect(writes).toEqual([]);
     expect(afterWriteCalls).toBe(0);
@@ -122,7 +130,7 @@ describe('importFromVscodeSftp', () => {
     const existingCredential: SshCredential = { id: 'c1', name: 'Old', host: 'old', port: 22, username: 'o', authMethod: 'password' };
     storedCredentials = [existingCredential];
     config = { defaultServerId: 's1', servers: { Old: { id: 's1', type: 'sftp', credentialId: 'c1', credentialName: 'Old', rootPath: '/o', mappings: [], excludedPaths: [] } } };
-    files['/work/.vscode/sftp.json'] = JSON.stringify({ name: 'New', host: 'h', username: 'u', password: 'p', remotePath: '/n' });
+    files[SFTP_JSON] = JSON.stringify({ name: 'New', host: 'h', username: 'u', password: 'p', remotePath: '/n' });
     await importFromVscodeSftp(dependencies());
     expect(Object.keys(config!.servers)).toEqual(['Old', 'New']);
     expect(config!.defaultServerId).toBe('s1');
