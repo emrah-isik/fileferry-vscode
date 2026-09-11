@@ -726,6 +726,39 @@ describe('DeploymentSettingsPanel message handling', () => {
     }));
   });
 
+  // 35b manual B5: an import (or any save outside the panel) while the panel
+  // is open must refresh its server list — the panel used to re-read only on
+  // its own saves.
+  describe('config saved outside the panel', () => {
+    let fireSave: () => void = () => {};
+    const onDidSaveConfig = (listener: () => void) => {
+      fireSave = listener;
+      return { dispose: jest.fn() };
+    };
+
+    it('pushes configUpdated with the fresh config when onDidSaveConfig fires', async () => {
+      DeploymentSettingsPanel.createOrShow(mockContext, { ...dependencies(), configManager: { ...(mockConfigManager as any), onDidSaveConfig } });
+      jest.clearAllMocks();
+      const imported = { ...configFixture, servers: { ...configFixture.servers, Imported: { ...serverFixture, id: 'srv-2' } } };
+      (mockConfigManager.getConfig as jest.Mock).mockResolvedValue(imported);
+      fireSave();
+      await new Promise(process.nextTick);
+      expect(mockWebview.postMessage).toHaveBeenCalledWith({ command: 'configUpdated', config: imported });
+    });
+
+    it('does not post a second configUpdated for the panel\'s own save', async () => {
+      const configManager = { ...(mockConfigManager as any), onDidSaveConfig };
+      // The real manager fires onDidSaveConfig from inside every save.
+      configManager.setDefaultServer = jest.fn(async () => { fireSave(); });
+      DeploymentSettingsPanel.createOrShow(mockContext, { ...dependencies(), configManager });
+      jest.clearAllMocks();
+      await messageHandler({ command: 'setDefaultServer', id: 'srv-1' });
+      await new Promise(process.nextTick);
+      const configUpdates = (mockWebview.postMessage as jest.Mock).mock.calls.filter(call => call[0].command === 'configUpdated');
+      expect(configUpdates).toHaveLength(1);
+    });
+  });
+
   it('only creates one panel instance (singleton pattern)', () => {
     DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
     DeploymentSettingsPanel.createOrShow(mockContext, dependencies());

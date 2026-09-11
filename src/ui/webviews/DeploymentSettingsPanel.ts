@@ -93,11 +93,34 @@ export class DeploymentSettingsPanel {
     if (dependencies.credentialsChanged) {
       dependencies.credentialsChanged(() => this.pushUpdatedCredentials(), null, this.disposables);
     }
+    // A save from outside the panel (the vscode-sftp import, Switch Server,
+    // Project Settings) re-renders the server list (35b manual B5). The
+    // panel's own saves post configUpdated themselves, in the order each
+    // handler needs, so they are skipped here to avoid a double render.
+    dependencies.configManager.onDidSaveConfig?.(() => {
+      if (!this.handlingOwnMessage) { void this.pushUpdatedConfig(); }
+    }, null, this.disposables);
 
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
   }
 
+  private handlingOwnMessage = false;
+
   private async handleMessage(msg: DeploymentSettingsMessage): Promise<void> {
+    this.handlingOwnMessage = true;
+    try {
+      await this.dispatchMessage(msg);
+    } finally {
+      this.handlingOwnMessage = false;
+    }
+  }
+
+  private async pushUpdatedConfig(): Promise<void> {
+    const config = await this.dependencies.configManager.getConfig();
+    this.panel.webview.postMessage({ command: 'configUpdated', config });
+  }
+
+  private async dispatchMessage(msg: DeploymentSettingsMessage): Promise<void> {
     switch (msg.command) {
       case 'ready':
         await this.sendInitialState();
