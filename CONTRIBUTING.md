@@ -1,7 +1,7 @@
 # Contributing to FileFerry
 
 Thanks for taking the time. Bug reports and small, focused pull requests are both very
-welcome — FileFerry's first external contribution was a one-line fix that turned out to
+welcome: FileFerry's first external contribution was a one-line fix that turned out to
 close three bugs at once.
 
 ## Reporting a bug
@@ -43,7 +43,7 @@ npm run test:integration
 
 **Write the test first.** This project works test-first: add a failing test that
 demonstrates the bug or describes the feature, watch it fail, then make it pass. A pull
-request that changes behaviour without a test will usually get a request for one — though
+request that changes behaviour without a test will usually get a request for one, though
 if you've sent a small fix and would rather not wrestle with the harness, say so and a
 maintainer will add the test for you. Don't let it stop you contributing.
 
@@ -78,7 +78,7 @@ changelog entry.
 | --- | --- |
 | `src/` | Extension host code (TypeScript) |
 | `src/test/` | Jest unit tests, mirroring `src/` |
-| `webview-ui/` | Settings/history panels — plain JS + CSS, no bundler, no tests |
+| `webview-ui/` | Settings/history panels, plain JS + CSS, no bundler, no tests |
 | `schema/fileferry-schema.json` | JSON Schema for `.vscode/fileferry.json` |
 | `docs/CONFIG.md` | Reference for every config field |
 

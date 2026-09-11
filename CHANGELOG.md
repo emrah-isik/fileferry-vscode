@@ -2,29 +2,53 @@
 
 All notable changes to FileFerry will be documented in this file.
 
+## [0.15.0] - 2026-09-12
+
+### Added
+
+- **Deploy through SSH jump hosts.** Give a credential an ordered chain of jump hosts (Manage SSH Credentials, the new **Jump hosts** picker: add, reorder, remove) and every connection to that server dials through them: deploys, Test Connection, diffs, backups, Sync to Remote, and the Remote Files panel. Each hop authenticates on its own terms (password, key, agent, or keyboard-interactive 2FA) and is host-key verified. The bastion login is pooled, so a 2FA code is asked once and reused across the burst of connections a deploy makes, until the hop sits idle for five minutes. Test Connection names the hop that failed; a credential used by a server or as a jump host cannot be deleted; editing a credential takes effect immediately (the pooled hop is dropped and an open session reconnects); FTP and FTPS servers refuse chained credentials; Disconnect Remote Browser also closes idle pooled hops; the Servers panel tooltip shows the route. Requires `AllowTcpForwarding` on the bastion. SFTP only.
+- **`ProxyJump` from `~/.ssh/config` is honoured.** A credential that resolves from your SSH config now follows the alias's `ProxyJump`: nested chains, comma lists, `user@host:port` literals, up to 8 hops. Those hops authenticate with their `IdentityFile`, your agent, or a prompt (never stored). Explicit jump hosts on the credential take precedence over the config. `ProxyCommand` is not executed (warned once per session, the host is dialed directly), `Match` blocks no longer leak into the preceding `Host` block, and the Servers tooltip, the terminal banner, and the credential summary show the resolved route.
+- **Open SSH Terminal.** A shell on any SFTP server without an `ssh` binary: from the Command Palette (the active server, in its root path), the Servers panel (that server), or the Remote Files panel (the folder you clicked, or the one you are viewing). It uses the server's credential, host-key verification, and jump-host chain, and reuses a bastion a deploy already opened without re-prompting. It is an exec session: no MOTD or `~/.ssh/rc`, POSIX shells only, agent forwarding not requested. Disconnect Remote Browser leaves an open terminal's jump host alive; a hop that drops, or whose credential is edited, closes the terminal with a message.
+- **Import from vscode-sftp.** `FileFerry: Import from vscode-sftp (sftp.json)` migrates a `.vscode/sftp.json` (liximomo's original or the Natizyskunk fork) in one command, and FileFerry offers it once when a workspace has a `sftp.json` and no `fileferry.json` (the Servers panel shows a hint too). Servers, profiles, array entries with their contexts, ignore patterns (best-effort: anything without an equivalent is named in the report rather than guessed), upload-on-save per profile, watcher, permissions, time offset, and `hop` chains all carry over, and plaintext passwords move into the OS keychain. A missing password or a relative `remotePath` asks per item; Esc skips. The import is additive: existing servers are untouched, duplicates are skipped, and `sftp.json` is never modified. The full report goes to the FileFerry output channel.
+- **Pin Upload on Save per server.** Deployment Settings → Connection → *Use project setting* / *On for this server* / *Off for this server*. The default server's choice wins over the project toggle, so switching to production can turn auto-upload off immediately. The status bar shows the state in effect (*set on this server*) and the project toggle says when the default server overrides it. Config: an optional `uploadOnSave` on a server entry.
+
+### Changed
+
+- **Every SFTP connection now verifies the host key and answers 2FA challenges.** Deploys, Test Connection, the credential panel's Test, diffs, backups, and syncs all show the first-connection trust prompt once per host; up to 0.14.1 only the Remote Files panel verified. Keyboard-interactive challenges are answered on any auth method, password credentials answer a `Password:` challenge from the keychain first, a dismissed prompt cancels the connection, and a silent server fails after 20 seconds instead of a prompt timing out while you type.
+- **Background triggers never prompt.** Upload on save, watch, the Remote Files tree drawing itself, and autosave remote-edit saves fail fast on an untrusted host with a non-modal *verification required* warning (with a Test Connection button) or a *Host not verified, click to connect* row, instead of a modal from nowhere.
+- The **Manage…** link in Deployment Settings opens the Credentials panel on the server's selected credential (switching an already-open panel to it).
+- The Deployment Settings and Credentials panels refresh their lists when servers or credentials are added outside them (an import, Switch Server, Project Settings).
+
+### Fixed
+
+- **FTPS servers now actually connect over TLS on every path:** Upload Selected / All Changed / From Commits / Only Newer, Upload to Servers, upload on save and watch, Sync to Remote (remote walk, backups, upload), Show Remote Diff, and Deployment Settings' Test Connection / Detect offset / Browse. Previously only the Servers-panel Test Connection and the Remote Files panel used TLS; every other path silently fell back to plain FTP, because the connection was built from the credential, which carries no protocol type.
+- **A second path mapping typed without a leading `/` was rejected without a word** (as was an empty local path duplicating the first row), so **Save Mappings** did nothing and the row vanished on the next click (#14). The slash is now a fixed prefix, every validation error shows under its field with a dot on the tab, new servers validate mappings the same way, and switching server with unsaved rows asks before discarding.
+- **Upload History's Clear History button did nothing:** the webview's `confirm()` dialog is blocked by VS Code, so the request never left the panel. It now asks with a proper modal and clears on Clear (#24).
+- The Remote Files panel could hang until Reload Window if an MFA prompt was left open while switching the default server.
+
 ## [0.14.1] - 2026-08-28
 
 ### Security
 
-- **Host key verification in the Remote Files panel now actually blocks.** Up to 0.14.0 the "authenticity can't be established" / "HOST KEY HAS CHANGED" prompts were shown, but the connection was accepted *before* you answered — declining, or a changed key, never stopped anything. The verifier now uses ssh2's callback form, so an unknown host connects only after you click **Trust**, and a changed key connects only after **Trust Anyway**; closing the dialog refuses the connection. Scope: only the Remote Files panel's connection verifies host keys (deploys, Test Connection, and the other one-shot connections never did — that arrives with the v0.15 SSH work). Trusted keys saved by earlier versions keep working (matching is on the key itself; the stored type is informational and is now recorded correctly). If a server was legitimately reinstalled you will now see the changed-key warning once — see the new **Host key verification** section in the guide.
+- **Host key verification in the Remote Files panel now actually blocks.** Up to 0.14.0 the "authenticity can't be established" / "HOST KEY HAS CHANGED" prompts were shown, but the connection was accepted *before* you answered; declining, or a changed key, never stopped anything. The verifier now uses ssh2's callback form, so an unknown host connects only after you click **Trust**, and a changed key connects only after **Trust Anyway**; closing the dialog refuses the connection. Scope: only the Remote Files panel's connection verifies host keys (deploys, Test Connection, and the other one-shot connections never did; that arrives with the v0.15 SSH work). Trusted keys saved by earlier versions keep working (matching is on the key itself; the stored type is informational and is now recorded correctly). If a server was legitimately reinstalled you will now see the changed-key warning once; see the new **Host key verification** section in the guide.
 
 ## [0.14.0] - 2026-08-08
 
 ### Added
 
-- **The Remote Files panel is now a complete file manager.** Beyond browsing, editing, and creating, you can now reshape the server directly from the tree — and every operation follows the same rules: dry run is honoured (the plan is logged, nothing is sent), deploy hooks never fire (these are file-manager actions, not deploys), and collisions are never merged — writing onto an existing file asks Overwrite/Cancel, onto an existing folder the operation aborts.
-- **Rename files and folders — open editors follow.** **Rename…** prefills the current name with just the stem selected, validates as you type, and — the important part — any file you have open for remote editing follows the rename (or a rename of a folder above it): the next save lands on the *new* path, instead of recreating the file under the old name.
-- **Duplicate files and whole folders.** A single file prefills `name copy.ext`; multi-selections never prompt — copies auto-number (`copy`, `copy 2`, …) and are skipped with a note when every name is taken. Folder duplicates scan the tree first and confirm with the real numbers ("214 files, 132 MB, 3 symlinks skipped"), recreate empty subfolders, and refuse to start at all if any subfolder can't be listed — you'll never get a partial copy that claims success. Cancelling mid-copy stops honestly and reports what was copied.
+- **The Remote Files panel is now a complete file manager.** Beyond browsing, editing, and creating, you can now reshape the server directly from the tree, and every operation follows the same rules: dry run is honoured (the plan is logged, nothing is sent), deploy hooks never fire (these are file-manager actions, not deploys), and collisions are never merged: writing onto an existing file asks Overwrite/Cancel, onto an existing folder the operation aborts.
+- **Rename files and folders; open editors follow.** **Rename…** prefills the current name with just the stem selected, validates as you type, and (the important part) any file you have open for remote editing follows the rename (or a rename of a folder above it): the next save lands on the *new* path, instead of recreating the file under the old name.
+- **Duplicate files and whole folders.** A single file prefills `name copy.ext`; multi-selections never prompt; copies auto-number (`copy`, `copy 2`, …) and are skipped with a note when every name is taken. Folder duplicates scan the tree first and confirm with the real numbers ("214 files, 132 MB, 3 symlinks skipped"), recreate empty subfolders, and refuse to start at all if any subfolder can't be listed: you'll never get a partial copy that claims success. Cancelling mid-copy stops honestly and reports what was copied.
 - **Move to any folder on the server.** A destination browser navigates the remote tree (`..`, subfolders, an explicit **Select this folder** row). Moving a folder into itself is refused up front, items already in the destination are skipped with a note, nested selections are deduplicated, and open edit sessions follow moved files just like renames.
-- **Change permissions from the panel.** One octal prompt (`644`, `755`, `2775`) — **prefilled with the file's current mode** — applies to every selected item. Deliberately non-recursive on folders. On FTP servers that reject `SITE CHMOD`, the panel now reports the failure honestly instead of pretending it worked.
-- **Upload local files and folders to exactly where you're looking.** **Upload Files Here…** / **Upload Folder Here…** (plus "…to Current Path" panel-menu variants) deliberately bypass path mappings and deploy settings — the confirmation says so, with the exact file count and an overwrite note. Folder uploads recreate the subtree (no skip-list: a `node_modules` inside shows up in the count *before* anything transfers) and are cancellable mid-run with the remainder reported. Both log to Upload History under a new **Remote Upload** source; duplicates log under **Remote Duplicate**.
-- **Multi-select in the Remote Files panel.** Ctrl/Shift-click several rows: Delete confirms once with the exact count and deduplicates nested selections, Download runs under one progress notification, Copy Remote Path joins the paths line by line — and the new Duplicate, Move, and Change Permissions are selection-aware from day one.
+- **Change permissions from the panel.** One octal prompt (`644`, `755`, `2775`), **prefilled with the file's current mode**, applies to every selected item. Deliberately non-recursive on folders. On FTP servers that reject `SITE CHMOD`, the panel now reports the failure honestly instead of pretending it worked.
+- **Upload local files and folders to exactly where you're looking.** **Upload Files Here…** / **Upload Folder Here…** (plus "…to Current Path" panel-menu variants) deliberately bypass path mappings and deploy settings; the confirmation says so, with the exact file count and an overwrite note. Folder uploads recreate the subtree (no skip-list: a `node_modules` inside shows up in the count *before* anything transfers) and are cancellable mid-run with the remainder reported. Both log to Upload History under a new **Remote Upload** source; duplicates log under **Remote Duplicate**.
+- **Multi-select in the Remote Files panel.** Ctrl/Shift-click several rows: Delete confirms once with the exact count and deduplicates nested selections, Download runs under one progress notification, Copy Remote Path joins the paths line by line, and the new Duplicate, Move, and Change Permissions are selection-aware from day one.
 - **Native pickers for remote windows (WSL/SSH/containers).** VS Code's fallback file dialog in remote windows can't multi-select files or cleanly confirm a folder, so FileFerry ships its own there: a folder browser with an explicit **Select this folder** row, and a two-step file picker (choose the folder, then check files off a list). Desktop windows keep the real native dialogs.
 
 ### Fixed
 
 - **Disconnect Remote Browser now actually disconnects.** Previously the panel's own refresh immediately reconnected, making the command a no-op while the panel was visible. The panel now shows a **Disconnected** row and stays offline until you explicitly reconnect (click the row, refresh, or navigate); background refreshes never sneak the connection back open.
-- **Unreadable directories on FTP no longer masquerade as empty.** Some FTP servers answer a listing of a permission-denied directory with an empty success; FileFerry now probes and reports the directory as unreadable — which is also what makes the folder-duplicate abort guarantee hold on FTP.
+- **Unreadable directories on FTP no longer masquerade as empty.** Some FTP servers answer a listing of a permission-denied directory with an empty success; FileFerry now probes and reports the directory as unreadable, which is also what makes the folder-duplicate abort guarantee hold on FTP.
 - **The Disconnected/error placeholder rows no longer offer the file context menu** (Rename…, Delete from Server, and friends appeared there; every entry was a harmless no-op, but the menu was misleading).
 
 ## [0.13.0] - 2026-07-31
@@ -41,8 +65,8 @@ All notable changes to FileFerry will be documented in this file.
 
 ### Added
 
-- **Edit remote files in place — save uploads straight back to the server.** Opening a file from the Remote Files panel now gives you a genuinely editable copy: make your changes, hit save, and FileFerry uploads it back to the server it came from — no manual download-edit-upload round-trip. Every save is guarded: if the file changed on the server since you opened it, a modal warns you before anything is overwritten, offering **Overwrite** or **Show Diff** (the server's version side by side with your edits) — while a file that was merely *touched* (same content, newer timestamp) uploads without nagging. When FileFerry cannot verify whether the remote changed, it asks instead of assuming. Saves honour **Dry Run** and **Backup Before Overwrite**, appear in Upload History under a new **Remote Edit** source with a matching filter, and never fire deploy hooks — a remote-edit save is a single-file write, not a deploy. If the panel's default server was switched while you were editing, the save is blocked with a warning instead of landing on the wrong server, and your edits remain safe in the local copy. Works over SFTP and FTP alike (FTP reports timestamps at second granularity, so conflict detection there is slightly coarser).
-- **Create files and folders directly in the Remote Files panel.** Right-click any folder for **New File…** / **New Folder…**, or use the panel menu's **New File in Current Path…** / **New Folder in Current Path…** to create at the path the panel is currently showing. A new file is created empty on the server and opens immediately in an editor already wired to the save-uploads-back flow, so create → type → save lands on the server in one motion — and is logged to Upload History under a new **Remote Create** source. Creating a file over an existing one asks **Overwrite / Cancel**; a folder name that already exists aborts with an error rather than silently merging. Names are validated as you type (no slashes or backslashes, no `.` / `..`), both commands honour **Dry Run** — the plan is logged and nothing is sent — and creates never fire deploy hooks.
+- **Edit remote files in place: save uploads straight back to the server.** Opening a file from the Remote Files panel now gives you a genuinely editable copy: make your changes, hit save, and FileFerry uploads it back to the server it came from, no manual download-edit-upload round-trip. Every save is guarded: if the file changed on the server since you opened it, a modal warns you before anything is overwritten, offering **Overwrite** or **Show Diff** (the server's version side by side with your edits), while a file that was merely *touched* (same content, newer timestamp) uploads without nagging. When FileFerry cannot verify whether the remote changed, it asks instead of assuming. Saves honour **Dry Run** and **Backup Before Overwrite**, appear in Upload History under a new **Remote Edit** source with a matching filter, and never fire deploy hooks: a remote-edit save is a single-file write, not a deploy. If the panel's default server was switched while you were editing, the save is blocked with a warning instead of landing on the wrong server, and your edits remain safe in the local copy. Works over SFTP and FTP alike (FTP reports timestamps at second granularity, so conflict detection there is slightly coarser).
+- **Create files and folders directly in the Remote Files panel.** Right-click any folder for **New File…** / **New Folder…**, or use the panel menu's **New File in Current Path…** / **New Folder in Current Path…** to create at the path the panel is currently showing. A new file is created empty on the server and opens immediately in an editor already wired to the save-uploads-back flow, so create → type → save lands on the server in one motion, and is logged to Upload History under a new **Remote Create** source. Creating a file over an existing one asks **Overwrite / Cancel**; a folder name that already exists aborts with an error rather than silently merging. Names are validated as you type (no slashes or backslashes, no `.` / `..`), both commands honour **Dry Run** (the plan is logged and nothing is sent), and creates never fire deploy hooks.
 
 ---
 
@@ -50,12 +74,12 @@ All notable changes to FileFerry will be documented in this file.
 
 ### Fixed
 
-- **A file outside your workspace could be deployed outside the server's root path.** FileFerry never checked that the file you were uploading actually lived inside the workspace folder. When it didn't — most easily by opening a file from elsewhere on disk and hitting the upload keybinding with nothing selected in Source Control — the remote path was built by walking upwards out of the configured `rootPath` (`/var/www/../etc/hosts`), which the server then resolves outside the directory you meant to deploy to. Such files are now rejected with a clear message, before any connection is opened. The check runs ahead of the exclusion rules and cannot be overridden by **Upload Anyway**, and it also covers the Windows case of a file on a different drive.
+- **A file outside your workspace could be deployed outside the server's root path.** FileFerry never checked that the file you were uploading actually lived inside the workspace folder. When it didn't, most easily by opening a file from elsewhere on disk and hitting the upload keybinding with nothing selected in Source Control, the remote path was built by walking upwards out of the configured `rootPath` (`/var/www/../etc/hosts`), which the server then resolves outside the directory you meant to deploy to. Such files are now rejected with a clear message, before any connection is opened. The check runs ahead of the exclusion rules and cannot be overridden by **Upload Anyway**, and it also covers the Windows case of a file on a different drive.
 
 ### Changed
 
 - **The Hooks tab has been reworked.** Each hook is now a two-tier row: the command owns its own full-width line with its actions beside it, while `local`/`remote`, *continue on error*, and the secret picker move to a quieter second line, so the command no longer competes with four other controls for space. **Pre-deploy** and **Post-deploy** are collapsible sections with a count in the header, matching **Secrets**. Inserting a `${secret:NAME}` reference is now a key button that opens a picker of your stored secrets, and removing a hook is a trash icon.
-- **The Secrets list is easier to work with.** Its per-row actions are now icons (save, rename, delete) with tooltips, the rows line up in proper columns regardless of how long each status label is, and saving a value into an already-stored secret shows a brief **Saved** confirmation — previously nothing visibly happened. Adding a secret now clears both fields, and deleting a hook immediately drops any *not set on this machine* entry it was the last to reference.
+- **The Secrets list is easier to work with.** Its per-row actions are now icons (save, rename, delete) with tooltips, the rows line up in proper columns regardless of how long each status label is, and saving a value into an already-stored secret shows a brief **Saved** confirmation; previously nothing visibly happened. Adding a secret now clears both fields, and deleting a hook immediately drops any *not set on this machine* entry it was the last to reference.
 - **The active tab in Deployment Settings is now visibly marked.** It previously relied on a theme colour that many themes leave undefined, in which case no underline was drawn at all.
 
 ---
@@ -72,7 +96,7 @@ All notable changes to FileFerry will be documented in this file.
 
 ### Fixed
 
-- **Release notes now appear on the extension listing.** `CHANGELOG.md` was excluded from the published package, so the **Changelog** tab was empty. It's now included, making the full release history — including v0.11.0's deploy hooks and keychain-backed hook secrets — readable directly on the Marketplace and Open VSX. No functional change to the extension itself.
+- **Release notes now appear on the extension listing.** `CHANGELOG.md` was excluded from the published package, so the **Changelog** tab was empty. It's now included, making the full release history (including v0.11.0's deploy hooks and keychain-backed hook secrets) readable directly on the Marketplace and Open VSX. No functional change to the extension itself.
 
 ---
 
@@ -80,9 +104,9 @@ All notable changes to FileFerry will be documented in this file.
 
 ### Added
 
-- **Deploy hooks — run commands before and after a deploy.** Each server can now define pre-deploy and post-deploy hook commands (Deployment Settings → **Hooks**), each running either **local** (your shell, in the workspace root) or **remote** (over the deploy's own SSH connection — SFTP only; on FTP a remote hook is skipped with a warning). Build artifacts before upload, then reload a service, run migrations, or fix ownership after. Hooks run **only for deliberate deploys** (Upload Selected / All Changed / To Servers, Upload From Commits, Only-If-Newer, and the Sync commands) — upload-on-save and the file watcher never run them. Local pre-hooks run *before* the connection opens, so a long build doesn't hold an SSH session idle. A failed **pre**-hook aborts the deploy before anything is transferred; a failed **post**-hook is reported but never rolls back files already uploaded. Each hook supports **continue on error** and a **timeout**. "Failed" means a non-zero exit code, a process that wouldn't start, or a timeout — **never** stderr output on its own, since many servers write banners and MOTD to stderr on a successful command. Two safety gates: hooks are inert in an untrusted workspace (Workspace Trust), and every command that will run is named in the deploy confirmation.
-- **Keychain-backed hook secrets — `${secret:NAME}`.** Type a secret once in the Hooks tab's **Secrets** section; the value goes into your **OS keychain** (macOS Keychain / Windows Credential Manager / Linux libsecret) and the committed `fileferry.json` holds only a `${secret:NAME}` reference, so it stays safe to commit. Secrets are per-project and machine-local — a teammate cloning the repo re-enters them, and the Hooks tab flags which referenced secrets are still missing on this machine. Resolution happens at the moment a hook runs, never earlier: dialogs, logs, and dry-run all show the unresolved token. **Local** hooks get the value injected as an environment variable (the token is rewritten to your shell's own `$NAME` / `%NAME%` / `$env:NAME`), so it never enters the command string; **remote** hooks inline it at exec time — briefly visible in the server's process list, so the docs recommend keeping remote secrets in the server's own environment. Before any file is transferred, a **pre-flight check** aborts the whole deploy when any hook that would run references a missing or malformed secret, so a post-deploy migration can't be silently skipped after the files already went up. Values FileFerry resolved are masked as `••••` in the output channel. The save-time warning on a command that looks like it embeds a raw secret now offers a one-click **Move to keychain**, which stores the flagged literal and rewrites the command to a reference for you.
-- **Compare with Remote now tells you when there is nothing to see.** Comparing an unchanged file used to open an empty diff, indistinguishable from a difference too small to spot. Both entry points — **Compare with Remote** (Source Control / editor) and the Remote File Browser's **Compare with Local** — now classify the two files first: **identical** files report "is identical" and skip the diff; files that differ **only in line endings** (CRLF vs LF, or a trailing newline) say so explicitly — noting that a deploy would still overwrite them — and also skip the diff; anything else opens the diff editor exactly as before.
+- **Deploy hooks: run commands before and after a deploy.** Each server can now define pre-deploy and post-deploy hook commands (Deployment Settings → **Hooks**), each running either **local** (your shell, in the workspace root) or **remote** (over the deploy's own SSH connection, SFTP only; on FTP a remote hook is skipped with a warning). Build artifacts before upload, then reload a service, run migrations, or fix ownership after. Hooks run **only for deliberate deploys** (Upload Selected / All Changed / To Servers, Upload From Commits, Only-If-Newer, and the Sync commands); upload-on-save and the file watcher never run them. Local pre-hooks run *before* the connection opens, so a long build doesn't hold an SSH session idle. A failed **pre**-hook aborts the deploy before anything is transferred; a failed **post**-hook is reported but never rolls back files already uploaded. Each hook supports **continue on error** and a **timeout**. "Failed" means a non-zero exit code, a process that wouldn't start, or a timeout, **never** stderr output on its own, since many servers write banners and MOTD to stderr on a successful command. Two safety gates: hooks are inert in an untrusted workspace (Workspace Trust), and every command that will run is named in the deploy confirmation.
+- **Keychain-backed hook secrets, `${secret:NAME}`.** Type a secret once in the Hooks tab's **Secrets** section; the value goes into your **OS keychain** (macOS Keychain / Windows Credential Manager / Linux libsecret) and the committed `fileferry.json` holds only a `${secret:NAME}` reference, so it stays safe to commit. Secrets are per-project and machine-local: a teammate cloning the repo re-enters them, and the Hooks tab flags which referenced secrets are still missing on this machine. Resolution happens at the moment a hook runs, never earlier: dialogs, logs, and dry-run all show the unresolved token. **Local** hooks get the value injected as an environment variable (the token is rewritten to your shell's own `$NAME` / `%NAME%` / `$env:NAME`), so it never enters the command string; **remote** hooks inline it at exec time, briefly visible in the server's process list, so the docs recommend keeping remote secrets in the server's own environment. Before any file is transferred, a **pre-flight check** aborts the whole deploy when any hook that would run references a missing or malformed secret, so a post-deploy migration can't be silently skipped after the files already went up. Values FileFerry resolved are masked as `••••` in the output channel. The save-time warning on a command that looks like it embeds a raw secret now offers a one-click **Move to keychain**, which stores the flagged literal and rewrites the command to a reference for you.
+- **Compare with Remote now tells you when there is nothing to see.** Comparing an unchanged file used to open an empty diff, indistinguishable from a difference too small to spot. Both entry points, **Compare with Remote** (Source Control / editor) and the Remote File Browser's **Compare with Local**, now classify the two files first: **identical** files report "is identical" and skip the diff; files that differ **only in line endings** (CRLF vs LF, or a trailing newline) say so explicitly, noting that a deploy would still overwrite them, and also skip the diff; anything else opens the diff editor exactly as before.
 
 ---
 
@@ -90,8 +114,8 @@ All notable changes to FileFerry will be documented in this file.
 
 ### Added
 
-- **Sync to Remote — mirror your whole local tree to the server.** New command **FileFerry: Sync to Remote** (Command Palette + status-bar menu) walks the entire mapped local tree and the remote tree, then reconciles: uploads new and locally-newer files (skipping anything the remote already holds at the same age or newer) and — only when you opt in per run — **deletes remote files that no longer exist locally** ("delete extras"). Delete-extras is off by default and wrapped in defense-in-depth: a dry-run-first preview of the full plan, a modal confirmation naming the exact delete count, deletes restricted to the mapped remote root, and exclude-aware detection so `excludedPaths` / `.fileferryignore` files are never pruned. A new project setting **Back up remote files before sync deletes** (on by default) downloads each to-be-deleted file to `.vscode/fileferry-backups/` first; overwrites still honour Backup Before Overwrite. `.git` / `node_modules` are skipped. Synced transfers appear in Upload History under a new **Sync** source.
-- **Sync Folder to Remote — the same mirror, scoped to one folder.** Right-click any folder (or several) in the Explorer → **FileFerry: Sync Folder to Remote** to reconcile just that subtree. Delete-extras is confined to the selected folders, so pruning can never touch anything outside what you right-clicked.
+- **Sync to Remote: mirror your whole local tree to the server.** New command **FileFerry: Sync to Remote** (Command Palette + status-bar menu) walks the entire mapped local tree and the remote tree, then reconciles: uploads new and locally-newer files (skipping anything the remote already holds at the same age or newer) and, only when you opt in per run, **deletes remote files that no longer exist locally** ("delete extras"). Delete-extras is off by default and wrapped in defense-in-depth: a dry-run-first preview of the full plan, a modal confirmation naming the exact delete count, deletes restricted to the mapped remote root, and exclude-aware detection so `excludedPaths` / `.fileferryignore` files are never pruned. A new project setting **Back up remote files before sync deletes** (on by default) downloads each to-be-deleted file to `.vscode/fileferry-backups/` first; overwrites still honour Backup Before Overwrite. `.git` / `node_modules` are skipped. Synced transfers appear in Upload History under a new **Sync** source.
+- **Sync Folder to Remote: the same mirror, scoped to one folder.** Right-click any folder (or several) in the Explorer → **FileFerry: Sync Folder to Remote** to reconcile just that subtree. Delete-extras is confined to the selected folders, so pruning can never touch anything outside what you right-clicked.
 
 ---
 
@@ -99,8 +123,8 @@ All notable changes to FileFerry will be documented in this file.
 
 ### Added
 
-- **Watch & auto-upload generated / build-output files** — a new opt-in file-system watcher (`watch` in `.vscode/fileferry.json`, toggle + glob list under **Project Settings → "Watch & Auto-Upload Generated Files"**) auto-uploads files matching workspace-relative globs whenever they change on disk. This covers build outputs and other externally-generated files that never fire an editor save — the gap upload-on-save can't reach. The watched globs are an explicit allowlist and upload **even when git-ignored** (build dirs like `dist/` usually are), while still honouring `excludedPaths` and the file-date guard. A build's burst of writes is debounced and batched (400 ms), the watcher never re-uploads its own writes, and dry-run logs instead of transferring. Upload history records these as a new **Watch** source.
-- **Source column and source filter in Upload History** — the Upload History panel now shows a **Source** column (Manual / On Save / Multi-Server / Watch) and a matching source filter chip beside the existing server/result filters, so automated watch/save uploads can be told apart from deliberate manual deploys.
+- **Watch & auto-upload generated / build-output files**: a new opt-in file-system watcher (`watch` in `.vscode/fileferry.json`, toggle + glob list under **Project Settings → "Watch & Auto-Upload Generated Files"**) auto-uploads files matching workspace-relative globs whenever they change on disk. This covers build outputs and other externally-generated files that never fire an editor save, the gap upload-on-save can't reach. The watched globs are an explicit allowlist and upload **even when git-ignored** (build dirs like `dist/` usually are), while still honouring `excludedPaths` and the file-date guard. A build's burst of writes is debounced and batched (400 ms), the watcher never re-uploads its own writes, and dry-run logs instead of transferring. Upload history records these as a new **Watch** source.
+- **Source column and source filter in Upload History**: the Upload History panel now shows a **Source** column (Manual / On Save / Multi-Server / Watch) and a matching source filter chip beside the existing server/result filters, so automated watch/save uploads can be told apart from deliberate manual deploys.
 
 ---
 
@@ -108,7 +132,7 @@ All notable changes to FileFerry will be documented in this file.
 
 ### Added
 
-- **Upload Only If Newer from the Changed Files view** — the FileFerry **Changed Files** panel now has an "only if newer" button (history icon) next to *Upload Selected*. It adapts to your selection: with rows selected it uploads just those, skipping any whose remote copy is the same age or newer; with nothing selected it does the same across all changed files. The Source Control title-bar *Upload Only If Newer* button gains the same history icon so the two upload actions read at a glance.
+- **Upload Only If Newer from the Changed Files view**: the FileFerry **Changed Files** panel now has an "only if newer" button (history icon) next to *Upload Selected*. It adapts to your selection: with rows selected it uploads just those, skipping any whose remote copy is the same age or newer; with nothing selected it does the same across all changed files. The Source Control title-bar *Upload Only If Newer* button gains the same history icon so the two upload actions read at a glance.
 
 ---
 
@@ -116,11 +140,11 @@ All notable changes to FileFerry will be documented in this file.
 
 ### Added
 
-- **Upload only newer (smart sync)** — new command **FileFerry: Upload Changed Files (Only If Newer)**, also a `$(sync)` button on the Source Control title bar. It deploys your git-changed files but **skips any whose remote copy is the same age or newer**, so re-running a deploy only pushes what actually moved forward. Builds on the existing remote time-offset handling; skipped files are listed in the FileFerry output channel, and the files that do upload still go through the normal confirmation. The plain **Upload All Changed Files** button is unchanged — this is a separate, opt-in command.
+- **Upload only newer (smart sync)**: new command **FileFerry: Upload Changed Files (Only If Newer)**, also a `$(sync)` button on the Source Control title bar. It deploys your git-changed files but **skips any whose remote copy is the same age or newer**, so re-running a deploy only pushes what actually moved forward. Builds on the existing remote time-offset handling; skipped files are listed in the FileFerry output channel, and the files that do upload still go through the normal confirmation. The plain **Upload All Changed Files** button is unchanged; this is a separate, opt-in command.
 
 ### Fixed
 
-- **Remote timestamps were read as `NaN`, silently disabling every modified-time check** — `SftpService.stat` read `stats.mtime`, but `ssh2-sftp-client` returns the field as `modifyTime` (in milliseconds). The missing field made every remote timestamp `NaN`, so the **file-date guard never warned** before overwriting a newer remote file, and **remote time-offset detection** produced meaningless values. FileFerry now reads the correct field, restoring both. The fix also removes a type cast that had hidden the wrong field name from the compiler, so it can't silently regress.
+- **Remote timestamps were read as `NaN`, silently disabling every modified-time check**: `SftpService.stat` read `stats.mtime`, but `ssh2-sftp-client` returns the field as `modifyTime` (in milliseconds). The missing field made every remote timestamp `NaN`, so the **file-date guard never warned** before overwriting a newer remote file, and **remote time-offset detection** produced meaningless values. FileFerry now reads the correct field, restoring both. The fix also removes a type cast that had hidden the wrong field name from the compiler, so it can't silently regress.
 
 ---
 
@@ -128,7 +152,7 @@ All notable changes to FileFerry will be documented in this file.
 
 ### Changed
 
-- **`~/.ssh/config` resolution summary** — the summary shown on Save and Test Connection now reports only what the connection will actually use: the resolved key appears only when authentication is **Private Key** (password, SSH agent, and keyboard-interactive don't use it, so it's no longer listed). The resolved **Target** and **Key** are laid out on their own lines for readability instead of one long wrapping line.
+- **`~/.ssh/config` resolution summary**: the summary shown on Save and Test Connection now reports only what the connection will actually use: the resolved key appears only when authentication is **Private Key** (password, SSH agent, and keyboard-interactive don't use it, so it's no longer listed). The resolved **Target** and **Key** are laid out on their own lines for readability instead of one long wrapping line.
 
 ### Docs
 
@@ -140,12 +164,12 @@ All notable changes to FileFerry will be documented in this file.
 
 ### Added
 
-- **Use your existing `~/.ssh/config`** — SSH credentials now have a **Resolve from `~/.ssh/config`** option. Tick it and enter a `Host` alias (e.g. `prod`) instead of the host, and FileFerry reads `HostName`, `Port`, `User`, and `IdentityFile` from your SSH config at connect time (supports `*`/`?` wildcard `Host` patterns, OpenSSH first-match-wins). Config values win; anything the matching block omits falls back to what you entered, so Username and Private Key Path can be left blank when the config provides them. On **Save** and **Test Connection** a summary shows exactly what resolved — e.g. `✓ Resolved "prod" → deploy@203.0.113.10:2222` — or warns when no `~/.ssh/config` exists or no `Host` block matched, so alias mode is never silent. SFTP only; `ProxyJump`/`ProxyCommand` are not resolved yet.
-- **Right-click menu on the Changed Files view** — changed files now have a context menu with **Upload** and **Compare with Remote**, matching the actions already available from the Source Control panel.
+- **Use your existing `~/.ssh/config`**: SSH credentials now have a **Resolve from `~/.ssh/config`** option. Tick it and enter a `Host` alias (e.g. `prod`) instead of the host, and FileFerry reads `HostName`, `Port`, `User`, and `IdentityFile` from your SSH config at connect time (supports `*`/`?` wildcard `Host` patterns, OpenSSH first-match-wins). Config values win; anything the matching block omits falls back to what you entered, so Username and Private Key Path can be left blank when the config provides them. On **Save** and **Test Connection** a summary shows exactly what resolved (e.g. `✓ Resolved "prod" → deploy@203.0.113.10:2222`) or warns when no `~/.ssh/config` exists or no `Host` block matched, so alias mode is never silent. SFTP only; `ProxyJump`/`ProxyCommand` are not resolved yet.
+- **Right-click menu on the Changed Files view**: changed files now have a context menu with **Upload** and **Compare with Remote**, matching the actions already available from the Source Control panel.
 
 ### Fixed
 
-- **Path mappings can be entered before the first save** — the Deployment Settings **Mappings** tab was blank for a server that hadn't been saved yet, with no way to add mappings until after saving the connection. The mappings editor now renders for new servers and the mappings are saved together with the server on the first save.
+- **Path mappings can be entered before the first save**: the Deployment Settings **Mappings** tab was blank for a server that hadn't been saved yet, with no way to add mappings until after saving the connection. The mappings editor now renders for new servers and the mappings are saved together with the server on the first save.
 
 ---
 
@@ -153,7 +177,7 @@ All notable changes to FileFerry will be documented in this file.
 
 ### Fixed
 
-- **Changed Files view showed "No changes" when the opened folder was nested inside the git repository** — `GitService` matched a repository only when its root path exactly equalled the opened workspace folder. Opening a subfolder of a repo (e.g. `datahub/4GLOBALBOT` when `.git` lives at `datahub/`) matched nothing, so the Changed Files view and `Upload All Changed Files` reported no changes even though Source Control showed them. FileFerry now matches the repository whose root contains the workspace folder (closest one wins for nested repos) and lists only the changes inside the opened folder.
+- **Changed Files view showed "No changes" when the opened folder was nested inside the git repository**: `GitService` matched a repository only when its root path exactly equalled the opened workspace folder. Opening a subfolder of a repo (e.g. `datahub/4GLOBALBOT` when `.git` lives at `datahub/`) matched nothing, so the Changed Files view and `Upload All Changed Files` reported no changes even though Source Control showed them. FileFerry now matches the repository whose root contains the workspace folder (closest one wins for nested repos) and lists only the changes inside the opened folder.
 
 ---
 
@@ -161,12 +185,12 @@ All notable changes to FileFerry will be documented in this file.
 
 ### Added
 
-- **Changed Files view** — new `FileFerry: Changed Files` tree view lists every git-changed file (working tree, index, untracked) with native VS Code file icons and SCM status decorations. Standard Shift/Ctrl multi-select works because the view is FileFerry-owned, so `Alt+U` uploads exactly the rows selected — fixing a limitation where Alt+U from the built-in Source Control panel only ever uploaded a single file regardless of selection (VS Code does not pass SCM tree selection to keybinding-invoked commands). Auto-refreshes when repositories are opened or their state changes. `Ctrl+Alt+U` (upload all changed files) also fires from this view.
+- **Changed Files view**: new `FileFerry: Changed Files` tree view lists every git-changed file (working tree, index, untracked) with native VS Code file icons and SCM status decorations. Standard Shift/Ctrl multi-select works because the view is FileFerry-owned, so `Alt+U` uploads exactly the rows selected, fixing a limitation where Alt+U from the built-in Source Control panel only ever uploaded a single file regardless of selection (VS Code does not pass SCM tree selection to keybinding-invoked commands). Auto-refreshes when repositories are opened or their state changes. `Ctrl+Alt+U` (upload all changed files) also fires from this view.
 
 ### Fixed
 
-- **Fresh uploads no longer fail with `_xstat: No such file`** — `SftpService.stat` was checking the raw SFTP_STATUS numeric code (`error.code === 2`), but `ssh2-sftp-client` actually emits `error.code === 'ENOENT'` (string). The "file doesn't exist on remote" branch in `FileDateGuard` never fired, so every first-time upload threw before the transfer started.
-- **Upload errors are reported instead of swallowed** — three command handlers (`uploadSelected`, `uploadToServers`, `showRemoteDiff`) ran without an error wrapper, so SFTP failures propagated to VS Code's command runtime and vanished silently: no popup, no FileFerry output channel log. Failures now log to the output channel and surface as a notification.
+- **Fresh uploads no longer fail with `_xstat: No such file`**: `SftpService.stat` was checking the raw SFTP_STATUS numeric code (`error.code === 2`), but `ssh2-sftp-client` actually emits `error.code === 'ENOENT'` (string). The "file doesn't exist on remote" branch in `FileDateGuard` never fired, so every first-time upload threw before the transfer started.
+- **Upload errors are reported instead of swallowed**: three command handlers (`uploadSelected`, `uploadToServers`, `showRemoteDiff`) ran without an error wrapper, so SFTP failures propagated to VS Code's command runtime and vanished silently: no popup, no FileFerry output channel log. Failures now log to the output channel and surface as a notification.
 
 ### Changed
 
@@ -183,13 +207,13 @@ All notable changes to FileFerry will be documented in this file.
 
 ### Fixed
 
-- **Multi-file SCM upload** — right-clicking a multi-file selection in Source Control and choosing **FileFerry: Upload** now uploads all selected files instead of just the right-clicked one. VSCode's git extension passes selections as variadic args; the previous handler only read the first two.
-- **Root Path edits in Deployment Settings now apply immediately** — the Remote Files panel was caching the old SFTP session and continued listing the previous path until the window was reloaded. Saving the server now refreshes the cached path in place (no reconnect) when only `rootPath` changed; identity changes (different default server, swapped credential) drop the session so the next operation reconnects fresh.
+- **Multi-file SCM upload**: right-clicking a multi-file selection in Source Control and choosing **FileFerry: Upload** now uploads all selected files instead of just the right-clicked one. VSCode's git extension passes selections as variadic args; the previous handler only read the first two.
+- **Root Path edits in Deployment Settings now apply immediately**: the Remote Files panel was caching the old SFTP session and continued listing the previous path until the window was reloaded. Saving the server now refreshes the cached path in place (no reconnect) when only `rootPath` changed; identity changes (different default server, swapped credential) drop the session so the next operation reconnects fresh.
 
 ### Changed
 
-- **Test Connection now probes the Root Path** — after a successful credential test, FileFerry tries to list the configured Root Path and surfaces a non-blocking yellow warning if the path isn't accessible (e.g. wrong path inside a chroot). Connection success itself is reported the same as before.
-- **Detect Offset banner shows the actual value** — replaces the misleading "Time offset detected" string with `Time offset: +0ms` / `Time offset: +5.2s`, and fixes a stale-state bug where the inline "Not detected" field could revert after a re-render.
+- **Test Connection now probes the Root Path**: after a successful credential test, FileFerry tries to list the configured Root Path and surfaces a non-blocking yellow warning if the path isn't accessible (e.g. wrong path inside a chroot). Connection success itself is reported the same as before.
+- **Detect Offset banner shows the actual value**: replaces the misleading "Time offset detected" string with `Time offset: +0ms` / `Time offset: +5.2s`, and fixes a stale-state bug where the inline "Not detected" field could revert after a re-render.
 
 ---
 
@@ -197,8 +221,8 @@ All notable changes to FileFerry will be documented in this file.
 
 ### Added
 
-- **Upload All Changed Files** — new `FileFerry: Upload All Changed Files` command deploys everything git considers changed to the default server with no SCM selection required. `Ctrl+Alt+U` keybinding works from Source Control, the editor, or the Explorer. Adds a `$(cloud-upload)` button to the Source Control panel title bar. Skips directory-level git entries (typically submodules) with a warning so a stray submodule reference can't recurse into `.git` or `node_modules`. Reuses the existing confirmation, file date guard, backup, dry run, and history pipeline.
-- **Upload Files from Commit** — new `FileFerry: Upload Files from Commit` command opens a multi-select picker of the last 50 commits; selecting one or more commits uploads the **current working-tree version** of every file those commits touched. Multi-commit selections union and dedupe touched paths; merge commits contribute nothing (default `git diff-tree` behavior); root commits are handled. Reuses the existing confirmation, file date guard, backup, dry run, and history pipeline. (Right-click on a commit in the Source Control Graph view is deferred — the contribution point is still behind a VS Code proposed API and cannot ship to the marketplace yet.)
+- **Upload All Changed Files**: new `FileFerry: Upload All Changed Files` command deploys everything git considers changed to the default server with no SCM selection required. `Ctrl+Alt+U` keybinding works from Source Control, the editor, or the Explorer. Adds a `$(cloud-upload)` button to the Source Control panel title bar. Skips directory-level git entries (typically submodules) with a warning so a stray submodule reference can't recurse into `.git` or `node_modules`. Reuses the existing confirmation, file date guard, backup, dry run, and history pipeline.
+- **Upload Files from Commit**: new `FileFerry: Upload Files from Commit` command opens a multi-select picker of the last 50 commits; selecting one or more commits uploads the **current working-tree version** of every file those commits touched. Multi-commit selections union and dedupe touched paths; merge commits contribute nothing (default `git diff-tree` behavior); root commits are handled. Reuses the existing confirmation, file date guard, backup, dry run, and history pipeline. (Right-click on a commit in the Source Control Graph view is deferred; the contribution point is still behind a VS Code proposed API and cannot ship to the marketplace yet.)
 
 ---
 
@@ -223,7 +247,7 @@ All notable changes to FileFerry will be documented in this file.
 
 ### Fixed
 
-- Extension icon background removed — boat renders cleanly on any VS Code theme
+- Extension icon background removed; boat renders cleanly on any VS Code theme
 
 ---
 
@@ -249,10 +273,10 @@ No new features. Marketplace-ready polish release.
 
 ### Added
 
-- **File and directory permissions** — set octal permissions on newly created remote files and directories. `filePermissions` and `directoryPermissions` fields in the Connection tab of Deployment Settings. SFTP uses native `chmod`; FTP sends `SITE CHMOD` (best-effort, skipped silently if unsupported)
-- **Remote time offset detection** — detects clock skew between local machine and remote server by uploading a probe file to `/tmp/.fileferry-time-probe` and measuring the timestamp difference. Offset stored per-server and automatically applied by File Date Guard to prevent false "remote is newer" warnings. Auto-runs during Test Connection; "Detect Offset" button available for manual re-detection. UI shows the formatted offset (e.g. `+2.5s`)
-- **Dry run mode** — preview what would be uploaded without connecting or transferring any files. `DryRunReporter` writes a structured plan to the Output channel. Status bar shows `$(eye) server — DRY RUN` when active. Toggle via Project Settings panel, status bar menu, or `fileferry.json`
-- **Upload history panel** — persistent JSONL-based log of every upload (manual, multi-server, upload-on-save). `UploadHistoryPanel` webview shows a searchable, filterable table with server and result filters, a file search field, and a clear button. Configurable retention via `historyMaxEntries` (default 10,000; set to 0 to disable). Accessible from Command Palette, status bar menu, and post-upload notification
+- **File and directory permissions**: set octal permissions on newly created remote files and directories. `filePermissions` and `directoryPermissions` fields in the Connection tab of Deployment Settings. SFTP uses native `chmod`; FTP sends `SITE CHMOD` (best-effort, skipped silently if unsupported)
+- **Remote time offset detection**: detects clock skew between local machine and remote server by uploading a probe file to `/tmp/.fileferry-time-probe` and measuring the timestamp difference. Offset stored per-server and automatically applied by File Date Guard to prevent false "remote is newer" warnings. Auto-runs during Test Connection; "Detect Offset" button available for manual re-detection. UI shows the formatted offset (e.g. `+2.5s`)
+- **Dry run mode**: preview what would be uploaded without connecting or transferring any files. `DryRunReporter` writes a structured plan to the Output channel. Status bar shows `$(eye) server, DRY RUN` when active. Toggle via Project Settings panel, status bar menu, or `fileferry.json`
+- **Upload history panel**: persistent JSONL-based log of every upload (manual, multi-server, upload-on-save). `UploadHistoryPanel` webview shows a searchable, filterable table with server and result filters, a file search field, and a clear button. Configurable retention via `historyMaxEntries` (default 10,000; set to 0 to disable). Accessible from Command Palette, status bar menu, and post-upload notification
 
 ---
 
@@ -260,10 +284,10 @@ No new features. Marketplace-ready polish release.
 
 ### Added
 
-- **FTP / FTPS support** — deploy over plain FTP, FTPS with explicit TLS, or FTPS with implicit TLS. Protocol-agnostic `TransferService` interface lets all existing features (upload, browse, compare, backup, file date guard) work identically across SFTP and FTP
-- **Protocol selection in Deployment Settings** — new dropdown with four options: SFTP, FTP, FTPS (Explicit TLS), FTPS (Implicit TLS). Credential dropdown filters to password-only credentials when an FTP protocol is selected
-- **Atomic FTP upload** — FTP uploads use temp file + rename, matching the existing SFTP atomic upload behavior
-- **Symlink support in Remote File Browser** — symlinked directories are now expandable in the Remote File Browser and directory picker. `stat()` follows symlink targets so they behave like real directories. Circular and broken symlinks fall back to file treatment gracefully
+- **FTP / FTPS support**: deploy over plain FTP, FTPS with explicit TLS, or FTPS with implicit TLS. Protocol-agnostic `TransferService` interface lets all existing features (upload, browse, compare, backup, file date guard) work identically across SFTP and FTP
+- **Protocol selection in Deployment Settings**: new dropdown with four options: SFTP, FTP, FTPS (Explicit TLS), FTPS (Implicit TLS). Credential dropdown filters to password-only credentials when an FTP protocol is selected
+- **Atomic FTP upload**: FTP uploads use temp file + rename, matching the existing SFTP atomic upload behavior
+- **Symlink support in Remote File Browser**: symlinked directories are now expandable in the Remote File Browser and directory picker. `stat()` follows symlink targets so they behave like real directories. Circular and broken symlinks fall back to file treatment gracefully
 
 ---
 
@@ -271,12 +295,12 @@ No new features. Marketplace-ready polish release.
 
 ### Added
 
-- **Project-scoped server definitions** — server configs moved from global `servers.json` into per-project `.vscode/fileferry.json`. Two-tier model: credentials (global, keychain) → project config (per-workspace). Auto-migration from v0.4 format on activation
-- **Project settings UI** — dedicated webview for project-level toggles (upload on save, file date guard, backup before overwrite). Separate from the server-scoped Deployment Settings panel
-- **Multi-server simultaneous push** — new "Upload to Servers" command (`Alt+Shift+U`) with multi-select QuickPick. Per-server path resolution, FileDateGuard, and credentials. Parallel uploads via Promise.all with shared cancellation token
-- **Backup before overwrite** — downloads remote files to `.vscode/fileferry-backups/<timestamp>-<server>/` before uploading. Configurable retention days and max size via Project Settings. Cleanup runs automatically at the start of each upload
-- **Progress stage notifications** — deploy notification now shows live stages: "Checking remote files...", "Backing up remote files...", "Uploading..." instead of appearing only after pre-upload checks complete
-- **Explorer keybindings** — `Alt+U`, `Alt+P`, and `Alt+Shift+U` now work when the Explorer panel has focus (previously only worked in SCM panel and editor)
+- **Project-scoped server definitions**: server configs moved from global `servers.json` into per-project `.vscode/fileferry.json`. Two-tier model: credentials (global, keychain) → project config (per-workspace). Auto-migration from v0.4 format on activation
+- **Project settings UI**: dedicated webview for project-level toggles (upload on save, file date guard, backup before overwrite). Separate from the server-scoped Deployment Settings panel
+- **Multi-server simultaneous push**: new "Upload to Servers" command (`Alt+Shift+U`) with multi-select QuickPick. Per-server path resolution, FileDateGuard, and credentials. Parallel uploads via Promise.all with shared cancellation token
+- **Backup before overwrite**: downloads remote files to `.vscode/fileferry-backups/<timestamp>-<server>/` before uploading. Configurable retention days and max size via Project Settings. Cleanup runs automatically at the start of each upload
+- **Progress stage notifications**: deploy notification now shows live stages: "Checking remote files...", "Backing up remote files...", "Uploading..." instead of appearing only after pre-upload checks complete
+- **Explorer keybindings**: `Alt+U`, `Alt+P`, and `Alt+Shift+U` now work when the Explorer panel has focus (previously only worked in SCM panel and editor)
 
 ---
 
@@ -284,13 +308,13 @@ No new features. Marketplace-ready polish release.
 
 ### Added
 
-- **Upload on save** — auto-deploy when a file is saved. Toggle per-project via status bar menu or `fileferry.json`. Respects `.gitignore` via `git check-ignore`. Status bar icon switches between `$(cloud-upload)` (ON) and `$(server)` (OFF), flashes on upload
-- **Folder upload** — right-click a folder in Explorer to upload all files within it recursively. Existing auto-mkdir creates remote directories on the fly
-- **Ignore patterns** — gitignore-style glob exclusions in `fileferry.json`. `matchBase` enabled so bare patterns like `*.log` match at any depth. Dotfiles matched by default. "Upload Anyway" prompt when exclusions block a manual upload
-- **Atomic upload** — uploads write to a `.fileferry.tmp` temp file first, then rename to the final path using POSIX rename (atomic overwrite). Falls back to standard rename for servers without the OpenSSH extension. Orphaned temp files cleaned up on failure
-- **File date guard** — warns before overwriting a remote file that has a newer timestamp than the local file. Runs before both manual uploads and upload-on-save. Always on (config toggle planned for v0.5)
-- **Cancel all transfers** — cancel button in the progress notification stops all in-flight uploads. Completed files are kept, remaining files reported as cancelled
-- **Editor keybindings** — `Alt+U` (upload) and `Alt+P` (compare with remote) now work from the editor when no SCM selection is active, using the active editor's file
+- **Upload on save**: auto-deploy when a file is saved. Toggle per-project via status bar menu or `fileferry.json`. Respects `.gitignore` via `git check-ignore`. Status bar icon switches between `$(cloud-upload)` (ON) and `$(server)` (OFF), flashes on upload
+- **Folder upload**: right-click a folder in Explorer to upload all files within it recursively. Existing auto-mkdir creates remote directories on the fly
+- **Ignore patterns**: gitignore-style glob exclusions in `fileferry.json`. `matchBase` enabled so bare patterns like `*.log` match at any depth. Dotfiles matched by default. "Upload Anyway" prompt when exclusions block a manual upload
+- **Atomic upload**: uploads write to a `.fileferry.tmp` temp file first, then rename to the final path using POSIX rename (atomic overwrite). Falls back to standard rename for servers without the OpenSSH extension. Orphaned temp files cleaned up on failure
+- **File date guard**: warns before overwriting a remote file that has a newer timestamp than the local file. Runs before both manual uploads and upload-on-save. Always on (config toggle planned for v0.5)
+- **Cancel all transfers**: cancel button in the progress notification stops all in-flight uploads. Completed files are kept, remaining files reported as cancelled
+- **Editor keybindings**: `Alt+U` (upload) and `Alt+P` (compare with remote) now work from the editor when no SCM selection is active, using the active editor's file
 
 ---
 
@@ -298,13 +322,13 @@ No new features. Marketplace-ready polish release.
 
 ### Added
 
-- **Modern OpenSSH algorithm support** — explicit default algorithms (rsa-sha2-256, rsa-sha2-512, curve25519-sha256, etc.) ensure compatibility with OpenSSH 8.8+ servers. Per-server algorithm override available via `ServerConfig.algorithms`
-- **PEM key support** — `.pem` private key files (common for AWS EC2) work out of the box. Clear error messages when a key file is missing or unparseable ("Supported formats: OpenSSH, PEM, PPK")
-- **SSH agent enhancement** — automatic socket discovery: checks `SSH_AUTH_SOCK`, then 1Password agent (`~/.1password/agent.sock`), then Pageant on Windows. Optional custom socket path per credential
-- **Host key verification** — first-connection trust prompt with SHA-256 fingerprint, critical warning when a server's host key changes (MITM protection). Trusted keys stored in `known_hosts.json` in global storage
-- **Keyboard-interactive auth (2FA)** — new authentication method for servers requiring challenge-response / two-factor authentication. VS Code input prompts shown for each server challenge
-- **Browse button for private key path** — file picker dialog in the SSH Credentials form instead of typing the full path manually
-- **Clone credential** — duplicate an existing SSH credential from the credentials list (hover to reveal clone button). Copies all fields including secrets from the OS keychain
+- **Modern OpenSSH algorithm support**: explicit default algorithms (rsa-sha2-256, rsa-sha2-512, curve25519-sha256, etc.) ensure compatibility with OpenSSH 8.8+ servers. Per-server algorithm override available via `ServerConfig.algorithms`
+- **PEM key support**: `.pem` private key files (common for AWS EC2) work out of the box. Clear error messages when a key file is missing or unparseable ("Supported formats: OpenSSH, PEM, PPK")
+- **SSH agent enhancement**: automatic socket discovery: checks `SSH_AUTH_SOCK`, then 1Password agent (`~/.1password/agent.sock`), then Pageant on Windows. Optional custom socket path per credential
+- **Host key verification**: first-connection trust prompt with SHA-256 fingerprint, critical warning when a server's host key changes (MITM protection). Trusted keys stored in `known_hosts.json` in global storage
+- **Keyboard-interactive auth (2FA)**: new authentication method for servers requiring challenge-response / two-factor authentication. VS Code input prompts shown for each server challenge
+- **Browse button for private key path**: file picker dialog in the SSH Credentials form instead of typing the full path manually
+- **Clone credential**: duplicate an existing SSH credential from the credentials list (hover to reveal clone button). Copies all fields including secrets from the OS keychain
 
 ---
 
@@ -312,17 +336,17 @@ No new features. Marketplace-ready polish release.
 
 ### Added
 
-- **Download to Workspace** — right-click a remote file → "Download to Workspace". Resolves the local path using reverse path mapping and writes to the workspace. Prompts for a save location if no mapping matches
-- **Compare with Local** — right-click a remote file → "Compare with Local". Downloads the remote version to a temp file and opens VS Code's diff editor with remote on the left, local on the right
-- **Delete from Server** — right-click a remote file or folder → "Delete from Server". Mandatory confirmation dialog; directories are deleted recursively
-- **Copy Remote Path** — right-click any item in the Remote Files panel → "Copy Remote Path". Writes the full remote path to clipboard
-- **Current path indicator** — the Remote Files view header now shows the current browsing path (e.g. `Remote Files /var/www/html`)
-- **Reconnect from error state** — clicking "Connection failed" or "Permission denied" in the Remote Files panel now triggers a reconnect attempt. "No server configured" opens Deployment Settings
-- **Context menus** — Remote Files panel items have grouped right-click menus: transfer actions (Download, Compare), utility actions (Copy Path, Refresh), and destructive actions (Delete)
+- **Download to Workspace**: right-click a remote file → "Download to Workspace". Resolves the local path using reverse path mapping and writes to the workspace. Prompts for a save location if no mapping matches
+- **Compare with Local**: right-click a remote file → "Compare with Local". Downloads the remote version to a temp file and opens VS Code's diff editor with remote on the left, local on the right
+- **Delete from Server**: right-click a remote file or folder → "Delete from Server". Mandatory confirmation dialog; directories are deleted recursively
+- **Copy Remote Path**: right-click any item in the Remote Files panel → "Copy Remote Path". Writes the full remote path to clipboard
+- **Current path indicator**: the Remote Files view header now shows the current browsing path (e.g. `Remote Files /var/www/html`)
+- **Reconnect from error state**: clicking "Connection failed" or "Permission denied" in the Remote Files panel now triggers a reconnect attempt. "No server configured" opens Deployment Settings
+- **Context menus**: Remote Files panel items have grouped right-click menus: transfer actions (Download, Compare), utility actions (Copy Path, Refresh), and destructive actions (Delete)
 
 ### Fixed
 
-- **Keybinding fallback** — `Alt+U` (upload) and `Alt+P` (compare) now fall back to the active editor when triggered via keybinding instead of showing "no files selected"
+- **Keybinding fallback**: `Alt+U` (upload) and `Alt+P` (compare) now fall back to the active editor when triggered via keybinding instead of showing "no files selected"
 
 ---
 
@@ -330,13 +354,13 @@ No new features. Marketplace-ready polish release.
 
 ### Added
 
-- **Remote File Browser** — dedicated sidebar panel in the activity bar to browse the remote server's filesystem. Expand directories lazily, click any file to download and view it in the editor. File type icons provided by your active VS Code icon theme. Persistent SFTP connection with 5-minute idle timeout and automatic reconnection
-- **Servers panel** — sidebar panel showing all configured servers with visual active/inactive state (filled/outline circle). Click a server to set it as the project default. Right-click for Edit and Test Connection. Refresh button and settings shortcut in the toolbar
-- **Welcome views** — onboarding guidance shown when no servers are configured. "Add Server" and "Add SSH Credential" buttons appear in the empty Servers and Remote Files panels
-- **Go to Remote Path** command — navigate the Remote File Browser to any remote directory by typing a path
-- **Disconnect Remote Browser** command — manually close the remote SFTP connection
-- **Theme-aware file icons** — remote files show the same icons as local files (based on file extension and your installed icon theme)
-- **Root path override support in browser** — Remote File Browser respects per-project `rootPathOverride` from `fileferry.json`
+- **Remote File Browser**: dedicated sidebar panel in the activity bar to browse the remote server's filesystem. Expand directories lazily, click any file to download and view it in the editor. File type icons provided by your active VS Code icon theme. Persistent SFTP connection with 5-minute idle timeout and automatic reconnection
+- **Servers panel**: sidebar panel showing all configured servers with visual active/inactive state (filled/outline circle). Click a server to set it as the project default. Right-click for Edit and Test Connection. Refresh button and settings shortcut in the toolbar
+- **Welcome views**: onboarding guidance shown when no servers are configured. "Add Server" and "Add SSH Credential" buttons appear in the empty Servers and Remote Files panels
+- **Go to Remote Path** command: navigate the Remote File Browser to any remote directory by typing a path
+- **Disconnect Remote Browser** command: manually close the remote SFTP connection
+- **Theme-aware file icons**: remote files show the same icons as local files (based on file extension and your installed icon theme)
+- **Root path override support in browser**: Remote File Browser respects per-project `rootPathOverride` from `fileferry.json`
 
 ---
 
@@ -344,27 +368,27 @@ No new features. Marketplace-ready polish release.
 
 ### Added
 
-- **Native SCM panel integration** — right-click any changed file in Source Control and choose `FileFerry: Upload` or `FileFerry: Compare with Remote`
-- **Explorer panel integration** — Upload and Compare with Remote also available by right-clicking files in the Explorer file tree
-- **Multi-select upload** — select multiple files in Source Control, press `Alt+U` to upload them all at once
-- **SFTP upload** — upload files to remote servers over SSH using password, private key, or SSH agent authentication
-- **Compare with Remote** (`Alt+P`) — opens VSCode's built-in diff editor showing your local file alongside the version currently on the server
-- **Delete deployment** — git-deleted files can be deployed to remove them from the server; confirmation is always shown for destructive operations
-- **Settings UI** — manage servers and path mappings through a form (`FileFerry: Deployment Settings`)
-- **SSH Credentials Manager** — add SSH credentials once (`FileFerry: Manage SSH Credentials`), reuse across projects
-- **OS keychain storage** — passwords and passphrases stored in macOS Keychain / Windows Credential Manager / Linux libsecret. Never written to disk
-- **Multiple servers** — configure production, staging, and dev servers; switch with `FileFerry: Switch Server` or click the status bar
-- **Clone server** — duplicate an existing server config as a starting point for a new one
-- **Root Path Override** — override a server's root path for a specific project without changing the shared server definition
-- **Remote directory browser** — browse the server's filesystem interactively when setting the root path in Deployment Settings
-- **Path mappings** — map workspace subfolders to different remote paths per server; empty mapping array falls back to mapping everything directly to the server root
-- **Excluded paths** — glob patterns to skip files that should never be deployed
-- **Test Connection** — verify SSH credentials before your first deploy, from both the Deployment Settings and Credentials panels; uses stored keychain secret when password field is left blank
-- **Status bar indicator** — shows the active server name for the current workspace
-- **Upload confirmation** — summarises files before every deploy; "don't ask again" option per server for upload-only deploys; always shown when deletions are included
-- **Save feedback** — success notifications shown after saving SSH credentials, server configuration, and path mappings
-- **Automatic remote directory creation** — missing intermediate directories are created on the remote before upload
-- **Private key permission check** — warns when a key file has loose permissions (`644` instead of `600`)
-- **Project binding** — per-project server selection and path mappings stored in `.vscode/fileferry.json` (no secrets, safe to commit)
-- **Output channel** — all errors and activity logged to the FileFerry output channel
-- **JSON schema validation** — `.vscode/fileferry.json` is validated against a bundled schema for autocomplete and inline error checking
+- **Native SCM panel integration**: right-click any changed file in Source Control and choose `FileFerry: Upload` or `FileFerry: Compare with Remote`
+- **Explorer panel integration**: Upload and Compare with Remote also available by right-clicking files in the Explorer file tree
+- **Multi-select upload**: select multiple files in Source Control, press `Alt+U` to upload them all at once
+- **SFTP upload**: upload files to remote servers over SSH using password, private key, or SSH agent authentication
+- **Compare with Remote** (`Alt+P`): opens VSCode's built-in diff editor showing your local file alongside the version currently on the server
+- **Delete deployment**: git-deleted files can be deployed to remove them from the server; confirmation is always shown for destructive operations
+- **Settings UI**: manage servers and path mappings through a form (`FileFerry: Deployment Settings`)
+- **SSH Credentials Manager**: add SSH credentials once (`FileFerry: Manage SSH Credentials`), reuse across projects
+- **OS keychain storage**: passwords and passphrases stored in macOS Keychain / Windows Credential Manager / Linux libsecret. Never written to disk
+- **Multiple servers**: configure production, staging, and dev servers; switch with `FileFerry: Switch Server` or click the status bar
+- **Clone server**: duplicate an existing server config as a starting point for a new one
+- **Root Path Override**: override a server's root path for a specific project without changing the shared server definition
+- **Remote directory browser**: browse the server's filesystem interactively when setting the root path in Deployment Settings
+- **Path mappings**: map workspace subfolders to different remote paths per server; empty mapping array falls back to mapping everything directly to the server root
+- **Excluded paths**: glob patterns to skip files that should never be deployed
+- **Test Connection**: verify SSH credentials before your first deploy, from both the Deployment Settings and Credentials panels; uses stored keychain secret when password field is left blank
+- **Status bar indicator**: shows the active server name for the current workspace
+- **Upload confirmation**: summarises files before every deploy; "don't ask again" option per server for upload-only deploys; always shown when deletions are included
+- **Save feedback**: success notifications shown after saving SSH credentials, server configuration, and path mappings
+- **Automatic remote directory creation**: missing intermediate directories are created on the remote before upload
+- **Private key permission check**: warns when a key file has loose permissions (`644` instead of `600`)
+- **Project binding**: per-project server selection and path mappings stored in `.vscode/fileferry.json` (no secrets, safe to commit)
+- **Output channel**: all errors and activity logged to the FileFerry output channel
+- **JSON schema validation**: `.vscode/fileferry.json` is validated against a bundled schema for autocomplete and inline error checking

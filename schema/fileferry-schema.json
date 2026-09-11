@@ -51,7 +51,7 @@
     },
     "watch": {
       "type": "object",
-      "description": "Auto-upload files matching the glob patterns whenever they change on disk — including build outputs and other externally-generated files that never trigger an editor save. Unlike upload-on-save, watched globs upload even when git-ignored (the patterns are the explicit allowlist). Honors excludedPaths and the file-date guard.",
+      "description": "Auto-upload files matching the glob patterns whenever they change on disk, including build outputs and other externally-generated files that never trigger an editor save. Unlike upload-on-save, watched globs upload even when git-ignored (the patterns are the explicit allowlist). Honors excludedPaths and the file-date guard.",
       "required": ["enabled", "patterns"],
       "additionalProperties": false,
       "properties": {
@@ -75,7 +75,7 @@
         "properties": {
           "id": {
             "type": "string",
-            "description": "Internal UUID — stable across renames"
+            "description": "Internal UUID: stable across renames"
           },
           "type": {
             "type": "string",
@@ -142,7 +142,7 @@
           },
           "hooks": {
             "type": "object",
-            "description": "Commands run automatically before/after a deliberate deploy to this server. Only run in a trusted workspace and shown in the deploy confirmation first. Don't put secrets here (this file is committed) — use $ENV_VAR or the git-ignored fileferry.local.json.",
+            "description": "Commands run automatically before/after a deliberate deploy to this server. Only run in a trusted workspace and shown in the deploy confirmation first. Don't put secrets here (this file is committed); use $ENV_VAR or the git-ignored fileferry.local.json.",
             "additionalProperties": false,
             "properties": {
               "preDeploy": {
@@ -172,7 +172,7 @@
       "properties": {
         "command": {
           "type": "string",
-          "description": "The shell command to run. Local commands run in your default shell at the workspace root; remote commands run over the deploy's SSH connection (SFTP servers only — skipped with a warning on FTP)."
+          "description": "The shell command to run. Local commands run in your default shell at the workspace root; remote commands run over the deploy's SSH connection (SFTP servers only, skipped with a warning on FTP)."
         },
         "location": {
           "type": "string",

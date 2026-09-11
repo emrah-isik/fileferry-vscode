@@ -1,69 +1,79 @@
 # FileFerry Roadmap
 
-## Current — v0.14
+## Current: v0.15
 
-- The Remote Files panel is a complete file manager — rename, duplicate (files and whole folders, with real-count confirmations), move (with a destination browser), change permissions (prefilled with the current mode), and upload local files or folders to exactly the path you're looking at
-- Open edit sessions follow renames and moves — saving after a rename lands on the new path instead of recreating the old file
-- Multi-select in the Remote Files panel — delete, download, copy path, duplicate, move, and chmod act on the whole selection; collision-safe by design (multi-select never prompts and never overwrites)
-- **0.14.1 (security):** the Remote Files host-key prompt now genuinely blocks — an unknown or changed host key is no longer accepted before you answer
-- Disconnect Remote Browser now genuinely disconnects (the panel stays offline until you explicitly reconnect), and FTP servers that hide unreadable directories or reject `SITE CHMOD` are reported honestly
+- SSH jump hosts: an ordered chain of hops on the credential; every connection to that server dials through them; each hop authenticates on its own terms (password, key, agent, 2FA) and is host-key verified, and the bastion login is pooled so a deploy's burst of connections asks for a 2FA code once
+- `ProxyJump` honoured from `~/.ssh/config`: nested chains, comma lists, `user@host:port` literals; hops authenticate with their `IdentityFile`, your agent, or a prompt; explicit jump hosts on the credential take precedence
+- Open SSH Terminal: a shell on the active server, on any server from the Servers panel, or in the folder you are viewing in the Remote Files panel, through the same jump hosts and without an `ssh` binary
+- Import from vscode-sftp: one command migrates `.vscode/sftp.json` (servers, profiles, array entries, mappings, ignore patterns, per-profile upload-on-save, `hop` chains) and moves plaintext passwords into the OS keychain; offered once when a workspace has a `sftp.json` and no `fileferry.json`; additive, and `sftp.json` is never touched
+- Per-server upload-on-save: pin it on or off for one server (armed for dev, off for production); the default server's choice wins over the project toggle
+- Every SFTP connection now verifies the host key and answers 2FA challenges (previously only the Remote Files panel did); background triggers never prompt; they fail fast with a warning
+- Fixes: FTPS servers connect over TLS on every path (not only Test Connection and the Remote Files panel); a second path mapping without a leading `/` no longer vanishes on save (#14); Upload History's Clear History works (#24)
 
 ---
 
 ## Previous Releases
 
+### v0.14
+
+- The Remote Files panel is a complete file manager: rename, duplicate (files and whole folders, with real-count confirmations), move (with a destination browser), change permissions (prefilled with the current mode), and upload local files or folders to exactly the path you're looking at
+- Open edit sessions follow renames and moves: saving after a rename lands on the new path instead of recreating the old file
+- Multi-select in the Remote Files panel: delete, download, copy path, duplicate, move, and chmod act on the whole selection; collision-safe by design (multi-select never prompts and never overwrites)
+- **0.14.1 (security):** the Remote Files host-key prompt now genuinely blocks: an unknown or changed host key is no longer accepted before you answer
+- Disconnect Remote Browser now genuinely disconnects (the panel stays offline until you explicitly reconnect), and FTP servers that hide unreadable directories or reject `SITE CHMOD` are reported honestly
+
 ### v0.13
 
-- FileFerry is now MIT-licensed — relicensed from GPL-3.0-or-later to make adoption and integration easier; all previous releases remain available under the GPL
+- FileFerry is now MIT-licensed, relicensed from GPL-3.0-or-later to make adoption and integration easier; all previous releases remain available under the GPL
 
 ### v0.12
 
-- Edit remote files in place — files opened from the Remote Files panel upload back to the server on save, with conflict detection that warns (Overwrite / Show Diff) when the file changed on the server since you opened it; honours dry run and backup-before-overwrite, and shows up in Upload History under a Remote Edit source
-- Create files and folders in the Remote Files panel — from a folder's context menu or the panel menu's "in Current Path" variants; new files open immediately, ready to edit and save back; file collisions prompt to overwrite, folder collisions abort rather than silently merge
+- Edit remote files in place: files opened from the Remote Files panel upload back to the server on save, with conflict detection that warns (Overwrite / Show Diff) when the file changed on the server since you opened it; honours dry run and backup-before-overwrite, and shows up in Upload History under a Remote Edit source
+- Create files and folders in the Remote Files panel, from a folder's context menu or the panel menu's "in Current Path" variants; new files open immediately, ready to edit and save back; file collisions prompt to overwrite, folder collisions abort rather than silently merge
 
 ### v0.11
 
-- Deploy hooks — run local shell or remote SSH commands before and after a deliberate deploy, with per-hook continue-on-error and timeouts; hooks are gated behind Workspace Trust, and every command that will run is named in the deploy confirmation
-- Keychain-backed hook secrets — store a secret once in your OS keychain and reference it in a command as `${secret:NAME}`; the committed `fileferry.json` only ever holds the reference, and a deploy aborts up front when a referenced secret is missing
-- Compare with Remote reports identical files — and files that differ only in line endings — instead of opening an empty diff
+- Deploy hooks: run local shell or remote SSH commands before and after a deliberate deploy, with per-hook continue-on-error and timeouts; hooks are gated behind Workspace Trust, and every command that will run is named in the deploy confirmation
+- Keychain-backed hook secrets: store a secret once in your OS keychain and reference it in a command as `${secret:NAME}`; the committed `fileferry.json` only ever holds the reference, and a deploy aborts up front when a referenced secret is missing
+- Compare with Remote reports identical files (and files that differ only in line endings) instead of opening an empty diff
 
 ### v0.10
 
-- Sync to Remote — mirror your entire mapped local tree to the server in one action; uploads new and locally-newer files, with opt-in "delete extras" to prune remote files that no longer exist locally
-- Sync Folder to Remote — the same mirror scoped to one or more right-clicked Explorer folders
-- Delete-extras safety — off by default, with a dry-run preview, a modal confirmation naming the exact delete count, deletes restricted to the mapped remote root, exclude-aware pruning, and an opt-in backup of each deleted file
+- Sync to Remote: mirror your entire mapped local tree to the server in one action; uploads new and locally-newer files, with opt-in "delete extras" to prune remote files that no longer exist locally
+- Sync Folder to Remote, the same mirror scoped to one or more right-clicked Explorer folders
+- Delete-extras safety: off by default, with a dry-run preview, a modal confirmation naming the exact delete count, deletes restricted to the mapped remote root, exclude-aware pruning, and an opt-in backup of each deleted file
 
 ### v0.9
 
-- Upload only newer (smart sync) — skips any file whose remote copy is the same age or newer, so re-running a deploy only pushes what moved forward
-- Watch & auto-upload — opt-in file-system watcher for build outputs and other generated files that never fire an editor save
-- Upload History source tracking — a Source column and filter (Manual / On Save / Multi-Server / Watch / Sync)
+- Upload only newer (smart sync): skips any file whose remote copy is the same age or newer, so re-running a deploy only pushes what moved forward
+- Watch & auto-upload: opt-in file-system watcher for build outputs and other generated files that never fire an editor save
+- Upload History source tracking, a Source column and filter (Manual / On Save / Multi-Server / Watch / Sync)
 
 ### v0.8
 
-- Changed Files view — FileFerry-owned tree of git-changed files with native keyboard multi-select upload (`Alt+U`)
-- Upload All Changed Files — `Ctrl+Alt+U` deploys everything git considers changed; no selection required
-- Upload Files from Commit — pick one or more recent commits and deploy the working-tree version of every file they touched
-- `~/.ssh/config` support — reference a `Host` alias and FileFerry resolves HostName, Port, User, and IdentityFile at connect time
+- Changed Files view: FileFerry-owned tree of git-changed files with native keyboard multi-select upload (`Alt+U`)
+- Upload All Changed Files: `Ctrl+Alt+U` deploys everything git considers changed; no selection required
+- Upload Files from Commit: pick one or more recent commits and deploy the working-tree version of every file they touched
+- `~/.ssh/config` support: reference a `Host` alias and FileFerry resolves HostName, Port, User, and IdentityFile at connect time
 - Documentation, `fileferry.json` schema reference, and marketplace polish
 
 ### v0.7
 
 - File and directory permission control (set octal mode on uploaded files and created directories)
-- Remote time offset — clock skew compensation so file date guard works correctly against servers with unsynchronised clocks
-- Dry run mode — preview exactly what would be uploaded or deleted without transferring any files
-- Upload history panel — persistent, filterable log of all deploy operations per project
+- Remote time offset: clock skew compensation so file date guard works correctly against servers with unsynchronised clocks
+- Dry run mode: preview exactly what would be uploaded or deleted without transferring any files
+- Upload history panel: persistent, filterable log of all deploy operations per project
 
 ### v0.6
 
 - Symlink directory support in the Remote File Browser and directory picker
 - FTP / FTPS support (plain FTP, explicit TLS, implicit TLS)
-- Protocol-agnostic TransferService abstraction — all features work across SFTP and FTP
-- Credential filtering — FTP protocols only show password-auth credentials
+- Protocol-agnostic TransferService abstraction: all features work across SFTP and FTP
+- Credential filtering: FTP protocols only show password-auth credentials
 
 ### v0.5
 
-- Project-scoped server configs — servers defined per-project in `fileferry.json`
+- Project-scoped server configs: servers defined per-project in `fileferry.json`
 - Push to multiple servers simultaneously (dev + staging + prod in one action)
 - Project settings UI for per-project toggles
 - Backup before overwrite (download remote version before replacing)
@@ -80,15 +90,15 @@
 ### v0.3
 
 - Modern OpenSSH algorithm support (rsa-sha2-256 / rsa-sha2-512)
-- PEM key support (`.pem` files — common for AWS EC2)
+- PEM key support (`.pem` files, common for AWS EC2)
 - Host key verification warning
 - SSH agent support (system agent + 1Password SSH agent)
 - Keyboard-interactive auth (2FA / challenge-response)
 
 ### v0.2.1
 
-- Remote File Browser — sidebar panel to browse remote filesystem
-- Servers panel — see all configured servers, click to switch
+- Remote File Browser: sidebar panel to browse remote filesystem
+- Servers panel: see all configured servers, click to switch
 - Download to Workspace, Compare with Local, Delete from Server
 - Copy Remote Path, context menus, reconnect from error state
 
@@ -104,17 +114,10 @@
 
 ## Upcoming
 
-### v0.15 — SSH Power Features
-
-- SSH jump hosts — single and chained hops, MFA/2FA prompts on any hop, `ProxyJump` honoured from `~/.ssh/config`
-- Open an SSH terminal to the active server, through the same jump hosts, in the current remote folder
-- Per-server upload-on-save — pin it on or off for one server (keep it armed for dev, force it off for production) instead of one project-wide switch
-- Import your config from vscode-sftp (`.vscode/sftp.json`) — servers, mappings, and ignore patterns carry over in one command, and plaintext passwords move into the OS keychain
-
 ### Later
 
 - Batch deploy from branch diff (all files changed between two branches)
-- Additional sync directions — remote→local and bidirectional sync (v0.10 shipped the one-way local→remote mirror)
+- Additional sync directions: remote→local and bidirectional sync (v0.10 shipped the one-way local→remote mirror)
 - Download whole folders from the Remote Files panel
 
 ---

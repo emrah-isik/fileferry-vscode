@@ -17,12 +17,12 @@ npm run test:integration
 This uses [`jest.integration.config.js`](../../../jest.integration.config.js), which matches
 only `src/test/integration/**/*.integration.test.ts`.
 
-Suites **skip with a message** when their fixture isn't reachable (they used to throw) —
+Suites **skip with a message** when their fixture isn't reachable (they used to throw);
 see `fixtureProbe.ts`.
 
 ## Start the SSH fixture (compose: bastion + target)
 
-The SSH suites need the compose fixture in [`dev/ssh-test`](../../../dev/ssh-test) —
+The SSH suites need the compose fixture in [`dev/ssh-test`](../../../dev/ssh-test),
 a **bastion** published on `127.0.0.1:2222` and a **target** on an internal-only
 network, reachable exclusively through the bastion (this is what the jump-host
 suite exercises):
@@ -32,11 +32,11 @@ docker compose -f dev/ssh-test/docker-compose.yml up -d --build
 ```
 
 > **Migrating from the old single container?** Stop `fileferry-ssh` first
-> (`docker stop fileferry-ssh`) — the bastion takes over its port. The
+> (`docker stop fileferry-ssh`): the bastion takes over its port. The
 > `jumpHost` suite refuses to run against the old container.
 
 The bastion serves `testuser` / `testpass` with `/var/www` pre-populated and `/tmp`
-writable — everything the pre-compose suites used — plus:
+writable (everything the pre-compose suites used) plus:
 
 | User | Auth | Purpose |
 | --- | --- | --- |
@@ -46,7 +46,7 @@ writable — everything the pre-compose suites used — plus:
 | `totpuser` / `totppass` | keyboard-interactive: password, then a real TOTP code (secret `JBSWY3DPEHPK3PXP`, `DISALLOW_REUSE`) | code-reuse rejection |
 
 The **target** serves `deploy` / `deploypass` with a populated `/var/www` including
-`target-marker.txt` (exists only there — proves a session really crossed the bastion).
+`target-marker.txt` (exists only there: proves a session really crossed the bastion).
 The bastion logs to `/var/log/sshd.log` (world-readable) so tests can count logins.
 
 Defaults can be overridden with environment variables:
@@ -60,7 +60,7 @@ Defaults can be overridden with environment variables:
 
 ## FTP server (for `ftpService.integration.test.ts`)
 
-The FTP suite needs a real FTP server — see [`dev/ftp-test`](../../../dev/ftp-test):
+The FTP suite needs a real FTP server; see [`dev/ftp-test`](../../../dev/ftp-test):
 
 ```sh
 docker run -d --name fileferry-ftp -p 21:21 -p 21100-21110:21100-21110 \

@@ -4,7 +4,7 @@ This is the per-project configuration file FileFerry writes when you save Deploy
 
 It does **not** contain credentials. Passwords, passphrases, and SSH key contents live in your OS keychain (macOS Keychain / Windows Credential Manager / Linux libsecret) and are referenced from `fileferry.json` only by UUID. The file is safe to commit to git.
 
-You normally never edit this file by hand — Deployment Settings and Project Settings write it for you. This reference is for reading the file, troubleshooting, code review, and the rare case where you want to tweak something without opening the UI.
+You normally never edit this file by hand; Deployment Settings and Project Settings write it for you. This reference is for reading the file, troubleshooting, code review, and the rare case where you want to tweak something without opening the UI.
 
 ---
 
@@ -16,7 +16,7 @@ VS Code automatically validates and autocompletes `.vscode/fileferry.json` again
 - Inline errors for unknown fields, wrong types, or missing required values
 - Hover documentation on each property
 
-No extra configuration needed — the schema is registered via `contributes.jsonValidation` in the extension manifest.
+No extra configuration needed: the schema is registered via `contributes.jsonValidation` in the extension manifest.
 
 ---
 
@@ -24,8 +24,8 @@ No extra configuration needed — the schema is registered via `contributes.json
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `defaultServerId` | `string` (UUID) | yes | — | UUID of the server used for `Alt+U` uploads, upload-on-save, and `Ctrl+Alt+U`. Must match the `id` of one of the entries in `servers`. |
-| `servers` | `object` | yes | — | Server definitions, keyed by display name. See [Server Fields](#server-fields). |
+| `defaultServerId` | `string` (UUID) | yes | none | UUID of the server used for `Alt+U` uploads, upload-on-save, and `Ctrl+Alt+U`. Must match the `id` of one of the entries in `servers`. |
+| `servers` | `object` | yes | none | Server definitions, keyed by display name. See [Server Fields](#server-fields). |
 | `uploadOnSave` | `boolean` | no | `false` | When `true`, files are uploaded to the default server every time they're saved. Respects `.gitignore`. A server's own `uploadOnSave` (see [Server Fields](#server-fields)) overrides this while that server is the default. |
 | `dryRun` | `boolean` | no | `false` | When `true`, upload commands write a structured plan to the FileFerry output channel without opening any connections. |
 | `fileDateGuard` | `boolean` | no | `true` | When `false`, skips the remote mtime check that warns before overwriting newer remote files. |
@@ -34,7 +34,7 @@ No extra configuration needed — the schema is registered via `contributes.json
 | `backupRetentionDays` | `integer` ≥ 0 | no | `7` | Days to keep backup folders before automatic cleanup. |
 | `backupMaxSizeMB` | `integer` ≥ 0 | no | `100` | Maximum total size of the backups folder in megabytes. Oldest backups are pruned first. |
 | `historyMaxEntries` | `integer` ≥ 0 | no | `10000` | Cap on entries in `.vscode/fileferry-history.jsonl`. Set to `0` to disable history logging entirely. |
-| `watch` | `object` | no | — | Auto-upload files matching glob patterns whenever they change on disk — including build outputs and other externally-generated files that never trigger an editor save. See [Watch](#watch). |
+| `watch` | `object` | no | none | Auto-upload files matching glob patterns whenever they change on disk, including build outputs and other externally-generated files that never trigger an editor save. See [Watch](#watch). |
 
 ---
 
@@ -42,8 +42,8 @@ No extra configuration needed — the schema is registered via `contributes.json
 
 Auto-uploads files matching `watch.patterns` whenever they change on disk, to the default
 server. Unlike **upload-on-save** (which only fires for files you save in the editor and
-skips git-ignored files), the watcher reacts to *any* filesystem change — so it covers files
-written by build tools, compilers, and scripts — and **uploads watched files even when they
+skips git-ignored files), the watcher reacts to *any* filesystem change, so it covers files
+written by build tools, compilers, and scripts, and **uploads watched files even when they
 are git-ignored**, because the patterns you declare are an explicit allowlist (build outputs
 like `dist/` are usually git-ignored, and uploading them is the whole point).
 
@@ -66,7 +66,7 @@ writes are debounced and uploaded as one batch. FileFerry never re-uploads its o
 }
 ```
 
-> Deletes are not synced — removing a local file does not delete it remotely. Watching
+> Deletes are not synced; removing a local file does not delete it remotely. Watching
 > covers file creation and changes only.
 
 ---
@@ -77,18 +77,18 @@ Each entry in the `servers` object is keyed by its display name (the name you se
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `id` | `string` (UUID) | yes | — | Internal identifier, stable across renames. References from `defaultServerId` and from upload history use this, not the display name. |
-| `type` | `"sftp"` \| `"ftp"` \| `"ftps"` \| `"ftps-implicit"` | yes | — | Connection protocol. `ftps` is explicit TLS (AUTH TLS on port 21); `ftps-implicit` is implicit TLS (port 990). |
-| `credentialId` | `string` (UUID) | yes | — | UUID of the credential entry in the OS keychain. Created via `FileFerry: Manage SSH Credentials`. |
-| `credentialName` | `string` | yes | — | Human-readable credential name. Used as a documentation aid and as a fallback label when the UUID cannot be resolved (e.g. teammate hasn't set up credentials yet). |
-| `rootPath` | `string` | yes | — | Absolute path on the remote server. All path mappings resolve relative to this. Example: `/var/www`. |
-| `mappings` | `array` | yes | — | Local-to-remote path mappings. See [Path Mappings](#path-mappings). |
-| `excludedPaths` | `string[]` | yes | — | Glob patterns for files and folders to never upload. Example: `["node_modules", "*.log", ".env"]`. May be an empty array. |
+| `id` | `string` (UUID) | yes | none | Internal identifier, stable across renames. References from `defaultServerId` and from upload history use this, not the display name. |
+| `type` | `"sftp"` \| `"ftp"` \| `"ftps"` \| `"ftps-implicit"` | yes | none | Connection protocol. `ftps` is explicit TLS (AUTH TLS on port 21); `ftps-implicit` is implicit TLS (port 990). |
+| `credentialId` | `string` (UUID) | yes | none | UUID of the credential entry in the OS keychain. Created via `FileFerry: Manage SSH Credentials`. |
+| `credentialName` | `string` | yes | none | Human-readable credential name. Used as a documentation aid and as a fallback label when the UUID cannot be resolved (e.g. teammate hasn't set up credentials yet). |
+| `rootPath` | `string` | yes | none | Absolute path on the remote server. All path mappings resolve relative to this. Example: `/var/www`. |
+| `mappings` | `array` | yes | none | Local-to-remote path mappings. See [Path Mappings](#path-mappings). |
+| `excludedPaths` | `string[]` | yes | none | Glob patterns for files and folders to never upload. Example: `["node_modules", "*.log", ".env"]`. May be an empty array. |
 | `filePermissions` | `integer` 0–511 | no | (server default) | Decimal representation of an octal permission mode applied to uploaded files. `0644` is `420`, `0600` is `384`. SFTP only; FTP makes a best-effort `SITE CHMOD`. |
 | `directoryPermissions` | `integer` 0–511 | no | (server default) | Same as above, for created directories. `0755` is `493`, `0700` is `448`. |
 | `timeOffsetMs` | `integer` | no | `0` | Clock skew in milliseconds (`remote − local`). Detected automatically during Test Connection; `FileDateGuard` subtracts this before comparing timestamps. |
 | `uploadOnSave` | `boolean` | no | (inherit) | Per-server override of the project-level `uploadOnSave` toggle, in effect while this server is the default. `true`/`false` wins over the project setting; omit the field to inherit it. Set from Deployment Settings → Connection → **Upload on Save**. |
-| `hooks` | `object` | no | — | Commands run automatically before/after a deliberate deploy to this server. See [Deploy Hooks](#deploy-hooks). |
+| `hooks` | `object` | no | none | Commands run automatically before/after a deliberate deploy to this server. See [Deploy Hooks](#deploy-hooks). |
 
 ### Path Mappings
 
@@ -117,7 +117,7 @@ When multiple mappings could match a file, the **most specific (longest) `localP
 
 ### Deploy Hooks
 
-`hooks` runs a command automatically before and/or after a deploy to this server — to build artifacts before upload, or reload a service / run migrations / fix ownership after. Hooks run only for **deliberate** deploys (Upload Selected/All Changed/To Servers, Upload From Commits, Only-If-Newer, and the Sync commands). **Upload-on-save and the file watcher never run hooks.**
+`hooks` runs a command automatically before and/or after a deploy to this server, to build artifacts before upload, or reload a service / run migrations / fix ownership after. Hooks run only for **deliberate** deploys (Upload Selected/All Changed/To Servers, Upload From Commits, Only-If-Newer, and the Sync commands). **Upload-on-save and the file watcher never run hooks.**
 
 ```json
 "hooks": {
@@ -135,31 +135,31 @@ Each hook:
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `command` | `string` | yes | — | The shell command. Local commands run in your default shell at the workspace root; remote commands run on the server. |
-| `location` | `"local"` \| `"remote"` | yes | — | Where it runs. `remote` requires **SFTP** — on FTP/FTPS a remote hook is skipped with a warning (FTP can't run shell commands). |
+| `command` | `string` | yes | none | The shell command. Local commands run in your default shell at the workspace root; remote commands run on the server. |
+| `location` | `"local"` \| `"remote"` | yes | none | Where it runs. `remote` requires **SFTP**: on FTP/FTPS a remote hook is skipped with a warning (FTP can't run shell commands). |
 | `continueOnError` | `boolean` | no | `false` | When `true`, a failure is logged but doesn't abort the deploy or stop later hooks. |
-| `timeoutMs` | `integer` | no | — | Per-hook timeout. On timeout the command is killed (local) / its channel destroyed (remote) and the hook fails. |
+| `timeoutMs` | `integer` | no | none | Per-hook timeout. On timeout the command is killed (local) / its channel destroyed (remote) and the hook fails. |
 
-**Ordering and failure.** Local pre-hooks run **before** the connection opens (a build can take minutes — no point holding SSH idle); remote pre-hooks run on the just-opened session. A failed **pre**-hook **aborts the deploy** (nothing is uploaded) unless `continueOnError` is set. A failed **post**-hook is reported but does **not** roll back the files already uploaded. "Failed" means a non-zero/`null` exit code, a process that wouldn't start, or a timeout — **never** stderr output on its own: many servers write banners/MOTD/locale warnings to stderr on a successful (exit 0) command, so that's logged for visibility, not treated as a failure.
+**Ordering and failure.** Local pre-hooks run **before** the connection opens (a build can take minutes; no point holding SSH idle); remote pre-hooks run on the just-opened session. A failed **pre**-hook **aborts the deploy** (nothing is uploaded) unless `continueOnError` is set. A failed **post**-hook is reported but does **not** roll back the files already uploaded. "Failed" means a non-zero/`null` exit code, a process that wouldn't start, or a timeout, **never** stderr output on its own: many servers write banners/MOTD/locale warnings to stderr on a successful (exit 0) command, so that's logged for visibility, not treated as a failure.
 
-**Security — hooks run shell commands.** Two guards apply:
+**Security: hooks run shell commands.** Two guards apply:
 
-1. **Workspace Trust.** FileFerry **requires a trusted workspace** — the extension is disabled entirely in VS Code's Restricted Mode, so hooks (and every other FileFerry action) are inert until you explicitly trust the folder. Opening someone else's repo is untrusted by default. (Deploying already reads the server, paths, and credential from the repo's `fileferry.json` and connects with your stored credentials, so deploying is itself trust-requiring — not just hooks.)
-2. **Visible in the deploy confirmation.** The pre-deploy confirmation names the hook commands that will run — the full list is written to the FileFerry output channel and the confirmation points you to it — so nothing runs that you didn't see.
+1. **Workspace Trust.** FileFerry **requires a trusted workspace**: the extension is disabled entirely in VS Code's Restricted Mode, so hooks (and every other FileFerry action) are inert until you explicitly trust the folder. Opening someone else's repo is untrusted by default. (Deploying already reads the server, paths, and credential from the repo's `fileferry.json` and connects with your stored credentials, so deploying is itself trust-requiring, not just hooks.)
+2. **Visible in the deploy confirmation.** The pre-deploy confirmation names the hook commands that will run; the full list is written to the FileFerry output channel and the confirmation points you to it, so nothing runs that you didn't see.
 
-**No secrets in `fileferry.json`** — it's committed to git. Keep secrets out of the command string:
+**No secrets in `fileferry.json`**: it's committed to git. Keep secrets out of the command string:
 
-- **Keychain secrets — `${secret:NAME}` (recommended).** Store the value once in the **Secrets** section of the Hooks tab (Deployment Settings); it goes into your OS keychain (macOS Keychain / Windows Credential Manager / Linux libsecret), and the command references it as `${secret:NAME}` — e.g. `mysql -p${secret:DB_PASS} …`. The committed file only ever holds the reference. Resolution happens at the moment the hook runs, never earlier: dialogs, logs, and dry-run all show the unresolved `${secret:NAME}`. Names are environment-variable-shaped (letters, digits, underscores; not starting with a digit).
-  - **Per-project and machine-local.** Secrets are scoped to the workspace and stored on your machine only — a teammate cloning the repo re-enters the values on theirs (same as SSH credentials). The Hooks tab shows which referenced secrets are missing on this machine.
-  - **Missing secrets abort the deploy up front.** Before anything is transferred, FileFerry checks every hook that will run (pre *and* post) for missing or malformed `${secret:…}` references and aborts the whole deploy if one is found — so a post-deploy `migrate`/`reload` can't be silently skipped after the files already went up. Hooks marked *continue on error* don't block the deploy; their problem is logged as a warning and they fail at run time as usual.
-  - **Local hooks** get the value injected as an **environment variable**: `${secret:DB_PASS}` becomes the shell's own reference (`$DB_PASS`, `%DB_PASS%` on cmd, `$env:DB_PASS` on PowerShell) with the value in the process environment — it never enters the command string.
+- **Keychain secrets: `${secret:NAME}` (recommended).** Store the value once in the **Secrets** section of the Hooks tab (Deployment Settings); it goes into your OS keychain (macOS Keychain / Windows Credential Manager / Linux libsecret), and the command references it as `${secret:NAME}`, e.g. `mysql -p${secret:DB_PASS} …`. The committed file only ever holds the reference. Resolution happens at the moment the hook runs, never earlier: dialogs, logs, and dry-run all show the unresolved `${secret:NAME}`. Names are environment-variable-shaped (letters, digits, underscores; not starting with a digit).
+  - **Per-project and machine-local.** Secrets are scoped to the workspace and stored on your machine only; a teammate cloning the repo re-enters the values on theirs (same as SSH credentials). The Hooks tab shows which referenced secrets are missing on this machine.
+  - **Missing secrets abort the deploy up front.** Before anything is transferred, FileFerry checks every hook that will run (pre *and* post) for missing or malformed `${secret:…}` references and aborts the whole deploy if one is found, so a post-deploy `migrate`/`reload` can't be silently skipped after the files already went up. Hooks marked *continue on error* don't block the deploy; their problem is logged as a warning and they fail at run time as usual.
+  - **Local hooks** get the value injected as an **environment variable**: `${secret:DB_PASS}` becomes the shell's own reference (`$DB_PASS`, `%DB_PASS%` on cmd, `$env:DB_PASS` on PowerShell) with the value in the process environment; it never enters the command string.
   - **If a command looks like it embeds a raw secret**, the save-time warning offers a one-click **Move to keychain**: it stores the flagged literal and rewrites the command to `${secret:NAME}` for you.
-- **Environment variables — `$ENV_VAR`.** Local hooks inherit your shell environment, so write `mysql -p"$DB_PASS" …` and keep `DB_PASS` in your environment or a git-ignored `.env`. The committed file holds only the literal `$DB_PASS`; it's expanded at run time. Use this when you already manage the value out-of-band.
-- **Remote-hook caveat.** SSH usually rejects client-set environment variables (`AcceptEnv` is restrictive), so for **remote** hooks FileFerry resolves `${secret:NAME}` by inlining the value into the command at exec time — which makes it **briefly visible in the server's process list** (`ps`), exactly like typing `mysql -psecret` in a remote shell. The resolved command is never logged. Prefer keeping remote secrets in the *server's* own environment / a remote `.env` so FileFerry never handles the value; `$VAR` in a remote command expands against the *server's* environment, which is exactly what you want there.
+- **Environment variables: `$ENV_VAR`.** Local hooks inherit your shell environment, so write `mysql -p"$DB_PASS" …` and keep `DB_PASS` in your environment or a git-ignored `.env`. The committed file holds only the literal `$DB_PASS`; it's expanded at run time. Use this when you already manage the value out-of-band.
+- **Remote-hook caveat.** SSH usually rejects client-set environment variables (`AcceptEnv` is restrictive), so for **remote** hooks FileFerry resolves `${secret:NAME}` by inlining the value into the command at exec time, which makes it **briefly visible in the server's process list** (`ps`), exactly like typing `mysql -psecret` in a remote shell. The resolved command is never logged. Prefer keeping remote secrets in the *server's* own environment / a remote `.env` so FileFerry never handles the value; `$VAR` in a remote command expands against the *server's* environment, which is exactly what you want there.
 
-FileFerry masks values it resolved itself (`••••` in the output channel), but it can't catch a secret a command prints on its own — so the rules above matter.
+FileFerry masks values it resolved itself (`••••` in the output channel), but it can't catch a secret a command prints on its own, so the rules above matter.
 
-**Build artifacts won't deploy via a git-changed upload.** A local `npm run build` in `preDeploy` does **not** add files to an *Upload Changed Files* deploy. The changed set is resolved before the hook runs, and it's read from git state — which is `.gitignore`-respecting, so build output in `dist/` (usually git-ignored) never appears in it regardless. To deploy generated files, use **Sync to Remote** (walks the filesystem tree at transfer time) or the **Watch** feature (an explicit glob allowlist that uploads git-ignored files).
+**Build artifacts won't deploy via a git-changed upload.** A local `npm run build` in `preDeploy` does **not** add files to an *Upload Changed Files* deploy. The changed set is resolved before the hook runs, and it's read from git state, which is `.gitignore`-respecting, so build output in `dist/` (usually git-ignored) never appears in it regardless. To deploy generated files, use **Sync to Remote** (walks the filesystem tree at transfer time) or the **Watch** feature (an explicit glob allowlist that uploads git-ignored files).
 
 **Duplication across servers.** Hooks are per-server, so a local build identical across dev/staging/prod must be repeated in each server's config (and kept in sync). Project-level shared hooks are a planned future addition.
 
@@ -167,7 +167,7 @@ FileFerry masks values it resolved itself (`••••` in the output channel)
 
 ## Examples
 
-### Minimal — Single SFTP Server
+### Minimal: Single SFTP Server
 
 ```json
 {
@@ -265,12 +265,12 @@ These files live alongside `fileferry.json` in `.vscode/`:
 
 | File | Purpose | Commit? |
 | --- | --- | --- |
-| `fileferry.json` | This file — config and server definitions | yes |
-| `fileferry-history.jsonl` | Per-project upload log (one JSON entry per line) | no — auto-`.gitignore`d on first write |
-| `fileferry-backups/` | Pre-overwrite backups when `backupBeforeOverwrite` is on | no — auto-`.gitignore`d on first write |
+| `fileferry.json` | This file: config and server definitions | yes |
+| `fileferry-history.jsonl` | Per-project upload log (one JSON entry per line) | no, auto-`.gitignore`d on first write |
+| `fileferry-backups/` | Pre-overwrite backups when `backupBeforeOverwrite` is on | no, auto-`.gitignore`d on first write |
 
 **FileFerry adds each of these machine-local files to your workspace `.gitignore` the first
-time it writes them** (creating `.gitignore` if needed — it works even before `git init`). You
+time it writes them** (creating `.gitignore` if needed; it works even before `git init`). You
 shouldn't need to add them by hand, but for reference the entries are:
 
 ```gitignore
