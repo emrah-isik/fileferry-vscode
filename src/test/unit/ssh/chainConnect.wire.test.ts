@@ -3,6 +3,7 @@ import * as os from 'os';
 import * as path from 'path';
 import * as net from 'net';
 import { Client as Ssh2Client, Server as Ssh2Server, utils as ssh2Utils } from 'ssh2';
+import { generateParsableKeyPair } from './testKeys';
 import type { Connection } from 'ssh2';
 import { SftpService } from '../../../sftpService';
 import { JumpHostPool } from '../../../ssh/JumpHostPool';
@@ -21,7 +22,7 @@ import { SshCredentialWithSecret } from '../../../models/SshCredential';
 
 jest.setTimeout(20000);
 
-const hostKey = ssh2Utils.generateKeyPairSync('ed25519');
+const hostKey = generateParsableKeyPair();
 
 interface TestServer {
   server: Ssh2Server;
@@ -231,7 +232,7 @@ describe('chain wire test — ProxyJump hop from ~/.ssh/config (18b)', () => {
 
   /** Bastion that accepts ONLY publickey auth with the generated hop key — what an IdentityFile hop must use. */
   function createKeyBastion(): Ssh2Server {
-    const hopKey = ssh2Utils.generateKeyPairSync('ed25519');
+    const hopKey = generateParsableKeyPair();
     fs.writeFileSync(path.join(tempDirectory, 'bastion_ed25519'), hopKey.private);
     const allowed = ssh2Utils.parseKey(hopKey.public);
     if (allowed instanceof Error) {
