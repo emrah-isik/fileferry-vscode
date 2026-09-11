@@ -9,6 +9,7 @@ For a quick overview, see the [README](../README.md).
 ## Table of Contents
 
 - [Getting Started](#getting-started)
+- [Migrating from vscode-sftp](#migrating-from-vscode-sftp)
 - [Uploading Files](#uploading-files)
 - [The Changed Files View](#the-changed-files-view)
 - [Multi-Server Push](#multi-server-push)
@@ -134,6 +135,54 @@ Click **Save Mappings**. If a row can't be saved (for example two rows with the 
 5. Review the confirmation summary, then confirm
 
 That's it. The file is now on the server.
+
+---
+
+## Migrating from vscode-sftp
+
+Coming from vscode-sftp (liximomo's original or the Natizyskunk fork)? FileFerry imports your `.vscode/sftp.json` in one command, and moves the plaintext passwords it finds there into your OS keychain.
+
+### Starting the import
+
+- Open a workspace that has a `.vscode/sftp.json` but no `fileferry.json` and FileFerry offers the import once: **Import** runs it, **Not now** is remembered for that workspace and the offer never repeats.
+- The Servers panel shows an **Import from sftp.json** link whenever a `sftp.json` is present and no servers are configured.
+- Run `FileFerry: Import from vscode-sftp (sftp.json)` from the Command Palette at any time.
+
+### What carries over
+
+| sftp.json | FileFerry |
+| --- | --- |
+| A single object, an array of entries, or `profiles` | One server per entry or profile (profiles are named by their key; `defaultProfile` becomes the default server) |
+| `name` | The server name (de-duplicated with `-2`, `-3` when taken) |
+| `protocol` and `secure` | `sftp`, `ftp`, `ftps` (`secure: true` / `"control"`), or `ftps-implicit` |
+| `host`, `port`, `username` | A new SSH credential (port written explicitly: 22 for SFTP, 21 for FTP) |
+| `password` | Stored in the OS keychain, never in `fileferry.json` |
+| `privateKeyPath`, `passphrase` | Key authentication; a passphrase string is stored in the keychain (`passphrase: true` is reported: add it in Manage SSH Credentials) |
+| `agent` | Agent authentication (`pageant` passes through) |
+| `interactiveAuth` | Keyboard-interactive authentication (canned answers are not carried over) |
+| `remotePath` | The server's root path (a relative path such as `./` prompts for the absolute one) |
+| `context` | A path mapping from that folder |
+| `ignore`, `ignoreFile` | Excluded paths, best-effort (see below) |
+| `uploadOnSave` | The per-server Upload on Save override; the default profile's value also sets the project toggle |
+| `watcher.files`, `watcher.autoUpload` | Watch & Auto-Upload (`autoDelete` is reported, never imported: FileFerry never deletes remote files unattended; use Sync to Remote with delete-extras) |
+| `remoteTimeOffsetInHours` | The server's time offset |
+| `filePerm`, `dirPerm` | File and directory permissions |
+| `hop` | Jump hosts: every stage becomes a credential (`<server> hop 1`, `hop 2`, …) and the last hop is the target with the chain set; per-stage keys are treated as local paths (reported); dropped with a note on FTP servers |
+
+### What the import asks you
+
+The only prompts are per item, and Esc always skips: a credential without a `password` asks for one (Esc saves the credential without a password; add it later in Manage SSH Credentials), and a relative `remotePath` asks for the absolute path (Esc skips that server). Nothing else prompts: collisions and duplicates are decided by rule.
+
+### What it never does
+
+- Modify or delete `sftp.json`. The old extension keeps working while you switch; the report reminds you the plaintext passwords are still in that file until you remove them.
+- Touch existing servers. The import is additive: an entry with the same host, port, username, and remote path as a configured server is skipped, names that are taken get a suffix, and the default server is only set when the project has none.
+
+**Ignore patterns** are translated where both sides mean the same thing: plain names (`node_modules`, `.git`), simple globs (`*.log`), and paths (`build/tmp`, prefixed with the entry's `context`). Negations (`!keep.log`), anchored patterns (`/build`), and directory-only rules (`dist/`) have no excluded-paths equivalent, so they are listed by name in the report instead of being guessed at. An `ignoreFile` is read once and inlined; later edits to that file do not carry over.
+
+**Not carried over** (listed per server in the report): `syncOption`, `concurrency`, `connectTimeout`, `downloadOnOpen`, `useTempFile` / `openSsh`, `limitOpenFilesOnRemote`, `remoteExplorer`, `algorithms`, `sshCustomParams`, `remote`, `sshConfigPath` (FileFerry's *Use SSH config* flag reads `~/.ssh/config` itself), and `passive`.
+
+**The report** goes to the FileFerry output channel, with one summary notification: imported servers and their credentials, skipped duplicates and entries, prompts you skipped, ignore patterns not translated, notes, unsupported options, the plaintext-password warning, and next steps. After importing: run **Test Connection** on each server (the first connection shows the host key prompt), review mappings and excluded paths in Deployment Settings, remove the `password` fields from `sftp.json`, and disable the vscode-sftp extension so both do not react to the same saves.
 
 ---
 
@@ -631,6 +680,7 @@ Customize via `Preferences -> Keyboard Shortcuts` and search for `fileferry`.
 | `FileFerry: Go to Remote Path` | Navigate the Remote File Browser to a path |
 | `FileFerry: Disconnect Remote Browser` | Suspend the remote browser connection until explicitly resumed; also drains idle pooled jump hosts (ones held by a deploy or an open SSH terminal close on last release) |
 | `FileFerry: Open SSH Terminal` | Open a shell on the active server in its root path, through its jump hosts (SFTP only) |
+| `FileFerry: Import from vscode-sftp (sftp.json)` | Import `.vscode/sftp.json` servers, mappings, and ignore patterns; passwords go to the OS keychain (additive, never edits `sftp.json`) |
 | `FileFerry: Reset Upload Confirmations` | Re-enable upload prompts |
 | `FileFerry: Test Connection` | Verify server credentials |
 | `FileFerry: New File/Folder in Current Path…` | Create an entry at the path the panel currently shows |

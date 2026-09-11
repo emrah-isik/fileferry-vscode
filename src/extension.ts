@@ -41,6 +41,8 @@ import { chmodRemoteItem } from './commands/chmodRemoteItem';
 import { uploadFilesHere, uploadFolderHere } from './commands/uploadHere';
 import { disconnectRemoteBrowser } from './commands/disconnectRemoteBrowser';
 import { openSshTerminal, OpenSshTerminalSelection } from './commands/openSshTerminal';
+import { importFromVscodeSftp } from './commands/importFromVscodeSftp';
+import { detectVscodeSftp } from './importers/vscodeSftp/detection';
 import { UploadOnSaveService } from './services/UploadOnSaveService';
 import { FileWatcherService } from './services/FileWatcherService';
 import { DeploymentServer } from './models/DeploymentServer';
@@ -72,6 +74,23 @@ function withErrorHandling<Args extends unknown[]>(
   return wrapErrors(label, output, fn as (...args: unknown[]) => Promise<void>) as (
     ...args: Args
   ) => Promise<void>;
+}
+
+async function readTextFile(filePath: string): Promise<string | null> {
+  try {
+    return await fs.readFile(filePath, 'utf-8');
+  } catch {
+    return null;
+  }
+}
+
+async function fileExists(filePath: string): Promise<boolean> {
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function readJsonFile<T>(filePath: string): Promise<T | null> {
@@ -380,6 +399,41 @@ export function activate(context: vscode.ExtensionContext): void {
     await vscode.commands.executeCommand('setContext', 'fileferry.hasServers', count > 0);
   }
   updateHasServersContext();
+
+  const runVscodeSftpImport = (): Promise<unknown> =>
+    importFromVscodeSftp({
+      workspaceRoot: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
+      readFile: readTextFile,
+      configManager,
+      credentialManager,
+      output,
+      afterWrite: async () => {
+        credentialsChangedEmitter.fire();
+        statusBar.refresh();
+        serversProvider.refresh();
+        await updateHasServersContext();
+      },
+    });
+
+  // One-time offer when a vscode-sftp workspace has no fileferry.json yet
+  // (35b, Q3); "Not now" is remembered per workspace. Also sets the context
+  // key behind the Servers welcome-view hint.
+  detectVscodeSftp({
+    workspaceRoot: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
+    fileExists,
+    joinPath: (...segments) => path.join(...segments),
+    workspaceState: context.workspaceState,
+    setContext: async (key, value) => { await vscode.commands.executeCommand('setContext', key, value); },
+    showToast: () => Promise.resolve(vscode.window.showInformationMessage(
+      'FileFerry: this workspace has a vscode-sftp config (.vscode/sftp.json). Import its servers? Passwords move into your OS keychain; sftp.json is left untouched.',
+      'Import',
+      'Not now'
+    )),
+    runImport: async () => { await runVscodeSftpImport(); },
+    log: (line) => output.appendLine(`[info] ${line}`),
+  }).catch(err => {
+    output.appendLine(`[warn] vscode-sftp detection failed: ${err instanceof Error ? err.message : String(err)}`);
+  });
 
   // Remote File Browser
   const browserConnection = new RemoteBrowserConnection(credentialManager, configManager, output, jumpHostPool);
@@ -728,6 +782,18 @@ export function activate(context: vscode.ExtensionContext): void {
       withErrorHandling('remoteBrowser.openSshTerminalCurrentPath', () =>
         openTerminal({ serverId: null, remotePath: browserProvider.getCurrentPath() ?? undefined })
       )
+    ),
+
+    // Import from vscode-sftp (feature 35b): pure parser/mapper/report modules
+    // behind thin glue. Credential saves fire CredentialManager.onDidChange
+    // (→ credentialsChangedEmitter); the config save fires onDidSaveConfig
+    // (→ status bar). The Servers tree is refreshed explicitly because the
+    // fileferry.json watcher below only listens for changes, not creation.
+    vscode.commands.registerCommand(
+      'fileferry.importFromVscodeSftp',
+      withErrorHandling('importFromVscodeSftp', async () => {
+        await runVscodeSftpImport();
+      })
     ),
 
     // Refresh views when project config changes
