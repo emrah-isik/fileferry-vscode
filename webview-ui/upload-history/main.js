@@ -104,9 +104,9 @@ function render() {
     vscode.postMessage({ command: 'ready' });
   });
   document.getElementById('btn-clear')?.addEventListener('click', () => {
-    if (confirm('Clear all upload history? This cannot be undone.')) {
-      vscode.postMessage({ command: 'clear' });
-    }
+    // No confirm() here: VS Code blocks it inside webviews (#24). The
+    // extension asks with a modal and only posts 'cleared' after a yes.
+    vscode.postMessage({ command: 'clear' });
   });
 
   renderTable();

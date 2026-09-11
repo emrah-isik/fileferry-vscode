@@ -117,11 +117,27 @@ describe('UploadHistoryPanel', () => {
     }));
   });
 
-  it('handles clear message: clears history and posts cleared', async () => {
+  // #24: the webview's confirm() is blocked by VS Code (returns false with no
+  // UI), so the confirmation lives on the extension side as a modal warning.
+  it('clear: asks with a modal warning, then clears history and posts cleared', async () => {
+    (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue('Clear');
     UploadHistoryPanel.createOrShow(mockContext, { configManager: mockConfigManager });
     await messageHandler({ command: 'clear' });
+    expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+      expect.stringMatching(/Clear all upload history.*cannot be undone/),
+      { modal: true },
+      'Clear'
+    );
     expect(mockClear).toHaveBeenCalled();
     expect(mockWebview.postMessage).toHaveBeenCalledWith({ command: 'cleared' });
+  });
+
+  it('clear: cancelling the modal clears nothing and posts nothing', async () => {
+    (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(undefined);
+    UploadHistoryPanel.createOrShow(mockContext, { configManager: mockConfigManager });
+    await messageHandler({ command: 'clear' });
+    expect(mockClear).not.toHaveBeenCalled();
+    expect(mockWebview.postMessage).not.toHaveBeenCalledWith({ command: 'cleared' });
   });
 
   it('disposes cleanly and allows re-creation', () => {
