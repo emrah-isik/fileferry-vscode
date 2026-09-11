@@ -79,6 +79,16 @@ export class UploadHistoryPanel {
       }
 
       case 'clear': {
+        // The confirmation lives here, not in the webview: VS Code blocks a
+        // webview's confirm() (it returns false with no UI), which is why the
+        // button did nothing through v0.14 (#24). Same modal pattern as
+        // Delete server / Delete credential.
+        const answer = await vscode.window.showWarningMessage(
+          'Clear all upload history for this project? This cannot be undone.',
+          { modal: true },
+          'Clear'
+        );
+        if (answer !== 'Clear') break;
         const service = this.getHistoryService();
         await service.clear();
         this.panel.webview.postMessage({ command: 'cleared' });
