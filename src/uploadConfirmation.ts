@@ -3,23 +3,45 @@ import { ProjectServer } from './models/ProjectConfig';
 
 type ServerHooks = ProjectServer['hooks'];
 
-// UploadConfirmation shows a dialog before each upload to prevent accidental deploys.
+const SUPPRESS_KEY_PREFIX = 'fileferry.confirm.suppress.';
+
+// One row of the confirmation pick. `action` is what the row does; `label` is
+// what the user reads (and what tests assert against).
+export interface ConfirmationChoice extends vscode.QuickPickItem {
+  action: 'confirm' | 'confirm-and-suppress' | 'cancel';
+}
+
+export type ShowConfirmationPick = (
+  title: string,
+  items: ConfirmationChoice[]
+) => Thenable<ConfirmationChoice | undefined>;
+
+// UploadConfirmation asks before each upload to prevent accidental deploys.
 // Suppression is stored per-server in VSCode's globalState (persists across sessions).
 //
-// When a deploy has hooks, the full command list is written to the FileFerry output
-// channel (a plain notification can't render a multi-line list, and a native modal
-// is jarring/plays a sound), and the quiet in-theme toast points the user to it.
+// Feature 36: the prompt is a QuickPick, not a notification toast. A toast never
+// takes keyboard focus, so Enter went to the editor and the buttons needed the
+// mouse (found in the 2026-09-15 Cursor pass). The pick takes focus at once:
+// Enter on the first row confirms, Escape (or clicking elsewhere) cancels, and it
+// stays quiet and in-theme (a native modal is jarring and plays a sound). Only the
+// irreversible sync-delete confirmation uses a true modal warning.
 //
-// showMessage / showModalWarning are injected so tests can drive them without VSCode.
+// When a deploy has hooks, the full command list is written to the FileFerry
+// output channel (a pick row can't render a multi-line list), and the confirming
+// row's detail names the count and points the user to it.
+//
+// showPick / showModalWarning are injected so tests can drive them without VSCode.
 export class UploadConfirmation {
   constructor(
     private globalState: vscode.Memento,
     private output?: vscode.OutputChannel,
-    private showMessage: (
-      message: string,
-      ...items: string[]
-    ) => Thenable<string | undefined> = vscode.window.showInformationMessage.bind(vscode.window),
-    // Only the irreversible sync-delete confirmation uses a true modal warning —
+    private showPick: ShowConfirmationPick = (title, items) =>
+      vscode.window.showQuickPick(items, {
+        title,
+        placeHolder: 'Enter confirms, Escape cancels',
+        ignoreFocusOut: false,
+      }),
+    // Only the irreversible sync-delete confirmation uses a true modal warning:
     // a destructive, unrecoverable action warrants forcing a deliberate choice.
     private showModalWarning: (
       message: string,
@@ -31,7 +53,7 @@ export class UploadConfirmation {
   async confirm(serverId: string, fileCount: number, serverName?: string, hooks?: ServerHooks): Promise<boolean> {
     const hookLines = describeHooks(hooks);
     const hasHooks = hookLines.length > 0;
-    const key = `fileferry.confirm.suppress.${serverId}`;
+    const key = `${SUPPRESS_KEY_PREFIX}${serverId}`;
     const suppressed = this.globalState.get<boolean>(key, false);
 
     // Suppression must never hide hooks: a deploy that runs shell commands is
@@ -44,36 +66,38 @@ export class UploadConfirmation {
 
     const label = fileCount === 1 ? '1 file' : `${fileCount} files`;
     const displayName = serverName ?? serverId;
-    const question = `Upload ${label} to "${displayName}"?`;
+    const title = `Upload ${label} to "${displayName}"?`;
 
     if (hasHooks) {
       this.logHooks(hookLines);
-      const result = await this.showMessage(
-        `${question} ${hookCountLabel(hookLines.length)} will run — see the FileFerry output.`,
-        'Upload',
-        'Cancel'
-      );
-      return result === 'Upload';
+      const choice = await this.showPick(title, [
+        { label: 'Upload', detail: hookDetail(hookLines.length), action: 'confirm' },
+        cancelChoice(),
+      ]);
+      return choice?.action === 'confirm';
     }
 
-    const result = await this.showMessage(
-      question,
-      'Upload',
-      "Upload, don't ask again",
-      'Cancel'
-    );
+    const choice = await this.showPick(title, [
+      { label: 'Upload', detail: `Upload ${label} now`, action: 'confirm' },
+      {
+        label: "Upload, don't ask again",
+        detail: `Skips this prompt for "${displayName}" until you run FileFerry: Reset Upload Confirmations`,
+        action: 'confirm-and-suppress',
+      },
+      cancelChoice(),
+    ]);
 
-    if (result === "Upload, don't ask again") {
+    if (choice?.action === 'confirm-and-suppress') {
       await this.globalState.update(key, true);
       return true;
     }
 
-    return result === 'Upload';
+    return choice?.action === 'confirm';
   }
 
-  // Shows a confirmation dialog when the deploy includes file deletions.
-  // Deletions are irreversible, so suppression is never applied and
-  // "don't ask again" is not offered.
+  // Confirmation when the deploy includes file deletions. Deletions are
+  // irreversible, so suppression is never applied and "don't ask again" is not
+  // offered.
   async confirmWithDeletions(
     serverName: string,
     uploadCount: number,
@@ -87,19 +111,19 @@ export class UploadConfirmation {
     if (deleteCount > 0) {
       parts.push(`delete ${deleteCount} ${deleteCount === 1 ? 'file' : 'files'}`);
     }
-    const question = `Deploy to "${serverName}": ${parts.join(' and ')}?`;
+    const title = `Deploy to "${serverName}": ${parts.join(' and ')}?`;
     const hookLines = describeHooks(hooks);
     if (hookLines.length > 0) {
       this.logHooks(hookLines);
-      const result = await this.showMessage(
-        `${question} ${hookCountLabel(hookLines.length)} will run — see the FileFerry output.`,
-        'Proceed',
-        'Cancel'
-      );
-      return result === 'Proceed';
     }
-    const result = await this.showMessage(question, 'Proceed', 'Cancel');
-    return result === 'Proceed';
+    const proceedDetail = hookLines.length > 0
+      ? hookDetail(hookLines.length)
+      : 'Deleted files are removed from the server';
+    const choice = await this.showPick(title, [
+      { label: 'Proceed', detail: proceedDetail, action: 'confirm' },
+      cancelChoice(),
+    ]);
+    return choice?.action === 'confirm';
   }
 
   // Confirmation for Sync to Remote when delete-extras will prune remote files.
@@ -120,7 +144,7 @@ export class UploadConfirmation {
     const hookNote = hookLines.length > 0
       ? ` ${hookCountLabel(hookLines.length)} will also run (see the FileFerry output).`
       : '';
-    // Modal warning (not the dismissable toast) — a destructive, irreversible
+    // Modal warning (not the dismissable pick): a destructive, irreversible
     // delete must force a deliberate choice. The modal supplies its own Cancel.
     const result = await this.showModalWarning(
       `Sync to "${serverName}" will upload ${uploadLabel} and DELETE ${deleteLabel} not present locally. ` +
@@ -148,23 +172,32 @@ export class UploadConfirmation {
       return true;
     }
     this.logHooks(lines);
-    const result = await this.showMessage(
-      `This deploy will run hook commands on ${serverCount} server(s) — see the FileFerry output.`,
-      'Proceed',
-      'Cancel'
+    const choice = await this.showPick(
+      `This deploy will run hook commands on ${serverCount} server(s). Continue?`,
+      [
+        { label: 'Proceed', detail: 'The commands are listed in the FileFerry output', action: 'confirm' },
+        cancelChoice(),
+      ]
     );
-    return result === 'Proceed';
+    return choice?.action === 'confirm';
   }
 
-  // Clears "don't ask again" for all servers — called by the reset command.
-  async resetAll(serverIds: string[]): Promise<void> {
-    for (const id of serverIds) {
-      await this.globalState.update(`fileferry.confirm.suppress.${id}`, false);
+  // Clears "don't ask again". With a server list, clears those; without one
+  // (the reset command), sweeps every stored suppression key, so servers that
+  // were deleted or belong to another project are cleared too. Returns the
+  // number of servers cleared.
+  async resetAll(serverIds?: string[]): Promise<number> {
+    const keys = serverIds
+      ? serverIds.map(id => `${SUPPRESS_KEY_PREFIX}${id}`)
+      : this.globalState.keys().filter(key => key.startsWith(SUPPRESS_KEY_PREFIX));
+    for (const key of keys) {
+      await this.globalState.update(key, false);
     }
+    return keys.length;
   }
 
   // Writes the hook list to the output channel and reveals it (without stealing
-  // focus), so the commands are visible when the confirmation toast appears.
+  // focus), so the commands are visible when the confirmation pick appears.
   private logHooks(lines: string[]): void {
     if (!this.output) {
       return;
@@ -177,8 +210,16 @@ export class UploadConfirmation {
   }
 }
 
+function cancelChoice(): ConfirmationChoice {
+  return { label: 'Cancel', detail: 'Nothing is uploaded (Escape does the same)', action: 'cancel' };
+}
+
+function hookDetail(hookCount: number): string {
+  return `${hookCountLabel(hookCount)} will run, listed in the FileFerry output`;
+}
+
 // Renders one bullet line per hook command, tagged with its phase and location,
-// e.g. `• [pre · local] npm run build`. Commands are shown UNRESOLVED — the
+// e.g. `• [pre · local] npm run build`. Commands are shown UNRESOLVED: the
 // literal string from config ($VAR / ${secret:…}), since resolution happens at
 // run time, so nothing ever displays a secret value.
 function describeHooks(hooks?: ServerHooks): string[] {

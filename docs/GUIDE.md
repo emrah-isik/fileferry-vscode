@@ -239,11 +239,13 @@ Like upload on save, the watcher never shows connection prompts: against a host 
 
 ### Upload Confirmation
 
-Before every upload, FileFerry shows a summary of what will be uploaded and what will be deleted. You can review and confirm or cancel.
+Before every deploy, FileFerry asks with a Quick Pick at the top of the window: the title names the server and the file counts (`Upload 3 files to "production"?`, or `Deploy to "production": upload 2 files and delete 1 file?` when the deploy removes files). The pick has keyboard focus as soon as it opens: **Enter** confirms the first row, **Escape** cancels, and clicking anywhere else cancels too. Each row explains itself in a second line.
 
-For upload-only deploys (no deletions), you can check "don't ask again" to skip the prompt for that server. Deletion deploys always show the confirmation regardless.
+For upload-only deploys (no deletions, no hooks) the pick also offers **Upload, don't ask again**, which skips the prompt for that server from then on. Deletion deploys and deploys with hooks always ask, and never offer that row. When a server has deploy hooks, the confirming row names how many commands will run and the full list is written to the FileFerry output channel, which opens alongside the pick.
 
 To re-enable prompts, run `FileFerry: Reset Upload Confirmations`.
+
+The one prompt that is not a Quick Pick is the Sync to Remote delete-extras confirmation, which stays a modal dialog because it deletes files that cannot be recovered.
 
 ### Atomic Upload
 

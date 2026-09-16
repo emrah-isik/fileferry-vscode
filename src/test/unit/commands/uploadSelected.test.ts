@@ -94,6 +94,14 @@ function dependencies() {
   return { credentialManager: mockCredentialManager, configManager: mockConfigManager, context: mockContext, output: mockOutput };
 }
 
+// Feature 36: the upload confirmation is a QuickPick; resolve it with the row
+// carrying the given label (undefined = Escape / focus loss).
+function pickConfirmation(label: string | undefined): void {
+  (vscode.window.showQuickPick as jest.Mock).mockImplementation(async (items: Array<{ label: string }>) =>
+    label === undefined ? undefined : items.find(item => item.label === label)
+  );
+}
+
 describe('uploadSelected command', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -110,7 +118,8 @@ describe('uploadSelected command', () => {
     (vscode.workspace as any).workspaceFolders = [{ uri: vscode.Uri.file('/workspace') }];
     (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(undefined);
     (vscode.window.showErrorMessage as jest.Mock).mockResolvedValue(undefined);
-    (vscode.window.showInformationMessage as jest.Mock).mockResolvedValue('Upload');
+    (vscode.window.showInformationMessage as jest.Mock).mockResolvedValue(undefined);
+    pickConfirmation('Upload');
     (vscode.window.withProgress as any) = jest.fn().mockImplementation(
       (_opts: any, task: (p: any, token: any) => Promise<any>) => task({ report: jest.fn() }, { isCancellationRequested: false, onCancellationRequested: jest.fn() })
     );
@@ -141,7 +150,7 @@ describe('uploadSelected command', () => {
   });
 
   it('cancels upload when user dismisses confirmation', async () => {
-    (vscode.window.showInformationMessage as jest.Mock).mockResolvedValue('Cancel');
+    pickConfirmation('Cancel');
     await uploadSelected(resource, undefined, dependencies());
     expect(mockUpload).not.toHaveBeenCalled();
   });
@@ -206,7 +215,7 @@ describe('uploadSelected command', () => {
         .mockReturnValueOnce([]) // upload items
         .mockReturnValueOnce([{ localPath: '/workspace/src/deleted.php', remotePath: '/var/www/src/deleted.php' }]); // delete items
       mockUpload.mockResolvedValue({ succeeded: [], failed: [], deleted: ['/var/www/src/deleted.php'], deleteFailed: [] });
-      (vscode.window.showInformationMessage as jest.Mock).mockResolvedValue('Proceed');
+      pickConfirmation('Proceed');
     });
 
     it('passes remote delete paths to orchestrator', async () => {
@@ -223,14 +232,14 @@ describe('uploadSelected command', () => {
 
     it('always shows confirmation dialog when deletions present, even if suppressed', async () => {
       (mockContext.globalState.get as jest.Mock).mockReturnValue(true);
-      (vscode.window.showInformationMessage as jest.Mock).mockResolvedValue('Proceed');
+      pickConfirmation('Proceed');
       await uploadSelected(resource, undefined, dependencies());
-      expect(vscode.window.showInformationMessage).toHaveBeenCalled();
+      expect(vscode.window.showQuickPick).toHaveBeenCalled();
       expect(mockUpload).toHaveBeenCalled();
     });
 
     it('cancels when user declines deletion confirmation', async () => {
-      (vscode.window.showInformationMessage as jest.Mock).mockResolvedValue('Cancel');
+      pickConfirmation('Cancel');
       await uploadSelected(resource, undefined, dependencies());
       expect(mockUpload).not.toHaveBeenCalled();
     });
