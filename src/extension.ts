@@ -42,6 +42,7 @@ import { uploadFilesHere, uploadFolderHere } from './commands/uploadHere';
 import { disconnectRemoteBrowser } from './commands/disconnectRemoteBrowser';
 import { openSshTerminal, OpenSshTerminalSelection } from './commands/openSshTerminal';
 import { importFromVscodeSftp } from './commands/importFromVscodeSftp';
+import { resetConfirmations } from './commands/resetConfirmations';
 import { detectVscodeSftp } from './importers/vscodeSftp/detection';
 import { UploadOnSaveService } from './services/UploadOnSaveService';
 import { FileWatcherService } from './services/FileWatcherService';
@@ -298,9 +299,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
     vscode.commands.registerCommand(
       'fileferry.resetConfirmations',
-      withErrorHandling('resetConfirmations', async () => {
-        vscode.window.showInformationMessage('FileFerry: Upload confirmations reset.');
-      })
+      withErrorHandling('resetConfirmations', () => resetConfirmations(context.globalState))
     ),
 
     vscode.commands.registerCommand(
