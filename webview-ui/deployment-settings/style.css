@@ -408,6 +408,13 @@ button.btn-danger:hover:not(:disabled) {
   color: var(--vscode-descriptionForeground);
 }
 
+/* Extra breathing room above a section that follows a table (Excluded Paths
+   under the mappings). A class, not an inline style: the webview CSP has no
+   unsafe-inline, so a style attribute is silently dropped. */
+.section-title-spaced {
+  margin-top: 24px;
+}
+
 .input-row {
   display: flex;
   gap: 6px;
