@@ -1,105 +1,125 @@
 import * as vscode from 'vscode';
-import { UploadConfirmation } from '../uploadConfirmation';
+import { ConfirmationChoice, UploadConfirmation } from '../uploadConfirmation';
 
 const mockGlobalState = {
   get: jest.fn(),
   update: jest.fn(),
 };
 
-const mockShowMessage = jest.fn();
+// Feature 36: the confirmation is a QuickPick (keyboard-first), driven through an
+// injected `showPick(title, items)` so the class is testable without VS Code.
+const mockShowPick = jest.fn();
 const mockOutput = { appendLine: jest.fn(), show: jest.fn() };
+
+// Resolves the pick with the item carrying the given label (what Enter or a click
+// on that row does), or with undefined for Escape / focus loss.
+function pickLabel(label: string | undefined): void {
+  mockShowPick.mockImplementation(async (_title: string, items: ConfirmationChoice[]) =>
+    label === undefined ? undefined : items.find(item => item.label === label)
+  );
+}
+
+function shownTitle(): string {
+  return mockShowPick.mock.calls[0][0];
+}
+
+function shownLabels(): string[] {
+  return (mockShowPick.mock.calls[0][1] as ConfirmationChoice[]).map(item => item.label);
+}
+
+function shownItem(label: string): ConfirmationChoice {
+  const item = (mockShowPick.mock.calls[0][1] as ConfirmationChoice[]).find(candidate => candidate.label === label);
+  if (!item) {
+    throw new Error(`no item labelled "${label}"`);
+  }
+  return item;
+}
 
 describe('UploadConfirmation', () => {
   let confirmation: UploadConfirmation;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    confirmation = new UploadConfirmation(mockGlobalState as any, mockOutput as any, mockShowMessage);
+    confirmation = new UploadConfirmation(mockGlobalState as any, mockOutput as any, mockShowPick);
   });
 
   it('returns true without prompting when suppressed for this server', async () => {
     mockGlobalState.get.mockReturnValue(true);
     const result = await confirmation.confirm('prod', 3);
     expect(result).toBe(true);
-    expect(mockShowMessage).not.toHaveBeenCalled();
+    expect(mockShowPick).not.toHaveBeenCalled();
   });
 
-  it('shows correct message with file count', async () => {
+  it('asks the question as the pick title, with the file count', async () => {
     mockGlobalState.get.mockReturnValue(false);
-    mockShowMessage.mockResolvedValue('Upload');
+    pickLabel('Upload');
     await confirmation.confirm('prod', 5);
-    expect(mockShowMessage).toHaveBeenCalledWith(
-      'Upload 5 files to "prod"?',
-      'Upload',
-      "Upload, don't ask again",
-      'Cancel'
-    );
+    expect(shownTitle()).toBe('Upload 5 files to "prod"?');
+  });
+
+  it('offers Upload, "don\'t ask again", and Cancel, in that order', async () => {
+    mockGlobalState.get.mockReturnValue(false);
+    pickLabel('Upload');
+    await confirmation.confirm('prod', 5);
+    expect(shownLabels()).toEqual(['Upload', "Upload, don't ask again", 'Cancel']);
   });
 
   it('shows server name instead of id when serverName is provided', async () => {
     mockGlobalState.get.mockReturnValue(false);
-    mockShowMessage.mockResolvedValue('Upload');
+    pickLabel('Upload');
     await confirmation.confirm('b447ea4e-6693-4a46-8e3c-e708c4bdad98', 2, 'Production');
-    expect(mockShowMessage).toHaveBeenCalledWith(
-      'Upload 2 files to "Production"?',
-      expect.any(String),
-      expect.any(String),
-      expect.any(String)
-    );
+    expect(shownTitle()).toBe('Upload 2 files to "Production"?');
   });
 
-  it('falls back to server id in message when serverName is not provided', async () => {
+  it('falls back to server id in the title when serverName is not provided', async () => {
     mockGlobalState.get.mockReturnValue(false);
-    mockShowMessage.mockResolvedValue('Upload');
+    pickLabel('Upload');
     await confirmation.confirm('prod', 2);
-    expect(mockShowMessage).toHaveBeenCalledWith(
-      'Upload 2 files to "prod"?',
-      expect.any(String),
-      expect.any(String),
-      expect.any(String)
-    );
+    expect(shownTitle()).toBe('Upload 2 files to "prod"?');
   });
 
   it('shows singular "1 file" when count is 1', async () => {
     mockGlobalState.get.mockReturnValue(false);
-    mockShowMessage.mockResolvedValue('Upload');
+    pickLabel('Upload');
     await confirmation.confirm('staging', 1);
-    expect(mockShowMessage).toHaveBeenCalledWith(
-      'Upload 1 file to "staging"?',
-      expect.any(String),
-      expect.any(String),
-      expect.any(String)
-    );
+    expect(shownTitle()).toBe('Upload 1 file to "staging"?');
   });
 
-  it('returns true when user clicks Upload', async () => {
+  it('explains the "don\'t ask again" row: which server, and how to undo it', async () => {
     mockGlobalState.get.mockReturnValue(false);
-    mockShowMessage.mockResolvedValue('Upload');
+    pickLabel('Upload');
+    await confirmation.confirm('prod', 3, 'Production');
+    const detail = shownItem("Upload, don't ask again").detail ?? '';
+    expect(detail).toContain('Production');
+    expect(detail).toContain('Reset Upload Confirmations');
+  });
+
+  it('returns true when the user picks Upload', async () => {
+    mockGlobalState.get.mockReturnValue(false);
+    pickLabel('Upload');
     const result = await confirmation.confirm('prod', 3);
     expect(result).toBe(true);
     expect(mockGlobalState.update).not.toHaveBeenCalled();
   });
 
-  it('returns true and suppresses future prompts when user clicks dont ask again', async () => {
+  it('returns true and suppresses future prompts when the user picks "don\'t ask again"', async () => {
     mockGlobalState.get.mockReturnValue(false);
-    mockShowMessage.mockResolvedValue("Upload, don't ask again");
+    pickLabel("Upload, don't ask again");
     const result = await confirmation.confirm('prod', 3);
     expect(result).toBe(true);
-    expect(mockGlobalState.update).toHaveBeenCalledWith(
-      'fileferry.confirm.suppress.prod', true
-    );
+    expect(mockGlobalState.update).toHaveBeenCalledWith('fileferry.confirm.suppress.prod', true);
   });
 
-  it('returns false when user clicks Cancel', async () => {
+  it('returns false when the user picks Cancel', async () => {
     mockGlobalState.get.mockReturnValue(false);
-    mockShowMessage.mockResolvedValue('Cancel');
+    pickLabel('Cancel');
     const result = await confirmation.confirm('prod', 3);
     expect(result).toBe(false);
   });
 
-  it('returns false when user dismisses dialog (undefined)', async () => {
+  it('returns false when the pick is dismissed (Escape or focus loss)', async () => {
     mockGlobalState.get.mockReturnValue(false);
-    mockShowMessage.mockResolvedValue(undefined);
+    pickLabel(undefined);
     const result = await confirmation.confirm('prod', 3);
     expect(result).toBe(false);
   });
@@ -109,6 +129,21 @@ describe('UploadConfirmation', () => {
     expect(mockGlobalState.update).toHaveBeenCalledWith('fileferry.confirm.suppress.prod', false);
     expect(mockGlobalState.update).toHaveBeenCalledWith('fileferry.confirm.suppress.staging', false);
   });
+
+  it('defaults to a real QuickPick with the question as its title', async () => {
+    mockGlobalState.get.mockReturnValue(false);
+    const realConfirmation = new UploadConfirmation(mockGlobalState as any, mockOutput as any);
+    (vscode.window.showQuickPick as jest.Mock).mockImplementation(async (items: ConfirmationChoice[]) =>
+      items.find(item => item.label === 'Upload')
+    );
+
+    const confirmed = await realConfirmation.confirm('prod', 2, 'Production');
+
+    expect(confirmed).toBe(true);
+    const [items, options] = (vscode.window.showQuickPick as jest.Mock).mock.calls[0];
+    expect(items.map((item: ConfirmationChoice) => item.label)).toEqual(['Upload', "Upload, don't ask again", 'Cancel']);
+    expect(options).toEqual(expect.objectContaining({ title: 'Upload 2 files to "Production"?', ignoreFocusOut: false }));
+  });
 });
 
 describe('UploadConfirmation.confirmWithDeletions', () => {
@@ -116,66 +151,50 @@ describe('UploadConfirmation.confirmWithDeletions', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    confirmation = new UploadConfirmation(mockGlobalState as any, mockOutput as any, mockShowMessage);
+    confirmation = new UploadConfirmation(mockGlobalState as any, mockOutput as any, mockShowPick);
   });
 
-  it('always shows dialog even when suppressed (deletions are irreversible)', async () => {
+  it('always shows the pick even when suppressed (deletions are irreversible)', async () => {
     mockGlobalState.get.mockReturnValue(true); // suppressed
-    mockShowMessage.mockResolvedValue('Proceed');
+    pickLabel('Proceed');
     await confirmation.confirmWithDeletions('Production', 2, 1);
-    expect(mockShowMessage).toHaveBeenCalled();
+    expect(mockShowPick).toHaveBeenCalled();
   });
 
-  it('shows upload and delete counts in the message', async () => {
+  it('names the server and the upload and delete counts in the title', async () => {
     mockGlobalState.get.mockReturnValue(false);
-    mockShowMessage.mockResolvedValue('Proceed');
+    pickLabel('Proceed');
     await confirmation.confirmWithDeletions('Production', 3, 2);
-    expect(mockShowMessage).toHaveBeenCalledWith(
-      expect.stringContaining('3'),
-      expect.any(String),
-      expect.any(String)
-    );
-    expect(mockShowMessage).toHaveBeenCalledWith(
-      expect.stringContaining('2'),
-      expect.any(String),
-      expect.any(String)
-    );
-    expect(mockShowMessage).toHaveBeenCalledWith(
-      expect.stringContaining('Production'),
-      expect.any(String),
-      expect.any(String)
-    );
+    expect(shownTitle()).toBe('Deploy to "Production": upload 3 files and delete 2 files?');
   });
 
-  it('does not offer "don\'t ask again" when deletions are present', async () => {
+  it('offers only Proceed and Cancel (no "don\'t ask again")', async () => {
     mockGlobalState.get.mockReturnValue(false);
-    mockShowMessage.mockResolvedValue('Proceed');
+    pickLabel('Proceed');
     await confirmation.confirmWithDeletions('Production', 1, 1);
-    const call = mockShowMessage.mock.calls[0];
-    const options = call.slice(1); // everything after the message string
-    expect(options.join(' ')).not.toContain("don't ask again");
+    expect(shownLabels()).toEqual(['Proceed', 'Cancel']);
   });
 
-  it('returns true when user confirms', async () => {
-    mockShowMessage.mockResolvedValue('Proceed');
+  it('returns true when the user proceeds', async () => {
+    pickLabel('Proceed');
     const result = await confirmation.confirmWithDeletions('Production', 1, 1);
     expect(result).toBe(true);
   });
 
-  it('returns false when user cancels', async () => {
-    mockShowMessage.mockResolvedValue('Cancel');
+  it('returns false when the user cancels', async () => {
+    pickLabel('Cancel');
     const result = await confirmation.confirmWithDeletions('Production', 1, 1);
     expect(result).toBe(false);
   });
 
-  it('returns false when user dismisses (undefined)', async () => {
-    mockShowMessage.mockResolvedValue(undefined);
+  it('returns false when the pick is dismissed', async () => {
+    pickLabel(undefined);
     const result = await confirmation.confirmWithDeletions('Production', 0, 1);
     expect(result).toBe(false);
   });
 
   it('does not update globalState (no suppression for deletions)', async () => {
-    mockShowMessage.mockResolvedValue('Proceed');
+    pickLabel('Proceed');
     await confirmation.confirmWithDeletions('Production', 1, 2);
     expect(mockGlobalState.update).not.toHaveBeenCalled();
   });
@@ -188,8 +207,8 @@ describe('UploadConfirmation.confirmSyncDeletions', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     // The destructive delete confirm goes through the injected modal-warning
-    // channel, NOT the dismissable info toast used for ordinary confirms.
-    confirmation = new UploadConfirmation(mockGlobalState as any, mockOutput as any, mockShowMessage, mockShowModalWarning);
+    // channel, NOT the dismissable QuickPick used for ordinary confirms.
+    confirmation = new UploadConfirmation(mockGlobalState as any, mockOutput as any, mockShowPick, mockShowModalWarning);
   });
 
   it('names the upload and delete counts and warns deletes are irreversible', async () => {
@@ -200,8 +219,8 @@ describe('UploadConfirmation.confirmSyncDeletions', () => {
     expect(message).toContain('4');
     expect(message).toContain('3');
     expect(message.toLowerCase()).toContain('cannot be recovered');
-    // Uses the modal channel, never the plain info toast.
-    expect(mockShowMessage).not.toHaveBeenCalled();
+    // Uses the modal channel, never the pick.
+    expect(mockShowPick).not.toHaveBeenCalled();
   });
 
   it('returns true only when the user picks the delete action', async () => {
@@ -226,8 +245,8 @@ describe('UploadConfirmation.confirmSyncDeletions', () => {
     expect(mockGlobalState.update).not.toHaveBeenCalled();
   });
 
-  it('defaults to a real modal warning dialog (not a dismissable toast)', async () => {
-    const realConfirmation = new UploadConfirmation(mockGlobalState as any, mockOutput as any, mockShowMessage);
+  it('defaults to a real modal warning dialog (not a dismissable pick)', async () => {
+    const realConfirmation = new UploadConfirmation(mockGlobalState as any, mockOutput as any, mockShowPick);
     (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue('Sync and Delete');
 
     const confirmed = await realConfirmation.confirmSyncDeletions('Production', 2, 1);
@@ -241,7 +260,7 @@ describe('UploadConfirmation.confirmSyncDeletions', () => {
   });
 });
 
-describe('UploadConfirmation — deploy hooks visibility', () => {
+describe('UploadConfirmation, deploy hooks visibility', () => {
   let confirmation: UploadConfirmation;
   const mockShowModalWarning = jest.fn();
 
@@ -256,14 +275,14 @@ describe('UploadConfirmation — deploy hooks visibility', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     confirmation = new UploadConfirmation(
-      mockGlobalState as any, mockOutput as any, mockShowMessage, mockShowModalWarning
+      mockGlobalState as any, mockOutput as any, mockShowPick, mockShowModalWarning
     );
   });
 
   describe('confirm', () => {
     it('writes each hook command (phase + location) to the output channel and reveals it', async () => {
       mockGlobalState.get.mockReturnValue(false);
-      mockShowMessage.mockResolvedValue('Upload');
+      pickLabel('Upload');
       await confirmation.confirm('prod', 3, 'Production', hooks);
       const text = outputText();
       expect(text).toContain('npm run build');
@@ -275,36 +294,36 @@ describe('UploadConfirmation — deploy hooks visibility', () => {
       expect(mockOutput.show).toHaveBeenCalledWith(true);
     });
 
-    it('shows a quiet toast pointing at the output (not a modal)', async () => {
+    it('names the hook count on the Upload row and points at the output (not a modal)', async () => {
       mockGlobalState.get.mockReturnValue(false);
-      mockShowMessage.mockResolvedValue('Upload');
+      pickLabel('Upload');
       await confirmation.confirm('prod', 3, 'Production', hooks);
-      const [message] = mockShowMessage.mock.calls[0];
-      expect(message).toContain('hook');
-      expect(message).toMatch(/FileFerry output/i);
+      expect(shownTitle()).toBe('Upload 3 files to "Production"?');
+      const detail = shownItem('Upload').detail ?? '';
+      expect(detail).toContain('2 hooks');
+      expect(detail).toMatch(/FileFerry output/i);
       expect(mockShowModalWarning).not.toHaveBeenCalled();
     });
 
-    it('always shows the dialog when hooks are present, even if suppressed', async () => {
+    it('always shows the pick when hooks are present, even if suppressed', async () => {
       mockGlobalState.get.mockReturnValue(true); // suppressed
-      mockShowMessage.mockResolvedValue('Upload');
+      pickLabel('Upload');
       const result = await confirmation.confirm('prod', 3, 'Production', hooks);
-      expect(mockShowMessage).toHaveBeenCalled();
+      expect(mockShowPick).toHaveBeenCalled();
       expect(result).toBe(true);
     });
 
     it('does not offer "don\'t ask again" when hooks are present', async () => {
       mockGlobalState.get.mockReturnValue(false);
-      mockShowMessage.mockResolvedValue('Upload');
+      pickLabel('Upload');
       await confirmation.confirm('prod', 3, 'Production', hooks);
-      const options = mockShowMessage.mock.calls[0].slice(1); // after the message
-      expect(options.join(' ')).not.toContain("don't ask again");
+      expect(shownLabels()).toEqual(['Upload', 'Cancel']);
       expect(mockGlobalState.update).not.toHaveBeenCalled();
     });
 
-    it('returns false when the user cancels a hooked deploy', async () => {
+    it('returns false when the user dismisses a hooked deploy', async () => {
       mockGlobalState.get.mockReturnValue(false);
-      mockShowMessage.mockResolvedValue(undefined);
+      pickLabel(undefined);
       expect(await confirmation.confirm('prod', 3, 'Production', hooks)).toBe(false);
     });
 
@@ -312,7 +331,7 @@ describe('UploadConfirmation — deploy hooks visibility', () => {
       mockGlobalState.get.mockReturnValue(true); // suppressed
       const result = await confirmation.confirm('prod', 3, 'Production');
       expect(result).toBe(true);
-      expect(mockShowMessage).not.toHaveBeenCalled();
+      expect(mockShowPick).not.toHaveBeenCalled();
       expect(mockOutput.appendLine).not.toHaveBeenCalled();
     });
 
@@ -320,17 +339,18 @@ describe('UploadConfirmation — deploy hooks visibility', () => {
       mockGlobalState.get.mockReturnValue(true); // suppressed
       const result = await confirmation.confirm('prod', 3, 'Production', { preDeploy: [], postDeploy: [] });
       expect(result).toBe(true);
-      expect(mockShowMessage).not.toHaveBeenCalled();
+      expect(mockShowPick).not.toHaveBeenCalled();
     });
   });
 
   describe('confirmWithDeletions', () => {
-    it('writes hook commands to the output and shows a toast alongside the summary', async () => {
-      mockShowMessage.mockResolvedValue('Proceed');
+    it('writes hook commands to the output and names the hook count on the Proceed row', async () => {
+      pickLabel('Proceed');
       await confirmation.confirmWithDeletions('Production', 2, 1, hooks);
-      const [message] = mockShowMessage.mock.calls[0];
-      expect(message).toContain('Production');
-      expect(message).toMatch(/FileFerry output/i);
+      expect(shownTitle()).toContain('Production');
+      const detail = shownItem('Proceed').detail ?? '';
+      expect(detail).toContain('2 hooks');
+      expect(detail).toMatch(/FileFerry output/i);
       expect(outputText()).toContain('npm run build');
       expect(outputText()).toContain('systemctl reload nginx');
     });
@@ -350,7 +370,7 @@ describe('UploadConfirmation — deploy hooks visibility', () => {
 
   describe('confirmHooks (multi-server, no per-file dialog)', () => {
     it('lists hooks grouped by server in the output and returns true on proceed', async () => {
-      mockShowMessage.mockResolvedValue('Proceed');
+      pickLabel('Proceed');
       const result = await confirmation.confirmHooks([
         { serverName: 'Staging', hooks: { preDeploy: [{ command: 'npm run build', location: 'local' }] } },
         { serverName: 'Production', hooks: { postDeploy: [{ command: 'reload nginx', location: 'remote' }] } },
@@ -361,7 +381,8 @@ describe('UploadConfirmation — deploy hooks visibility', () => {
       expect(text).toContain('npm run build');
       expect(text).toContain('Production');
       expect(text).toContain('reload nginx');
-      expect(mockShowMessage).toHaveBeenCalled();
+      expect(shownTitle()).toContain('2 server(s)');
+      expect(shownLabels()).toEqual(['Proceed', 'Cancel']);
     });
 
     it('returns true without prompting when no server has hooks', async () => {
@@ -370,16 +391,58 @@ describe('UploadConfirmation — deploy hooks visibility', () => {
         { serverName: 'Production', hooks: { preDeploy: [], postDeploy: [] } },
       ]);
       expect(result).toBe(true);
-      expect(mockShowMessage).not.toHaveBeenCalled();
+      expect(mockShowPick).not.toHaveBeenCalled();
       expect(mockOutput.appendLine).not.toHaveBeenCalled();
     });
 
     it('returns false when the user cancels', async () => {
-      mockShowMessage.mockResolvedValue(undefined);
+      pickLabel(undefined);
       const result = await confirmation.confirmHooks([
         { serverName: 'Production', hooks: { postDeploy: [{ command: 'reload', location: 'remote' }] } },
       ]);
       expect(result).toBe(false);
     });
+  });
+});
+
+describe('UploadConfirmation.resetAll without arguments (the reset command)', () => {
+  // The command cannot know every server that ever had "don't ask again"
+  // pressed (servers get deleted, projects change), so the sweep reads the
+  // stored keys instead of a server list.
+  const sweepState = {
+    get: jest.fn(),
+    update: jest.fn(),
+    keys: jest.fn(),
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('clears every stored suppression key and returns how many it cleared', async () => {
+    sweepState.keys.mockReturnValue([
+      'fileferry.confirm.suppress.prod',
+      'fileferry.confirm.suppress.staging',
+      'fileferry.somethingElse',
+    ]);
+    const confirmation = new UploadConfirmation(sweepState as any, mockOutput as any, mockShowPick);
+    const cleared = await confirmation.resetAll();
+    expect(cleared).toBe(2);
+    expect(sweepState.update).toHaveBeenCalledWith('fileferry.confirm.suppress.prod', false);
+    expect(sweepState.update).toHaveBeenCalledWith('fileferry.confirm.suppress.staging', false);
+    expect(sweepState.update).not.toHaveBeenCalledWith('fileferry.somethingElse', expect.anything());
+  });
+
+  it('returns 0 and touches nothing when no suppression is stored', async () => {
+    sweepState.keys.mockReturnValue(['fileferry.somethingElse']);
+    const confirmation = new UploadConfirmation(sweepState as any, mockOutput as any, mockShowPick);
+    expect(await confirmation.resetAll()).toBe(0);
+    expect(sweepState.update).not.toHaveBeenCalled();
+  });
+
+  it('still accepts an explicit server list and reports that count', async () => {
+    const confirmation = new UploadConfirmation(sweepState as any, mockOutput as any, mockShowPick);
+    expect(await confirmation.resetAll(['prod', 'staging'])).toBe(2);
+    expect(sweepState.keys).not.toHaveBeenCalled();
   });
 });

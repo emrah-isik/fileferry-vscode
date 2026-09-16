@@ -2,6 +2,13 @@ import { FtpService } from '../../ftpService';
 import { TransferService } from '../../transferService';
 import { connectProviderRegistry } from '../../ssh/connectProviders';
 
+// Rider on feature 36: the atomic-upload sidecar carries a random suffix
+// (<file>.fileferry-<8 hex>.tmp) so two concurrent uploads of one remote path,
+// e.g. two configured servers on the same host, never share a temp file.
+const tempFor = (remotePath: string) =>
+  expect.stringMatching(new RegExp('^' + remotePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\.fileferry-[0-9a-f]{8}\\.tmp$'));
+
+
 // Mock basic-ftp Client
 const mockClient = {
   access: jest.fn(),
@@ -190,12 +197,21 @@ describe('FtpService', () => {
       await service.uploadFile('/local/file.txt', '/remote/file.txt');
       expect(mockClient.uploadFrom).toHaveBeenCalledWith(
         'mock-read-stream',
-        '/remote/file.txt.fileferry.tmp'
+        tempFor('/remote/file.txt')
       );
       expect(mockClient.rename).toHaveBeenCalledWith(
-        '/remote/file.txt.fileferry.tmp',
+        tempFor('/remote/file.txt'),
         '/remote/file.txt'
       );
+    });
+
+    it('gives every upload its own temp name (same collision rule as SFTP)', async () => {
+      await service.uploadFile('/local/file.txt', '/remote/file.txt');
+      await service.uploadFile('/local/file.txt', '/remote/file.txt');
+      const [firstTemp, secondTemp] = mockClient.uploadFrom.mock.calls.map((call: unknown[]) => call[1]);
+      expect(firstTemp).toEqual(tempFor('/remote/file.txt'));
+      expect(firstTemp).not.toBe(secondTemp);
+      expect(mockClient.rename).toHaveBeenNthCalledWith(2, secondTemp, '/remote/file.txt');
     });
 
     it('creates parent directory and retries on upload failure', async () => {
@@ -211,7 +227,7 @@ describe('FtpService', () => {
       mockClient.rename.mockRejectedValueOnce(new Error('rename failed'));
       await expect(service.uploadFile('/local/f.txt', '/remote/f.txt'))
         .rejects.toThrow('rename failed');
-      expect(mockClient.remove).toHaveBeenCalledWith('/remote/f.txt.fileferry.tmp');
+      expect(mockClient.remove).toHaveBeenCalledWith(tempFor('/remote/f.txt'));
     });
 
     // Servers that allow overwriting a file but not creating new files in the
@@ -223,7 +239,7 @@ describe('FtpService', () => {
         .mockResolvedValueOnce(undefined);
       await service.uploadFile('/local/f.txt', '/remote/f.txt');
       expect(mockClient.uploadFrom).toHaveBeenNthCalledWith(
-        1, 'mock-read-stream', '/remote/f.txt.fileferry.tmp'
+        1, 'mock-read-stream', tempFor('/remote/f.txt')
       );
       expect(mockClient.uploadFrom).toHaveBeenNthCalledWith(
         2, 'mock-read-stream', '/remote/f.txt'

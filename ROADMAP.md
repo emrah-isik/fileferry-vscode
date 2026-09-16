@@ -119,6 +119,7 @@
 - Batch deploy from branch diff (all files changed between two branches)
 - Additional sync directions: remote→local and bidirectional sync (v0.10 shipped the one-way local→remote mirror)
 - Download whole folders from the Remote Files panel
+- Upload, Upload to Servers and Compare with Remote in the editor right-click menu (text area and editor tab)
 
 ---
 

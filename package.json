@@ -1,7 +1,7 @@
 {
   "name": "fileferry",
   "displayName": "FileFerry",
-  "description": "Modern SFTP/FTP deploy for VS Code. Works with OpenSSH 8.8+, ed25519, and 1Password agent. Credentials stored in the OS keychain, never in a config file.",
+  "description": "The vscode-sftp alternative that works on modern OpenSSH: git-aware SFTP/FTP deploy for VS Code and Cursor, credentials in your OS keychain, never in a config file.",
   "version": "0.15.0",
   "publisher": "esidevlabs",
   "icon": "resources/icon.png",
@@ -10,6 +10,7 @@
     "type": "git",
     "url": "https://github.com/emrah-isik/fileferry-vscode"
   },
+  "homepage": "https://github.com/emrah-isik/fileferry-vscode#readme",
   "keywords": [
     "sftp",
     "deploy",
@@ -24,6 +25,7 @@
     "git-deploy"
   ],
   "categories": [
+    "SCM Providers",
     "Other"
   ],
   "extensionDependencies": [
@@ -577,6 +579,10 @@
         },
         {
           "command": "fileferry.remoteBrowser.createFolder",
+          "when": "false"
+        },
+        {
+          "command": "fileferry.syncFolderToRemote",
           "when": "false"
         },
         {

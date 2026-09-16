@@ -1,6 +1,11 @@
 # FileFerry
 
-Deploy files from VS Code to remote servers over SFTP, FTP, or FTPS, without leaving the editor.
+[![VS Marketplace](https://img.shields.io/visual-studio-marketplace/v/esidevlabs.fileferry?label=VS%20Marketplace)](https://marketplace.visualstudio.com/items?itemName=esidevlabs.fileferry)
+[![Open VSX](https://img.shields.io/open-vsx/v/esidevlabs/fileferry?label=Open%20VSX)](https://open-vsx.org/extension/esidevlabs/fileferry)
+[![CI](https://img.shields.io/github/actions/workflow/status/emrah-isik/fileferry-vscode/ci.yml?branch=main&label=CI)](https://github.com/emrah-isik/fileferry-vscode/actions/workflows/ci.yml)
+[![License](https://img.shields.io/github/license/emrah-isik/fileferry-vscode)](./LICENSE)
+
+The actively maintained vscode-sftp alternative: deploy files from VS Code or Cursor to remote servers over SFTP, FTP, or FTPS, without leaving the editor.
 
 Right-click changed files in the Source Control panel and pick **FileFerry: Upload**, or open the **FileFerry → Changed Files** view, select files, and press `Alt+U`. No config file juggling, no manual path entry: just deploy what git knows you changed.
 
@@ -11,6 +16,8 @@ Right-click changed files in the Source Control panel and pick **FileFerry: Uplo
 - **Confirm before every deploy**: no silent uploads; you always see what will be sent before it goes
 - **Full visibility**: dry run mode, upload history, and file date guard mean you always know what happened and why
 - **Modern SSH**: works with your existing `~/.ssh/config` aliases (including `ProxyJump`), OpenSSH 8.8+, 1Password agent, PEM keys, keyboard-interactive 2FA, and SSH jump hosts (single or chained, with 2FA on any hop) out of the box
+
+**Documentation:** [User guide](docs/GUIDE.md) · [Configuration reference](docs/CONFIG.md) · [Changelog](CHANGELOG.md)
 
 ---
 
@@ -233,6 +240,12 @@ Configurable via `Preferences → Keyboard Shortcuts` → search `fileferry`.
 **Keychain not working on Linux**: Install `libsecret`: `sudo apt install libsecret-1-0`.
 
 > FileFerry can overwrite or delete remote files. Always verify your configuration before deploying to a production server.
+
+---
+
+## Cursor, VSCodium, and other VS Code forks
+
+FileFerry is published to [Open VSX](https://open-vsx.org/extension/esidevlabs/fileferry) as well as the VS Code Marketplace, so editors that cannot use the Microsoft Marketplace can install it. In Cursor, open the editor window (the **IDE** button at the top right of the agent window), press `Ctrl+Shift+X`, and search for **FileFerry**. If Cursor offers an older version than the one listed on Open VSX, its mirror has not caught up yet: try again in a minute, or download the latest `.vsix` from the [Open VSX page](https://open-vsx.org/extension/esidevlabs/fileferry) and use **Extensions: Install from VSIX**. The original vscode-sftp is not available on Open VSX at all, and its most popular fork has not been updated there since 2023.
 
 ---
 

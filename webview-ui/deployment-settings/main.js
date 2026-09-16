@@ -547,7 +547,7 @@ function renderMappingsTab(server) {
     </table>
     <button id="btn-add-mapping" class="btn-secondary">+ Add Mapping</button>
 
-    <div class="section-title" style="margin-top:24px">Excluded Paths</div>
+    <div class="section-title section-title-spaced">Excluded Paths</div>
     <p class="hint">Glob patterns separated by commas (e.g. node_modules, *.log, vendor)</p>
     <input id="f-excluded" type="text" value="${escapeHtml(excludedPaths.join(', '))}">
     <span class="field-error" id="err-excluded"></span>

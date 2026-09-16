@@ -13,6 +13,13 @@ import { HopConnectError, HostNotTrustedError, VerificationRequiredError } from 
 import { chainConnect } from '../ssh/chainConnect';
 import { driveSsh2HostVerifier } from './helpers/driveSsh2HostVerifier';
 
+// Rider on feature 36: the atomic-upload sidecar carries a random suffix
+// (<file>.fileferry-<8 hex>.tmp) so two concurrent uploads of one remote path,
+// e.g. two configured servers on the same host, never share a temp file.
+const tempFor = (remotePath: string) =>
+  expect.stringMatching(new RegExp('^' + remotePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\.fileferry-[0-9a-f]{8}\\.tmp$'));
+
+
 const mockChainConnect = chainConnect as jest.Mock;
 
 // Mock for the underlying ssh2 Client that ssh2-sftp-client wraps
@@ -859,8 +866,20 @@ describe('SftpService', () => {
       await service.uploadFile('/local/src/index.php', '/var/www/src/index.php');
       expect(mockMethods.put).toHaveBeenCalledWith(
         '/local/src/index.php',
-        '/var/www/src/index.php.fileferry.tmp'
+        tempFor('/var/www/src/index.php')
       );
+    });
+
+    it('gives every upload its own temp name, so two uploads of one path never collide', async () => {
+      await service.uploadFile('/local/a.php', '/var/www/a.php');
+      await service.uploadFile('/local/a.php', '/var/www/a.php');
+      const [firstTemp, secondTemp] = mockMethods.put.mock.calls.map(call => call[1]);
+      expect(firstTemp).toEqual(tempFor('/var/www/a.php'));
+      expect(secondTemp).toEqual(tempFor('/var/www/a.php'));
+      expect(firstTemp).not.toBe(secondTemp);
+      // Each upload renames its own temp file.
+      expect(mockMethods.posixRename).toHaveBeenNthCalledWith(1, firstTemp, '/var/www/a.php');
+      expect(mockMethods.posixRename).toHaveBeenNthCalledWith(2, secondTemp, '/var/www/a.php');
     });
 
     it('creates remote directory and retries when path does not exist', async () => {
@@ -885,11 +904,11 @@ describe('SftpService', () => {
       // Step 1: put to temp path
       expect(mockMethods.put).toHaveBeenCalledWith(
         '/local/src/index.php',
-        '/var/www/src/index.php.fileferry.tmp'
+        tempFor('/var/www/src/index.php')
       );
       // Step 2: posixRename temp → final (atomic overwrite)
       expect(mockMethods.posixRename).toHaveBeenCalledWith(
-        '/var/www/src/index.php.fileferry.tmp',
+        tempFor('/var/www/src/index.php'),
         '/var/www/src/index.php'
       );
     });
@@ -899,11 +918,11 @@ describe('SftpService', () => {
       mockMethods.rename.mockResolvedValue(undefined);
       await service.uploadFile('/local/a.php', '/var/www/a.php');
       expect(mockMethods.posixRename).toHaveBeenCalledWith(
-        '/var/www/a.php.fileferry.tmp',
+        tempFor('/var/www/a.php'),
         '/var/www/a.php'
       );
       expect(mockMethods.rename).toHaveBeenCalledWith(
-        '/var/www/a.php.fileferry.tmp',
+        tempFor('/var/www/a.php'),
         '/var/www/a.php'
       );
     });
@@ -926,7 +945,7 @@ describe('SftpService', () => {
       ).rejects.toThrow('Permission denied');
       // Should try to delete the orphaned temp file
       expect(mockMethods.delete).toHaveBeenCalledWith(
-        '/var/www/a.php.fileferry.tmp'
+        tempFor('/var/www/a.php')
       );
     });
 
@@ -942,16 +961,16 @@ describe('SftpService', () => {
       expect(mockMethods.put).toHaveBeenNthCalledWith(
         1,
         '/local/src/new/index.php',
-        '/var/www/src/new/index.php.fileferry.tmp'
+        tempFor('/var/www/src/new/index.php')
       );
       expect(mockMethods.put).toHaveBeenNthCalledWith(
         2,
         '/local/src/new/index.php',
-        '/var/www/src/new/index.php.fileferry.tmp'
+        tempFor('/var/www/src/new/index.php')
       );
       // posixRename after successful retry
       expect(mockMethods.posixRename).toHaveBeenCalledWith(
-        '/var/www/src/new/index.php.fileferry.tmp',
+        tempFor('/var/www/src/new/index.php'),
         '/var/www/src/new/index.php'
       );
     });
@@ -969,7 +988,7 @@ describe('SftpService', () => {
       expect(mockMethods.put).toHaveBeenNthCalledWith(
         1,
         '/local/a.php',
-        '/var/www/a.php.fileferry.tmp'
+        tempFor('/var/www/a.php')
       );
       // Second put targets the final path directly (fallback)
       expect(mockMethods.put).toHaveBeenNthCalledWith(
