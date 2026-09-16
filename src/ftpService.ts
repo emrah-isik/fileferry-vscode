@@ -1,6 +1,7 @@
 import { Client as FtpClient } from 'basic-ftp';
 import * as fs from 'fs';
 import * as path from 'path';
+import { atomicUploadTempPath } from './atomicUploadTempPath';
 import { Writable } from 'stream';
 import { TransferService, FileEntry } from './transferService';
 import type { ConnectTarget } from './connectTarget';
@@ -60,7 +61,8 @@ export class FtpService implements TransferService {
       throw new Error('Not connected. Call connect() before uploading.');
     }
 
-    const tempPath = remotePath + '.fileferry.tmp';
+    // Unique per upload: see atomicUploadTempPath.
+    const tempPath = atomicUploadTempPath(remotePath);
 
     try {
       await this.client.uploadFrom(fs.createReadStream(localPath), tempPath);

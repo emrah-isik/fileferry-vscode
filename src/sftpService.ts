@@ -2,6 +2,7 @@ import SftpClient from 'ssh2-sftp-client';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { atomicUploadTempPath } from './atomicUploadTempPath';
 import { UploadPair, UploadResult } from './types';
 import type { ConnectTarget } from './connectTarget';
 import { resolveAgentSocket } from './ssh/agentResolver';
@@ -353,7 +354,8 @@ export class SftpService implements TransferService, RemoteCommandRunner {
 
     // Atomic upload: write to a temp file, then rename in one operation.
     // If the transfer is interrupted, the original file remains intact.
-    const tempPath = remotePath + '.fileferry.tmp';
+    // Unique per upload: see atomicUploadTempPath.
+    const tempPath = atomicUploadTempPath(remotePath);
 
     try {
       await this.client.put(localPath, tempPath);

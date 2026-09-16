@@ -26,6 +26,13 @@ jest.mock('vscode', () => ({
 }));
 
 import * as vscode from 'vscode';
+
+// Rider on feature 36: the atomic-upload sidecar carries a random suffix
+// (<file>.fileferry-<8 hex>.tmp) so two concurrent uploads of one remote path,
+// e.g. two configured servers on the same host, never share a temp file.
+const tempFor = (remotePath: string) =>
+  expect.stringMatching(new RegExp('^' + remotePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\.fileferry-[0-9a-f]{8}\\.tmp$'));
+
 const mockReadFile  = vscode.workspace.fs.readFile as jest.Mock;
 const mockWriteFile = vscode.workspace.fs.writeFile as jest.Mock;
 
@@ -217,14 +224,14 @@ describe('SftpService edge cases', () => {
 
   it('uploads a 0-byte file without error', async () => {
     await service.uploadFile('/local/empty.txt', '/remote/empty.txt');
-    expect(mockMethods.put).toHaveBeenCalledWith('/local/empty.txt', '/remote/empty.txt.fileferry.tmp');
-    expect(mockMethods.posixRename).toHaveBeenCalledWith('/remote/empty.txt.fileferry.tmp', '/remote/empty.txt');
+    expect(mockMethods.put).toHaveBeenCalledWith('/local/empty.txt', tempFor('/remote/empty.txt'));
+    expect(mockMethods.posixRename).toHaveBeenCalledWith(tempFor('/remote/empty.txt'), '/remote/empty.txt');
   });
 
   it('handles remote path with spaces', async () => {
     await service.uploadFile('/local/app.php', '/var/www/my site/app.php');
-    expect(mockMethods.put).toHaveBeenCalledWith('/local/app.php', '/var/www/my site/app.php.fileferry.tmp');
-    expect(mockMethods.posixRename).toHaveBeenCalledWith('/var/www/my site/app.php.fileferry.tmp', '/var/www/my site/app.php');
+    expect(mockMethods.put).toHaveBeenCalledWith('/local/app.php', tempFor('/var/www/my site/app.php'));
+    expect(mockMethods.posixRename).toHaveBeenCalledWith(tempFor('/var/www/my site/app.php'), '/var/www/my site/app.php');
   });
 
   it('disconnect is safe to call when already disconnected', async () => {
