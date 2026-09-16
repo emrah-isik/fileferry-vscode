@@ -580,6 +580,10 @@
           "when": "false"
         },
         {
+          "command": "fileferry.syncFolderToRemote",
+          "when": "false"
+        },
+        {
           "command": "fileferry.changedFiles.uploadSelection",
           "when": "false"
         },
