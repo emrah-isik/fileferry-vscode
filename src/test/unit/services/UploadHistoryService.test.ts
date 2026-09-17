@@ -127,6 +127,14 @@ describe('UploadHistoryService', () => {
       expect(result[0].id).toBe('e-3');
     });
 
+    it('search also matches the remote path, so Remote Files rows are findable by their real name (#31)', async () => {
+      await service.log([
+        entry({ id: 'e-4', trigger: 'remote-edit', localPath: '/tmp/fileferry-browse/web.remote.601cdd9c.php', remotePath: '/var/www/staging/routes/web.php' }),
+      ]);
+      const result = await service.getFiltered({ search: 'routes/web.php' });
+      expect(result.map(found => found.id)).toEqual(['e-4']);
+    });
+
     it('filters by trigger', async () => {
       const result = await service.getFiltered({ trigger: 'watch' });
       expect(result).toHaveLength(1);

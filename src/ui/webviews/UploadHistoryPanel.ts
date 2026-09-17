@@ -2,6 +2,8 @@ import * as vscode from 'vscode';
 import { randomBytes } from 'crypto';
 import { ProjectConfigManager } from '../../storage/ProjectConfigManager';
 import { UploadHistoryService } from '../../services/UploadHistoryService';
+import type { UploadHistoryEntry } from '../../models/UploadHistoryEntry';
+import { historyDisplayPath } from '../../services/historyDisplayPath';
 import type { HistoryFilter } from '../../models/UploadHistoryEntry';
 
 interface Dependencies {
@@ -74,7 +76,7 @@ export class UploadHistoryPanel {
           search: msg.search,
           trigger: msg.trigger,
         });
-        this.panel.webview.postMessage({ command: 'filtered', entries });
+        this.panel.webview.postMessage({ command: 'filtered', entries: withDisplayPaths(entries) });
         break;
       }
 
@@ -104,7 +106,7 @@ export class UploadHistoryPanel {
     const servers = config
       ? Object.entries(config.servers).map(([name, s]) => ({ id: s.id, name }))
       : [];
-    this.panel.webview.postMessage({ command: 'init', entries, servers });
+    this.panel.webview.postMessage({ command: 'init', entries: withDisplayPaths(entries), servers });
   }
 
   private buildHtml(context: vscode.ExtensionContext): string {
@@ -139,4 +141,10 @@ export class UploadHistoryPanel {
     this.disposables.forEach(d => d.dispose());
     this.disposables.length = 0;
   }
+}
+
+// The page shows displayPath in the File column (#31); the stored entry is sent
+// unchanged alongside it, so the tooltip and future columns keep every field.
+function withDisplayPaths(entries: UploadHistoryEntry[]): Array<UploadHistoryEntry & { displayPath: string }> {
+  return entries.map(entry => ({ ...entry, displayPath: historyDisplayPath(entry) }));
 }

@@ -521,7 +521,7 @@ Open the Upload History panel from any of these places:
 - **Status bar menu**: click the FileFerry status bar item, then choose **Upload History**
 - **Post-upload notification**: click the **Show History** button that appears after each upload
 
-The panel shows a table of all uploads with columns for timestamp, file, server, action (upload/delete), **source** (how the transfer was triggered), result (success/failed/cancelled), and error message.
+The panel shows a table of all uploads with columns for timestamp, file, server, action (upload/delete), **source** (how the transfer was triggered), result (success/failed/cancelled), and error message. The file column shows the local file you deployed; for **Remote Edit**, **Remote Create** and **Remote Duplicate** rows, which have no file of yours behind them, it shows the remote path instead. Result badges are coloured (green for success, red for failed); source badges all share one neutral style.
 
 The **Source** column distinguishes: **Manual**, **On Save**, **Multi-Server**, **Watch**, **Sync**, **Remote Edit** (edit-in-place saves), **Remote Create** (panel-created files), **Remote Duplicate**, and **Remote Upload** (upload-here). Only byte-moving operations are logged: renames, moves, permission changes, and deletes from the panel don't appear.
 
@@ -532,7 +532,7 @@ Use the controls at the top of the panel to narrow down the history:
 - **Server dropdown**: show only entries for a specific server
 - **Result dropdown**: filter by success, failed, or cancelled
 - **Source dropdown**: filter by any of the trigger sources above
-- **File search**: free-text search across file paths
+- **File search**: free-text search across local and remote file paths
 
 Filtering runs in the extension, not in the webview.
 
