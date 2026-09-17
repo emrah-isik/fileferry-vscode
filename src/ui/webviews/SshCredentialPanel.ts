@@ -270,7 +270,8 @@ export class SshCredentialPanel {
 
     const answer = await vscode.window.showWarningMessage(
       `Delete "${credential?.name ?? 'this credential'}"? This cannot be undone.`,
-      'Delete', 'Cancel'
+      { modal: true },
+      'Delete'
     );
     if (answer !== 'Delete') return;
 

@@ -446,3 +446,72 @@ describe('UploadConfirmation.resetAll without arguments (the reset command)', ()
     expect(sweepState.keys).not.toHaveBeenCalled();
   });
 });
+
+describe('UploadConfirmation.confirmOverwriteNewer (file date guard, 36b)', () => {
+  let confirmation: UploadConfirmation;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    confirmation = new UploadConfirmation(mockGlobalState as any, mockOutput as any, mockShowPick);
+  });
+
+  it('asks with the count and server in the title and lists the files on the Overwrite row', async () => {
+    pickLabel('Overwrite');
+    await confirmation.confirmOverwriteNewer('Production', ['app.php', 'config.php']);
+    expect(shownTitle()).toBe('2 files are newer on "Production". Overwrite them?');
+    expect(shownLabels()).toEqual(['Overwrite', 'Cancel']);
+    const detail = shownItem('Overwrite').detail ?? '';
+    expect(detail).toContain('app.php');
+    expect(detail).toContain('config.php');
+  });
+
+  it('uses the singular for one file and "the remote" when no server name is given', async () => {
+    pickLabel('Overwrite');
+    await confirmation.confirmOverwriteNewer(undefined, ['app.php']);
+    expect(shownTitle()).toBe('1 file is newer on the remote. Overwrite it?');
+  });
+
+  it('returns true only for Overwrite; Cancel and dismissal return false', async () => {
+    pickLabel('Overwrite');
+    expect(await confirmation.confirmOverwriteNewer('Production', ['a.php'])).toBe(true);
+    pickLabel('Cancel');
+    expect(await confirmation.confirmOverwriteNewer('Production', ['a.php'])).toBe(false);
+    pickLabel(undefined);
+    expect(await confirmation.confirmOverwriteNewer('Production', ['a.php'])).toBe(false);
+  });
+
+  it('never offers "don\'t ask again" and never suppresses', async () => {
+    mockGlobalState.get.mockReturnValue(true);
+    pickLabel('Overwrite');
+    await confirmation.confirmOverwriteNewer('Production', ['a.php']);
+    expect(mockShowPick).toHaveBeenCalled();
+    expect(shownLabels()).not.toContain("Upload, don't ask again");
+    expect(mockGlobalState.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('UploadConfirmation.confirmUploadExcluded (force upload, 36b)', () => {
+  let confirmation: UploadConfirmation;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    confirmation = new UploadConfirmation(mockGlobalState as any, mockOutput as any, mockShowPick);
+  });
+
+  it('names the excluded file and offers Upload anyway / Cancel', async () => {
+    pickLabel('Upload anyway');
+    await confirmation.confirmUploadExcluded('/workspace/debug.log');
+    expect(shownTitle()).toBe('debug.log matches an excluded path. Upload it anyway?');
+    expect(shownLabels()).toEqual(['Upload anyway', 'Cancel']);
+    expect(shownItem('Upload anyway').detail ?? '').toContain('/workspace/debug.log');
+  });
+
+  it('returns true only for Upload anyway', async () => {
+    pickLabel('Upload anyway');
+    expect(await confirmation.confirmUploadExcluded('/workspace/debug.log')).toBe(true);
+    pickLabel('Cancel');
+    expect(await confirmation.confirmUploadExcluded('/workspace/debug.log')).toBe(false);
+    pickLabel(undefined);
+    expect(await confirmation.confirmUploadExcluded('/workspace/debug.log')).toBe(false);
+  });
+});

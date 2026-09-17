@@ -182,12 +182,8 @@ export async function uploadToServers(
             const target = toConnectTarget(await dependencies.credentialManager.getWithSecret(plan.server.credentialId), plan.server.type);
             const newerOnRemote = await new FileDateGuard(createTransferService(plan.server.type)).check(plan.uploadItems, target, plan.server.timeOffsetMs);
             if (newerOnRemote.length > 0) {
-              const fileNames = newerOnRemote.map(f => path.basename(f.localPath)).join(', ');
-              const choice = await vscode.window.showWarningMessage(
-                `FileFerry: ${newerOnRemote.length} file(s) newer on "${plan.serverName}": ${fileNames}`,
-                'Overwrite'
-              );
-              if (choice !== 'Overwrite') {
+              const fileNames = newerOnRemote.map(f => path.basename(f.localPath));
+              if (!(await confirmation.confirmOverwriteNewer(plan.serverName, fileNames))) {
                 continue; // Skip this server
               }
             }

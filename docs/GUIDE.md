@@ -579,7 +579,7 @@ Enable this in **Project Settings** (`FileFerry: Project Settings`).
 
 ### File Date Guard
 
-FileFerry checks if the remote file is newer than your local copy before uploading. If it is, you'll see a warning so you can compare before overwriting someone else's changes.
+FileFerry checks whether the remote file is newer than your local copy before uploading. If it is, a Quick Pick names the files (`2 files are newer on "production". Overwrite them?`) with **Overwrite** and **Cancel** rows: Enter overwrites, Escape cancels, so you can compare first. With Upload to Servers the question is asked per server, and cancelling skips that server only. The guard never offers "don't ask again".
 
 ### Excluded Paths
 
@@ -591,7 +591,7 @@ node_modules, *.log, .env, .git, vendor
 
 ### Ignore Patterns
 
-Similar to `.gitignore`, these patterns prevent matching files from being deployed. If you try to upload a file that matches an ignore pattern, FileFerry will ask if you want to force-upload it.
+Similar to `.gitignore`, these patterns prevent matching files from being deployed. If you upload a single file that matches one, a Quick Pick asks whether to upload it anyway (Enter uploads, Escape cancels). Upload to Servers reports the server as skipped instead, and Sync skips excluded files silently.
 
 ---
 
@@ -644,7 +644,7 @@ If no mappings are configured, all files map directly to the server root path. A
 
 ### Excluded Paths Reference
 
-Comma-separated glob patterns set in the Mappings tab. Files matching these patterns are silently skipped during upload. Use this for files that should never be deployed: `node_modules, *.log, .env`.
+Comma-separated glob patterns set in the Mappings tab. Files matching these patterns are skipped during folder uploads, Upload to Servers and Sync; a single-file Upload asks whether to upload the file anyway. Use this for files that should never be deployed: `node_modules, *.log, .env`.
 
 ---
 

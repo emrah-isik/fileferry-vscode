@@ -182,6 +182,31 @@ export class UploadConfirmation {
     return choice?.action === 'confirm';
   }
 
+  // File date guard (36b): some files to upload are older than their remote
+  // copies. Never suppressed, never offers "don't ask again": overwriting
+  // someone else's newer change is the thing the guard exists to catch.
+  async confirmOverwriteNewer(serverName: string | undefined, fileNames: string[]): Promise<boolean> {
+    const where = serverName ? `"${serverName}"` : 'the remote';
+    const title = fileNames.length === 1
+      ? `1 file is newer on ${where}. Overwrite it?`
+      : `${fileNames.length} files are newer on ${where}. Overwrite them?`;
+    const choice = await this.showPick(title, [
+      { label: 'Overwrite', detail: `Replace with your local copy: ${fileNames.join(', ')}`, action: 'confirm' },
+      cancelChoice(),
+    ]);
+    return choice?.action === 'confirm';
+  }
+
+  // Force upload (36b): the file matches an excluded path pattern.
+  async confirmUploadExcluded(localPath: string): Promise<boolean> {
+    const fileName = localPath.split(/[\\/]/).pop() ?? localPath;
+    const choice = await this.showPick(`${fileName} matches an excluded path. Upload it anyway?`, [
+      { label: 'Upload anyway', detail: `Ignore the excluded-path patterns for ${localPath} this once`, action: 'confirm' },
+      cancelChoice(),
+    ]);
+    return choice?.action === 'confirm';
+  }
+
   // Clears "don't ask again". With a server list, clears those; without one
   // (the reset command), sweeps every stored suppression key, so servers that
   // were deleted or belong to another project are cleared too. Returns the

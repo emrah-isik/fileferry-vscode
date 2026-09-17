@@ -272,12 +272,11 @@ describe('uploadSelected command', () => {
   describe('force upload excluded files', () => {
     it('prompts user when resolveAll throws an exclusion error', async () => {
       mockResolveAll.mockImplementation(() => { throw new Error('File is excluded: /workspace/debug.log'); });
-      (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(undefined);
+      pickConfirmation(undefined);
       await uploadSelected(resource, undefined, dependencies());
-      expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
-        expect.stringContaining('excluded'),
-        'Upload Anyway'
-      );
+      const [items, options] = (vscode.window.showQuickPick as jest.Mock).mock.calls[0];
+      expect(options.title).toContain('excluded');
+      expect(items.map((item: { label: string }) => item.label)).toEqual(['Upload anyway', 'Cancel']);
     });
 
     it('retries with ignoreExclusions when user clicks "Upload Anyway"', async () => {
@@ -285,7 +284,7 @@ describe('uploadSelected command', () => {
         .mockImplementationOnce(() => { throw new Error('File is excluded: /workspace/debug.log'); })
         .mockReturnValueOnce([{ localPath: '/workspace/debug.log', remotePath: '/var/www/debug.log' }])
         .mockReturnValueOnce([]);
-      (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue('Upload Anyway');
+      pickConfirmation('Upload anyway');
       await uploadSelected(resource, undefined, dependencies());
       const secondCallConfig = mockResolveAll.mock.calls[1]?.[2];
       expect(secondCallConfig).toHaveProperty('ignoreExclusions', true);
@@ -295,7 +294,7 @@ describe('uploadSelected command', () => {
     it('does not upload when user dismisses the exclusion prompt', async () => {
       mockResolveAll.mockReset();
       mockResolveAll.mockImplementation(() => { throw new Error('File is excluded: /workspace/debug.log'); });
-      (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(undefined);
+      pickConfirmation(undefined);
       (vscode.window.showInformationMessage as jest.Mock).mockResolvedValue(undefined);
       await uploadSelected(resource, undefined, dependencies());
       expect(mockUpload).not.toHaveBeenCalled();
@@ -336,12 +335,14 @@ describe('uploadSelected command', () => {
       mockDateGuardCheck.mockResolvedValue([
         { localPath: '/workspace/src/app.php', remotePath: '/var/www/src/app.php' },
       ]);
-      (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(undefined);
-      await uploadSelected(resource, undefined, dependencies());
-      expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
-        expect.stringContaining('newer on the remote'),
-        'Overwrite'
+      // The upload confirmation is answered, then the date-guard pick is dismissed.
+      (vscode.window.showQuickPick as jest.Mock).mockImplementation(async (items: Array<{ label: string }>, options: { title?: string }) =>
+        /newer on/.test(options?.title ?? '') ? undefined : items.find(item => item.label === 'Upload')
       );
+      await uploadSelected(resource, undefined, dependencies());
+      const dateGuardCall = (vscode.window.showQuickPick as jest.Mock).mock.calls.find(call => /newer on/.test(call[1]?.title ?? ''));
+      expect(dateGuardCall).toBeDefined();
+      expect(dateGuardCall[0].map((item: { label: string }) => item.label)).toEqual(['Overwrite', 'Cancel']);
       expect(mockUpload).not.toHaveBeenCalled();
     });
 
@@ -349,7 +350,9 @@ describe('uploadSelected command', () => {
       mockDateGuardCheck.mockResolvedValue([
         { localPath: '/workspace/src/app.php', remotePath: '/var/www/src/app.php' },
       ]);
-      (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue('Overwrite');
+      (vscode.window.showQuickPick as jest.Mock).mockImplementation(async (items: Array<{ label: string }>) =>
+        items.find(item => item.label === 'Overwrite') ?? items.find(item => item.label === 'Upload')
+      );
       await uploadSelected(resource, undefined, dependencies());
       expect(mockUpload).toHaveBeenCalled();
     });
