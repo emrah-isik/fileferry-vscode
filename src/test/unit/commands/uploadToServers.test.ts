@@ -283,7 +283,11 @@ describe('uploadToServers command', () => {
       mockDateGuardCheck
         .mockResolvedValueOnce([{ localPath: '/workspace/src/app.php', remotePath: '/var/www/src/app.php' }])
         .mockResolvedValueOnce([]);
-      (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(undefined);
+      // Server pick returns the two servers; the date-guard pick (36b) is dismissed.
+      const servers = await (vscode.window.showQuickPick as jest.Mock)([], {});
+      (vscode.window.showQuickPick as jest.Mock).mockImplementation(async (_items: unknown, options: { title?: string }) =>
+        /newer on/.test(options?.title ?? '') ? undefined : servers
+      );
       await uploadToServers(resource, undefined, dependencies());
       // Only staging should upload (prod had newer files and user dismissed)
       expect(mockUpload).toHaveBeenCalledTimes(1);
@@ -293,7 +297,10 @@ describe('uploadToServers command', () => {
       mockDateGuardCheck
         .mockResolvedValueOnce([{ localPath: '/workspace/src/app.php', remotePath: '/var/www/src/app.php' }])
         .mockResolvedValueOnce([]);
-      (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue('Overwrite');
+      const servers = await (vscode.window.showQuickPick as jest.Mock)([], {});
+      (vscode.window.showQuickPick as jest.Mock).mockImplementation(async (items: Array<{ label: string }>, options: { title?: string }) =>
+        /newer on/.test(options?.title ?? '') ? items.find(item => item.label === 'Overwrite') : servers
+      );
       await uploadToServers(resource, undefined, dependencies());
       expect(mockUpload).toHaveBeenCalledTimes(2);
     });

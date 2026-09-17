@@ -266,7 +266,7 @@ describe('SshCredentialPanel message handling', () => {
     SshCredentialPanel.createOrShow(mockContext, deps());
     await messageHandler({ command: 'deleteCredential', id: 'cred-1' });
     expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
-      expect.stringContaining('Prod SSH'), 'Delete', 'Cancel'
+      expect.stringContaining('Prod SSH'), { modal: true }, 'Delete'
     );
     expect(mockCredentialManager.delete).toHaveBeenCalledWith('cred-1');
     expect(mockWebview.postMessage).toHaveBeenCalledWith({

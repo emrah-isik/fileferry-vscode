@@ -270,7 +270,7 @@ describe('DeploymentSettingsPanel message handling', () => {
     DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
     await messageHandler({ command: 'deleteServer', id: 'srv-1' });
     expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
-      expect.stringContaining('Production'), 'Delete', 'Cancel'
+      expect.stringContaining('Production'), { modal: true }, 'Delete'
     );
     expect(mockConfigManager.removeServer).toHaveBeenCalledWith('Production');
     expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({ command: 'configUpdated' }));
@@ -349,7 +349,7 @@ describe('DeploymentSettingsPanel message handling', () => {
     const next = { selectedServerName: 'Staging', editingNew: false };
     await messageHandler({ command: 'confirmDiscardMappings', next });
     expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
-      expect.stringContaining('unsaved'), 'Discard', 'Cancel'
+      expect.stringContaining('unsaved'), { modal: true }, 'Discard'
     );
     expect(mockWebview.postMessage).toHaveBeenCalledWith({ command: 'discardMappingsConfirmed', next });
   });
@@ -1225,7 +1225,7 @@ describe('DeploymentSettingsPanel message handling', () => {
       DeploymentSettingsPanel.createOrShow(mockContext, dependenciesWithSecrets());
       await messageHandler({ command: 'deleteSecret', name: 'API_TOKEN' });
       expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
-        expect.stringContaining('API_TOKEN'), 'Delete', 'Cancel'
+        expect.stringContaining('API_TOKEN'), { modal: true }, 'Delete'
       );
       expect(mockHookSecretManager.delete).toHaveBeenCalledWith('API_TOKEN');
       expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({

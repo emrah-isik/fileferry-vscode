@@ -135,7 +135,8 @@ export class DeploymentSettingsPanel {
         const found = await this.dependencies.configManager.getServerById(msg.id);
         const answer = await vscode.window.showWarningMessage(
           `Delete server "${found?.name ?? 'this server'}"? This cannot be undone.`,
-          'Delete', 'Cancel'
+          { modal: true },
+          'Delete'
         );
         if (answer !== 'Delete') break;
         await this.dependencies.configManager.removeServer(found!.name);
@@ -182,7 +183,8 @@ export class DeploymentSettingsPanel {
       case 'confirmDiscardMappings': {
         const answer = await vscode.window.showWarningMessage(
           'Discard unsaved mapping changes?',
-          'Discard', 'Cancel'
+          { modal: true },
+          'Discard'
         );
         if (answer !== 'Discard') break;
         this.panel.webview.postMessage({ command: 'discardMappingsConfirmed', next: msg.next });
@@ -309,7 +311,8 @@ export class DeploymentSettingsPanel {
     }
     const answer = await vscode.window.showWarningMessage(
       `Delete secret "${name}" from the OS keychain? Hooks referencing \${secret:${name}} will fail until it is re-added.`,
-      'Delete', 'Cancel'
+      { modal: true },
+      'Delete'
     );
     if (answer !== 'Delete') return;
     try {

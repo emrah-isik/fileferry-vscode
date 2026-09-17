@@ -82,6 +82,7 @@ export async function uploadSelected(
 
   let uploadItems: ResolvedUploadItem[];
   let deleteRemotePaths: string[];
+  const confirmation = new UploadConfirmation(dependencies.context.globalState, dependencies.output);
   try {
     uploadItems = pathResolver.resolveAll(toUpload, workspaceRoot, serverConfig);
     deleteRemotePaths = toDelete.length > 0
@@ -91,11 +92,8 @@ export async function uploadSelected(
     const message = (err as Error).message;
     // Offer force-upload when a file is excluded by ignore patterns
     if (message.startsWith('File is excluded:')) {
-      const choice = await vscode.window.showWarningMessage(
-        `FileFerry: ${message}`,
-        'Upload Anyway'
-      );
-      if (choice === 'Upload Anyway') {
+      const excludedPath = message.slice('File is excluded:'.length).trim();
+      if (await confirmation.confirmUploadExcluded(excludedPath)) {
         const forceConfig = { ...serverConfig, ignoreExclusions: true };
         uploadItems = pathResolver.resolveAll(toUpload, workspaceRoot, forceConfig);
         deleteRemotePaths = toDelete.length > 0
@@ -152,8 +150,7 @@ export async function uploadSelected(
     return;
   }
 
-  // Confirmation dialog
-  const confirmation = new UploadConfirmation(dependencies.context.globalState, dependencies.output);
+  // Confirmation pick
   let confirmed: boolean;
   if (deleteRemotePaths.length > 0) {
     confirmed = await confirmation.confirmWithDeletions(serverName, uploadItems.length, deleteRemotePaths.length, server.hooks);
@@ -185,12 +182,8 @@ export async function uploadSelected(
         progress.report({ message: 'Checking remote files...' });
         const newerOnRemote = await new FileDateGuard(createTransferService(server.type)).check(uploadItems, target, server.timeOffsetMs);
         if (newerOnRemote.length > 0) {
-          const fileNames = newerOnRemote.map(f => path.basename(f.localPath)).join(', ');
-          const choice = await vscode.window.showWarningMessage(
-            `FileFerry: ${newerOnRemote.length} file(s) newer on the remote: ${fileNames}`,
-            'Overwrite'
-          );
-          if (choice !== 'Overwrite') {
+          const fileNames = newerOnRemote.map(f => path.basename(f.localPath));
+          if (!(await confirmation.confirmOverwriteNewer(serverName, fileNames))) {
             return;
           }
         }
