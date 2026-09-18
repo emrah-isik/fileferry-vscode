@@ -2,6 +2,21 @@
 
 All notable changes to FileFerry will be documented in this file.
 
+## [0.15.1] - 2026-09-19
+
+### Changed
+
+- **The upload confirmation is a Quick Pick.** Enter confirms, Escape cancels, and your hands never leave the keyboard; the plain, deletions, and multi-server hooks prompts all moved from a notification toast, and so did the file date guard and excluded-file prompts. Deleting a server, secret or credential and discarding unsaved mappings ask with a dialog. Sync to Remote's delete-extras warning is unchanged.
+- **Listing refresh.** A new description, the **SCM Providers** category, a homepage link, version badges and doc links in the README, a **Cursor, VSCodium, and other VS Code forks** section, and every README screenshot re-shot against the current UI, with two short recordings (the upload flow, the one-click `sftp.json` import) and two new shots (the SSH terminal through a jump host, the Sync mode pick). The README images are no longer shipped inside the package; they load from GitHub, so the download is smaller.
+
+### Fixed
+
+- **Reset Upload Confirmations now actually clears the stored don't-ask-again flags** and reports how many servers were reset (it had only shown a toast since 0.1.0) (#27).
+- **Concurrent uploads of the same remote path no longer fail with `_rename: No such file`** (two servers on one host, or on-save racing the watcher); each upload uses its own temp file (#28).
+- **Upload History shows the remote file for Remote Edit, Remote Create and Remote Duplicate rows** instead of a temporary file name, search matches remote paths, and Source badges share one consistent style (#31).
+- **Sync Folder to Remote** no longer appears in the Command Palette, where it could only warn that no folder was selected; use the Explorer right-click menu.
+- Deployment Settings: the **Excluded Paths** heading on the Mappings tab gets its intended spacing back; the webview's content security policy had been silently dropping the inline style.
+
 ## [0.15.0] - 2026-09-12
 
 ### Added
