@@ -9,6 +9,8 @@ The actively maintained vscode-sftp alternative: deploy files from VS Code or Cu
 
 Right-click changed files in the Source Control panel and pick **FileFerry: Upload**, or open the **FileFerry → Changed Files** view, select files, and press `Alt+U`. No config file juggling, no manual path entry: just deploy what git knows you changed.
 
+![Uploading three changed files from the Source Control panel: right-click, FileFerry: Upload, confirm, done](https://raw.githubusercontent.com/emrah-isik/fileferry-vscode/main/resources/readme/fileferry_hero_upload.gif)
+
 **Built on these principles:**
 
 - **Deploy what changed**: git-aware upload from the FileFerry Changed Files view or the Source Control panel; deploy exactly the files you edited, nothing more
@@ -39,6 +41,8 @@ A few practical differences:
 
 **Switching from vscode-sftp?** Run **FileFerry: Import from vscode-sftp (sftp.json)** and your `.vscode/sftp.json` comes over in one go: every server (single, array, or profiles), path mappings, ignore patterns, per-profile upload-on-save, and `hop` chains as jump hosts. Plaintext passwords move into the OS keychain, and `sftp.json` itself is never touched, so the old extension keeps working until you are ready to remove it. Open a workspace that has a `sftp.json` and FileFerry offers the import once; the report in the output channel names anything that could not be translated instead of guessing.
 
+![Importing .vscode/sftp.json with one click: both servers appear and the plaintext passwords move to the OS keychain](https://raw.githubusercontent.com/emrah-isik/fileferry-vscode/main/resources/readme/fileferry_import_sftp_json.gif)
+
 ---
 
 ## Upload changed files
@@ -50,7 +54,7 @@ Two ways to deploy what you've changed:
 
 ![SCM context menu](https://raw.githubusercontent.com/emrah-isik/fileferry-vscode/main/resources/readme/fileferry_scm_context_menu.png)
 
-FileFerry shows a confirmation before every deploy. Upload to multiple servers at once with `Shift+Alt+U`.
+FileFerry asks before every deploy. Upload to multiple servers at once with `Shift+Alt+U`.
 
 ![Upload confirmation](https://raw.githubusercontent.com/emrah-isik/fileferry-vscode/main/resources/readme/fileferry_scm_upload_confirmation.png)
 
@@ -66,7 +70,7 @@ FileFerry shows a confirmation before every deploy. Upload to multiple servers a
 - **Dry run mode**: preview exactly what would be uploaded without touching the server
 - **Atomic upload**: files land as a temp file and are renamed on completion, no partial states
 - **Backup before overwrite**: optionally download the remote version before replacing it
-- **File date guard**: warns before overwriting a remote file newer than your local copy
+- **File date guard**: asks before overwriting a remote file newer than your local copy
 
 ---
 
@@ -79,6 +83,10 @@ Beyond deploying individual changes, **FileFerry: Sync to Remote** mirrors your 
 - **Delete extras is off by default** and wrapped in defense-in-depth: a dry-run-first preview of the full plan, a modal confirmation naming the exact delete count, deletes restricted to the mapped remote root (or the folders you right-clicked), and exclude-aware detection so `excludedPaths` / `.fileferryignore` files are never pruned
 - **Back up before deletes**: an on-by-default project setting downloads each to-be-deleted file to `.vscode/fileferry-backups/` first
 - `.git` and `node_modules` are always skipped; synced transfers appear in Upload History under a **Sync** source
+
+When the server holds files your project does not, Sync asks what to do with them before anything is transferred.
+
+![Sync mode pick: upload only, or upload and delete remote extras](https://raw.githubusercontent.com/emrah-isik/fileferry-vscode/main/resources/readme/fileferry_sync_mode_pick.png)
 
 ---
 
@@ -133,6 +141,10 @@ Reach servers that only a bastion can see, and open a shell there, using the sam
 - **2FA asked once, not per file**: the bastion login is pooled, so a deploy's burst of connections reuses one authenticated hop until it sits idle; Test Connection names the hop that failed
 - **`ProxyJump` from `~/.ssh/config`**: a credential that resolves from your SSH config follows the alias's `ProxyJump` chain (nested, comma lists, `user@host:port` literals), authenticating those hops with their `IdentityFile`, your agent, or a prompt
 - **Open SSH Terminal**: a shell on the active server in its root path, on any server from the Servers panel, or in the folder you are viewing in the Remote Files panel; through the same jump hosts, reusing a bastion a deploy already opened
+
+The terminal names the route it took, here through a bastion to a server the workstation cannot reach directly.
+
+![SSH terminal opened through a jump host, showing the route and the remote prompt](https://raw.githubusercontent.com/emrah-isik/fileferry-vscode/main/resources/readme/fileferry_ssh_terminal_jump_host.png)
 
 ---
 
