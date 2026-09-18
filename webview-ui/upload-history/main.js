@@ -130,7 +130,7 @@ function renderTable() {
     return `
     <tr class="result-${e.result}">
       <td class="col-time">${formatTimestamp(e.timestamp)}</td>
-      <td class="col-file" title="${escapeHtml(e.localPath || e.remotePath)}">${escapeHtml(shortPath(e.localPath || e.remotePath))}</td>
+      <td class="col-file" title="${escapeHtml(e.displayPath || e.localPath || e.remotePath)}">${escapeHtml(shortPath(e.displayPath || e.localPath || e.remotePath))}</td>
       <td class="col-server">${escapeHtml(e.serverName)}</td>
       <td class="col-source"><span class="source-tag source-${escapeHtml(e.trigger || '')}">${escapeHtml(triggerLabel(e.trigger))}</span></td>
       <td class="col-action">${e.action}</td>

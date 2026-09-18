@@ -92,7 +92,7 @@ describe('UploadHistoryPanel', () => {
     await messageHandler({ command: 'ready' });
     expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
       command: 'init',
-      entries: [entryFixture],
+      entries: [{ ...entryFixture, displayPath: '/workspace/src/app.php' }],
       servers: expect.arrayContaining([
         { id: 'srv-1', name: 'Production' },
         { id: 'srv-2', name: 'Staging' },
@@ -113,7 +113,18 @@ describe('UploadHistoryPanel', () => {
     expect(mockGetFiltered).toHaveBeenCalledWith({ serverId: 'srv-1', result: 'success', search: 'app', trigger: 'manual' });
     expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
       command: 'filtered',
-      entries: [entryFixture],
+      entries: [{ ...entryFixture, displayPath: '/workspace/src/app.php' }],
+    }));
+  });
+
+  it('sends the remote path as displayPath for rows from the Remote Files panel (#31)', async () => {
+    const remoteEdit = { ...entryFixture, trigger: 'remote-edit' as const, localPath: '/tmp/fileferry-browse/app.remote.1a2b3c4d.php' };
+    mockGetAll.mockResolvedValue([remoteEdit]);
+    UploadHistoryPanel.createOrShow(mockContext, { configManager: mockConfigManager });
+    await messageHandler({ command: 'ready' });
+    expect(mockWebview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      command: 'init',
+      entries: [{ ...remoteEdit, displayPath: '/var/www/src/app.php' }],
     }));
   });
 

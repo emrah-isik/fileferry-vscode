@@ -54,7 +54,12 @@ export class UploadHistoryService {
       if (filter.serverId && e.serverId !== filter.serverId) { return false; }
       if (filter.result && e.result !== filter.result) { return false; }
       if (filter.trigger && e.trigger !== filter.trigger) { return false; }
-      if (filter.search && !e.localPath.toLowerCase().includes(filter.search.toLowerCase())) { return false; }
+      // Search matches the local and the remote path: Remote Files rows store a
+      // temporary local copy, so their real name is only in remotePath (#31).
+      if (filter.search) {
+        const needle = filter.search.toLowerCase();
+        if (!e.localPath.toLowerCase().includes(needle) && !e.remotePath.toLowerCase().includes(needle)) { return false; }
+      }
       return true;
     });
   }

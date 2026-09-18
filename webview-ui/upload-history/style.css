@@ -211,28 +211,15 @@ tbody td {
 
 /* ─── Source tags ─────────────────────────────────────────── */
 
-/* Source tags share the geometry above; here they just get a visible border so
-   the column reads consistently across themes. Manual vs automated is conveyed
-   by fill + text colour, not by whether a box is present. */
+/* One neutral style for every source (#31, design decision 2026-09-17): an
+   outline with dimmed text and no fill. Source is plain information you can
+   filter by; colour is reserved for the Result column so failures stand out.
+   Do not add a rule per trigger: that is how later
+   sources drifted into three different looks. A unit test enforces this. */
 .source-tag {
   border-color: var(--vscode-panel-border);
-}
-
-/* Manual deploys: deliberate, so give them the filled, higher-contrast pill.
-   Keep the inherited visible border so it always reads as a box, even in
-   themes where the badge fill is close to the row background. */
-.source-manual {
-  background: var(--vscode-badge-background);
-  color: var(--vscode-badge-foreground);
-}
-
-/* Automated triggers: muted outline pills so they read as background noise
-   next to deliberate manual deploys. */
-.source-save,
-.source-multi-server,
-.source-watch {
-  background: transparent;
   color: var(--vscode-descriptionForeground);
+  background: transparent;
 }
 
 /* ─── Empty state ─────────────────────────────────────────── */
