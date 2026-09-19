@@ -11,6 +11,7 @@
 - Fixes: FTPS servers connect over TLS on every path (not only Test Connection and the Remote Files panel); a second path mapping without a leading `/` no longer vanishes on save (#14); Upload History's Clear History works (#24)
 - 0.15.1: the upload confirmation, the file date guard, and the excluded-file prompts are Quick Picks (Enter confirms, Escape cancels); deleting a server, secret or credential and discarding unsaved mappings ask with a dialog; refreshed listing and README screenshots
 - 0.15.1 fixes: Reset Upload Confirmations actually clears the stored flags (#27); concurrent uploads of one remote path no longer collide on the temp file (#28); Upload History shows the remote file for Remote Files rows and searches remote paths (#31); Sync Folder to Remote no longer appears in the Command Palette
+- 0.15.2: README only; the VS Marketplace version badge works again (shields.io retired the one it used)
 
 ---
 

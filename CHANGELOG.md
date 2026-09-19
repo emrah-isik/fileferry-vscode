@@ -2,6 +2,12 @@
 
 All notable changes to FileFerry will be documented in this file.
 
+## [0.15.2] - 2026-09-19
+
+### Fixed
+
+- **The VS Marketplace badge at the top of the README read "retired badge".** shields.io retired its Visual Studio Marketplace badges, so the version badge now comes from a different badge service. README only; the extension itself is identical to 0.15.1.
+
 ## [0.15.1] - 2026-09-19
 
 ### Changed
