@@ -1,6 +1,6 @@
 # FileFerry
 
-[![VS Marketplace](https://img.shields.io/visual-studio-marketplace/v/esidevlabs.fileferry?label=VS%20Marketplace)](https://marketplace.visualstudio.com/items?itemName=esidevlabs.fileferry)
+[![VS Marketplace](https://vsmarketplacebadges.dev/version-short/esidevlabs.fileferry.svg)](https://marketplace.visualstudio.com/items?itemName=esidevlabs.fileferry)
 [![Open VSX](https://img.shields.io/open-vsx/v/esidevlabs/fileferry?label=Open%20VSX)](https://open-vsx.org/extension/esidevlabs/fileferry)
 [![CI](https://img.shields.io/github/actions/workflow/status/emrah-isik/fileferry-vscode/ci.yml?branch=main&label=CI)](https://github.com/emrah-isik/fileferry-vscode/actions/workflows/ci.yml)
 [![License](https://img.shields.io/github/license/emrah-isik/fileferry-vscode)](./LICENSE)
