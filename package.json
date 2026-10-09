@@ -1,7 +1,7 @@
 {
   "name": "fileferry",
   "displayName": "FileFerry - SFTP/FTP Deploy",
-  "description": "The vscode-sftp alternative built around git: deploy what changed, confirm first, credentials in your OS keychain, never in a config file. SFTP/FTP/FTPS for VS Code and Cursor, modern OpenSSH out of the box.",
+  "description": "Git-aware SFTP/FTP deploy for VS Code and Cursor: deploy what changed, confirm before every upload, credentials in your OS keychain and never in a config file. Works with modern OpenSSH out of the box.",
   "version": "0.15.2",
   "publisher": "esidevlabs",
   "icon": "resources/icon.png",

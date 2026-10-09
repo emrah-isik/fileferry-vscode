@@ -5,9 +5,12 @@ import * as path from 'path';
 // keywords: on 2026-10-09 the query "sftp" ranked 88 of its top 100 results by a
 // display name containing "SFTP", and FileFerry, with the word only in its
 // description, sat outside the top 100. The extension id cannot change, so the
-// display name carries the protocol words, and the README's first sentence and
-// the listing description carry the pitch that distinguishes FileFerry from the
-// maintained vscode-sftp forks.
+// display name carries the protocol words. The listing description and the
+// README's first sentence lead with what FileFerry is (git-aware deploy with a
+// confirmation and no secrets in the project config) rather than with
+// "vscode-sftp alternative": maintained forks of vscode-sftp exist, so that
+// claim no longer distinguishes anything. vscode-sftp stays a door (the import
+// command and the "Coming from vscode-sftp?" section), not the identity.
 
 const root = path.resolve(__dirname, '..', '..', '..');
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')) as {
@@ -21,18 +24,19 @@ describe('listing name and pitch', () => {
     expect(manifest.displayName).toMatch(/^FileFerry - SFTP\/FTP Deploy$/);
   });
 
-  it('describes the git-first model instead of claiming to be the maintained alternative', () => {
-    expect(manifest.description).toContain('built around git');
-    expect(manifest.description).not.toMatch(/actively maintained/i);
+  it('leads the description with what FileFerry is, not with vscode-sftp', () => {
+    expect(manifest.description).toMatch(/^Git-aware SFTP\/FTP deploy/);
+    expect(manifest.description).not.toMatch(/vscode-sftp|actively maintained/i);
   });
 
   it('opens the README with the same pitch', () => {
     const firstParagraph = readme.split(/\n\s*\n/).find((block) => /^[A-Z]/.test(block)) ?? '';
-    expect(firstParagraph).toContain('built around git');
-    expect(firstParagraph).not.toMatch(/actively maintained/i);
+    expect(firstParagraph).toMatch(/^Git-aware SFTP\/FTP deploy/);
+    expect(firstParagraph).not.toMatch(/vscode-sftp|actively maintained/i);
   });
 
-  it('names the maintained fork honestly under the comparison table', () => {
-    expect(readme).toContain('SFTPresso');
+  it('admits under the comparison table that maintained forks exist and that FileFerry is not a drop-in', () => {
+    expect(readme).toContain('Maintained forks of vscode-sftp exist');
+    expect(readme).toContain('not a drop-in');
   });
 });
