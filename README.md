@@ -5,7 +5,7 @@
 [![CI](https://img.shields.io/github/actions/workflow/status/emrah-isik/fileferry-vscode/ci.yml?branch=main&label=CI)](https://github.com/emrah-isik/fileferry-vscode/actions/workflows/ci.yml)
 [![License](https://img.shields.io/github/license/emrah-isik/fileferry-vscode)](./LICENSE)
 
-The actively maintained vscode-sftp alternative: deploy files from VS Code or Cursor to remote servers over SFTP, FTP, or FTPS, without leaving the editor.
+The vscode-sftp alternative built around git: deploy what changed, confirm before every upload, credentials in your OS keychain and never in a config file. SFTP, FTP, or FTPS, from VS Code or Cursor, without leaving the editor.
 
 Right-click changed files in the Source Control panel and pick **FileFerry: Upload**, or open the **FileFerry → Changed Files** view, select files, and press `Alt+U`. No config file juggling, no manual path entry: just deploy what git knows you changed.
 
@@ -32,12 +32,14 @@ A few practical differences:
 | Area | vscode-sftp | FileFerry |
 | --- | --- | --- |
 | Credentials | plaintext `sftp.json` in the workspace | OS keychain (Keychain / Credential Manager / libsecret) |
-| Modern OpenSSH (8.8+) | manual algorithm config required | works by default |
+| Modern OpenSSH (8.8+) | key auth issue open since 2022, no release since 2023 to close it | works by default |
 | SSH agent (1Password, gpg-agent, Pageant) | partial | auto-detected |
 | Git-aware uploads | not built-in | first-class: deploy from the Source Control panel |
 | Project config in git | unsafe (contains secrets) | safe: `.vscode/fileferry.json` has no credentials |
 | Jump hosts | `hop` entries, password or key per stage | ordered chains on the credential, 2FA on any hop, `ProxyJump` from `~/.ssh/config`, one bastion login reused across a deploy |
 | Active maintenance | last meaningful release 2022 | actively maintained |
+
+If you want the `sftp.json` model with a maintainer behind it, [SFTPresso](https://marketplace.visualstudio.com/items?itemName=jmwerk.sftpresso) is a maintained fork of vscode-sftp. FileFerry is a different model, not a drop-in: it deploys what git changed, asks first, and keeps secrets out of the project config.
 
 **Switching from vscode-sftp?** Run **FileFerry: Import from vscode-sftp (sftp.json)** and your `.vscode/sftp.json` comes over in one go: every server (single, array, or profiles), path mappings, ignore patterns, per-profile upload-on-save, and `hop` chains as jump hosts. Plaintext passwords move into the OS keychain, and `sftp.json` itself is never touched, so the old extension keeps working until you are ready to remove it. Open a workspace that has a `sftp.json` and FileFerry offers the import once; the report in the output channel names anything that could not be translated instead of guessing.
 
