@@ -119,10 +119,17 @@
 
 ### Later
 
+- Sync from the server: pull a whole mapped tree into an empty folder (Download Project) and a remote-to-local mirror, with bidirectional sync and conflict resolution after that (v0.10 shipped the one-way local-to-remote mirror)
+- Concurrent transfers: parallel uploads with a Transfers view showing per-file progress, cancel, and retry
+- Guided first run: a walkthrough and a setup wizard that tests the connection and lets you pick the remote folder from a browser
+- Remote Files filter and Compare Folders: search the remote tree, and diff a local folder against the server by timestamp or by content hash
+- Config variables in `fileferry.json`: `${workspaceFolder}`, `${workspaceFolderBasename}`, `${userHome}`, `${env:NAME}`
+- Multi-root workspaces: a `fileferry.json` per workspace folder
+- Inverse ignore patterns: whitelist what to upload instead of listing what to skip
 - Batch deploy from branch diff (all files changed between two branches)
-- Additional sync directions: remote→local and bidirectional sync (v0.10 shipped the one-way local→remote mirror)
 - Download whole folders from the Remote Files panel
 - Upload, Upload to Servers and Compare with Remote in the editor right-click menu (text area and editor tab)
+- Translated UI
 
 ---
 
