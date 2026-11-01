@@ -168,6 +168,22 @@ describe('DeploymentSettingsPanel message handling', () => {
     expect(savedConfig.servers.Production.excludedPaths).toEqual(serverFixture.excludedPaths);
   });
 
+  it('saveServer preserves existing hooks on edit', async () => {
+    const hooks = {
+      preDeploy: [{ command: 'npm run build', location: 'local' }],
+      postDeploy: [{ command: 'systemctl reload nginx', location: 'remote' }],
+    };
+    (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({
+      defaultServerId: 'srv-1',
+      servers: { Production: { ...serverFixture, hooks } },
+    });
+    DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
+    const payload = { id: 'srv-1', name: 'Production', type: 'sftp', credentialId: 'cred-1', rootPath: '/var/www/html' };
+    await messageHandler({ command: 'saveServer', payload });
+    const savedConfig = (mockConfigManager.saveConfig as jest.Mock).mock.calls[0][0];
+    expect(savedConfig.servers.Production.hooks).toEqual(hooks);
+  });
+
   it('saveServer persists mappings and excludedPaths supplied in the payload for a new server', async () => {
     (mockConfigManager.getConfig as jest.Mock).mockResolvedValue({ defaultServerId: '', servers: {} });
     DeploymentSettingsPanel.createOrShow(mockContext, dependencies());
