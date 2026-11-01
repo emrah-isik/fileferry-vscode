@@ -456,6 +456,7 @@ export class DeploymentSettingsPanel {
       // deliberately drops any previous override.
       ...(payload.uploadOnSave !== undefined ? { uploadOnSave: payload.uploadOnSave } : {}),
       ...(existing?.timeOffsetMs !== undefined ? { timeOffsetMs: existing.timeOffsetMs } : {}),
+      ...(existing?.hooks !== undefined ? { hooks: existing.hooks } : {}),
     };
 
     // If renaming, remove old key
