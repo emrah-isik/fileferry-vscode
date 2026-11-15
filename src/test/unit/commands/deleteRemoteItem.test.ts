@@ -30,6 +30,53 @@ describe('deleteRemoteItem', () => {
     jest.clearAllMocks();
     mockConnection.deleteRemoteFile.mockResolvedValue(undefined);
     mockConnection.deleteRemoteDirectory.mockResolvedValue(undefined);
+    (vscode.window.withProgress as jest.Mock).mockImplementation(
+      (_options: any, task: (progress: any) => Promise<any>) => task({ report: jest.fn() })
+    );
+  });
+
+  // Polish 2026-11: the delete used to run silently after the modal; a large
+  // folder gave no sign that anything was happening.
+  describe('progress feedback', () => {
+    it('runs a single delete inside a progress notification naming the item', async () => {
+      (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue('Delete');
+      const item = makeItem({ name: 'old-folder', type: 'd', size: 4096, remotePath: '/var/www/old-folder' });
+
+      await deleteRemoteItem([item], mockConnection as any, mockRefresh);
+
+      expect(vscode.window.withProgress).toHaveBeenCalledTimes(1);
+      const progressOptions = (vscode.window.withProgress as jest.Mock).mock.calls[0][0];
+      expect(progressOptions.location).toBe(vscode.ProgressLocation.Notification);
+      expect(progressOptions.title).toBe('Deleting "old-folder"...');
+      expect(mockConnection.deleteRemoteDirectory).toHaveBeenCalledWith('/var/www/old-folder');
+    });
+
+    it('runs a multi delete inside one progress notification with the count, reporting each name', async () => {
+      (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue('Delete');
+      const report = jest.fn();
+      (vscode.window.withProgress as jest.Mock).mockImplementation(
+        (_options: any, task: (progress: any) => Promise<any>) => task({ report })
+      );
+      const fileItem = makeItem({ name: 'a.txt', remotePath: '/var/www/a.txt' });
+      const otherFileItem = makeItem({ name: 'b.txt', remotePath: '/var/www/b.txt' });
+
+      await deleteRemoteItem([fileItem, otherFileItem], mockConnection as any, mockRefresh);
+
+      expect(vscode.window.withProgress).toHaveBeenCalledTimes(1);
+      const progressOptions = (vscode.window.withProgress as jest.Mock).mock.calls[0][0];
+      expect(progressOptions.title).toBe('Deleting 2 items...');
+      expect(report).toHaveBeenNthCalledWith(1, { message: 'a.txt' });
+      expect(report).toHaveBeenNthCalledWith(2, { message: 'b.txt' });
+    });
+
+    it('shows no progress when the confirmation is cancelled', async () => {
+      (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(undefined);
+      const item = makeItem({ name: 'keep.php', remotePath: '/var/www/keep.php' });
+
+      await deleteRemoteItem([item], mockConnection as any, mockRefresh);
+
+      expect(vscode.window.withProgress).not.toHaveBeenCalled();
+    });
   });
 
   describe('single target', () => {

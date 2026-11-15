@@ -196,6 +196,30 @@ describe('StatusBarItem', () => {
       expect(vscode.commands.executeCommand).toHaveBeenCalledWith('fileferry.openSettings');
     });
 
+    it('offers a Project Settings entry that runs fileferry.openProjectSettings', async () => {
+      (vscode.window.showQuickPick as jest.Mock).mockResolvedValue({ id: 'openProjectSettings' });
+      (vscode.commands.executeCommand as jest.Mock).mockResolvedValue(undefined);
+      const ctx = makeContext();
+      const bar = new StatusBarItem(ctx, mockConfigManager);
+      await bar.refresh();
+      await bar.showMenu();
+      const items = (vscode.window.showQuickPick as jest.Mock).mock.calls[0][0];
+      const projectSettingsItem = items.find((i: any) => i.id === 'openProjectSettings');
+      expect(projectSettingsItem).toBeDefined();
+      expect(projectSettingsItem.label).toContain('Project Settings');
+      expect(vscode.commands.executeCommand).toHaveBeenCalledWith('fileferry.openProjectSettings');
+    });
+
+    it('lists Project Settings right after Deployment Settings', async () => {
+      (vscode.window.showQuickPick as jest.Mock).mockResolvedValue(undefined);
+      const ctx = makeContext();
+      const bar = new StatusBarItem(ctx, mockConfigManager);
+      await bar.refresh();
+      await bar.showMenu();
+      const ids = (vscode.window.showQuickPick as jest.Mock).mock.calls[0][0].map((i: any) => i.id);
+      expect(ids.indexOf('openProjectSettings')).toBe(ids.indexOf('openSettings') + 1);
+    });
+
     it('does nothing when quick pick is dismissed', async () => {
       (vscode.window.showQuickPick as jest.Mock).mockResolvedValue(undefined);
       (vscode.commands.executeCommand as jest.Mock).mockResolvedValue(undefined);
