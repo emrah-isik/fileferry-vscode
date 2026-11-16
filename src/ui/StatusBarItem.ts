@@ -101,6 +101,10 @@ export class StatusBarItem implements vscode.Disposable {
         id: 'openSettings',
       },
       {
+        label: '$(settings) Project Settings',
+        id: 'openProjectSettings',
+      },
+      {
         label: '$(history) Upload History',
         id: 'showUploadHistory',
       },
@@ -120,6 +124,7 @@ export class StatusBarItem implements vscode.Disposable {
       syncToRemote: 'fileferry.syncToRemote',
       switchServer: 'fileferry.switchServer',
       openSettings: 'fileferry.openSettings',
+      openProjectSettings: 'fileferry.openProjectSettings',
       showUploadHistory: 'fileferry.showUploadHistory',
     };
 

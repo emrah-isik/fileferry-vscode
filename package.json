@@ -235,6 +235,10 @@
         "command": "fileferry.changedFiles.uploadOnlyNewer",
         "title": "FileFerry: Upload Changed Files (Only If Newer): selected, or all",
         "icon": "$(history)"
+      },
+      {
+        "command": "fileferry.testConnection",
+        "title": "FileFerry: Test Connection"
       }
     ],
     "viewsContainers": {
@@ -314,6 +318,40 @@
           "command": "fileferry.syncFolderToRemote",
           "when": "explorerResourceIsFolder && resourceScheme == file",
           "group": "fileferry@4"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "fileferry.uploadSelected",
+          "when": "resourceScheme == file",
+          "group": "fileferry@1"
+        },
+        {
+          "command": "fileferry.uploadToServers",
+          "when": "resourceScheme == file",
+          "group": "fileferry@2"
+        },
+        {
+          "command": "fileferry.showRemoteDiff",
+          "when": "resourceScheme == file",
+          "group": "fileferry@3"
+        }
+      ],
+      "editor/title/context": [
+        {
+          "command": "fileferry.uploadSelected",
+          "when": "resourceScheme == file",
+          "group": "fileferry@1"
+        },
+        {
+          "command": "fileferry.uploadToServers",
+          "when": "resourceScheme == file",
+          "group": "fileferry@2"
+        },
+        {
+          "command": "fileferry.showRemoteDiff",
+          "when": "resourceScheme == file",
+          "group": "fileferry@3"
         }
       ],
       "scm/title": [

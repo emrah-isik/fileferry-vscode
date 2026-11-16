@@ -43,6 +43,7 @@ import { disconnectRemoteBrowser } from './commands/disconnectRemoteBrowser';
 import { openSshTerminal, OpenSshTerminalSelection } from './commands/openSshTerminal';
 import { importFromVscodeSftp } from './commands/importFromVscodeSftp';
 import { resetConfirmations } from './commands/resetConfirmations';
+import { makeTestConnectionFromPaletteHandler } from './commands/testConnectionFromPalette';
 import { detectVscodeSftp } from './importers/vscodeSftp/detection';
 import { UploadOnSaveService } from './services/UploadOnSaveService';
 import { FileWatcherService } from './services/FileWatcherService';
@@ -532,6 +533,11 @@ export function activate(context: vscode.ExtensionContext): void {
           vscode.window.showErrorMessage(`FileFerry: Connection to "${entry.name}" failed — ${message}`);
         }
       })
+    ),
+
+    vscode.commands.registerCommand(
+      'fileferry.testConnection',
+      withErrorHandling('testConnectionFromPalette', makeTestConnectionFromPaletteHandler({ configManager }))
     ),
 
     // Remote browser commands

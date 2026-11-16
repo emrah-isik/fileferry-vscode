@@ -16,13 +16,14 @@ export async function deleteRemoteItem(
     return;
   }
 
-  let confirmationMessage: string;
+  let confirmationMessage = `Delete ${dedupedTargets.length} items from the server?`;
+  let progressTitle = `Deleting ${dedupedTargets.length} items...`;
+
   if (dedupedTargets.length === 1) {
     const { entry } = dedupedTargets[0];
     const label = entry.type === 'd' ? `folder "${entry.name}"` : `file "${entry.name}"`;
+    progressTitle = `Deleting "${entry.name}"...`;
     confirmationMessage = `Are you sure you want to delete ${label} from the server?`;
-  } else {
-    confirmationMessage = `Delete ${dedupedTargets.length} items from the server?`;
   }
 
   const confirmed = await vscode.window.showWarningMessage(
@@ -38,20 +39,29 @@ export async function deleteRemoteItem(
   const failures: { name: string; message: string }[] = [];
   let deletedCount = 0;
 
-  for (const target of dedupedTargets) {
-    const { entry } = target;
-    try {
-      if (entry.type === 'd') {
-        await connection.deleteRemoteDirectory(entry.remotePath);
-      } else {
-        await connection.deleteRemoteFile(entry.remotePath);
+  await vscode.window.withProgress(
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: progressTitle,
+    },
+    async (progress) => {
+      for (const target of dedupedTargets) {
+        const { entry } = target;
+        try {
+          progress.report({ message: entry.name });
+          if (entry.type === 'd') {
+            await connection.deleteRemoteDirectory(entry.remotePath);
+          } else {
+            await connection.deleteRemoteFile(entry.remotePath);
+          }
+          deletedCount++;
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : String(err);
+          failures.push({ name: entry.name, message });
+        }
       }
-      deletedCount++;
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      failures.push({ name: entry.name, message });
     }
-  }
+  );
 
   if (failures.length === 1 && dedupedTargets.length === 1) {
     vscode.window.showErrorMessage(`FileFerry: Failed to delete — ${failures[0].message}`);

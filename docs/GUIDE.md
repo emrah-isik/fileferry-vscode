@@ -207,7 +207,7 @@ When you select a folder, FileFerry recursively uploads all files inside it, res
 
 ### From the Editor
 
-With a file open in the editor, press `Alt+U` to upload it directly.
+With a file open in the editor, press `Alt+U` to upload it directly, or right-click in the text area or on the editor tab and choose **FileFerry: Upload**, **FileFerry: Upload to Servers...** or **FileFerry: Compare with Remote**. The entries appear only for files on disk, not for settings pages, untitled buffers or the left side of a git diff.
 
 ### Upload on Save
 
@@ -505,7 +505,7 @@ When you delete a file locally, it appears as deleted in the Source Control pane
 
 Right-click a file or folder in the Remote File Browser and choose **Delete from Server**. A confirmation prompt always appears before deletion.
 
-With a multi-selection, one confirmation names the exact count ("Delete 3 items from the server?"), deletes run sequentially, and failures are aggregated into a single message. A selection containing both a folder and files inside it is deduplicated first: the folder delete covers its children, and the count stays honest.
+While the delete runs, a progress notification (*Deleting "name"...* or *Deleting 3 items...*) shows the item currently being removed; it closes by itself when the delete finishes. With a multi-selection, one confirmation names the exact count ("Delete 3 items from the server?"), deletes run sequentially, and failures are aggregated into a single message. A selection containing both a folder and files inside it is deduplicated first: the folder delete covers its children, and the count stays honest.
 
 ---
 
@@ -597,7 +597,7 @@ Similar to `.gitignore`, these patterns prevent matching files from being deploy
 
 ## Project Settings
 
-Open with `FileFerry: Project Settings` from the command palette.
+Open with `FileFerry: Project Settings` from the command palette, or click the FileFerry status bar item and choose **Project Settings**.
 
 This is a per-project settings panel for toggling features that apply to the current workspace:
 
@@ -684,7 +684,7 @@ Customize via `Preferences -> Keyboard Shortcuts` and search for `fileferry`.
 | `FileFerry: Open SSH Terminal` | Open a shell on the active server in its root path, through its jump hosts (SFTP only) |
 | `FileFerry: Import from vscode-sftp (sftp.json)` | Import `.vscode/sftp.json` servers, mappings, and ignore patterns; passwords go to the OS keychain (additive, never edits `sftp.json`) |
 | `FileFerry: Reset Upload Confirmations` | Re-enable upload prompts |
-| `FileFerry: Test Connection` | Verify server credentials |
+| `FileFerry: Test Connection` | Verify a server's credentials; with several servers it asks which one, default first (the Servers panel right-click tests the clicked server directly) |
 | `FileFerry: New File/Folder in Current Path…` | Create an entry at the path the panel currently shows |
 | `FileFerry: Upload Files/Folder to Current Path…` | Upload local files or a folder to the path the panel currently shows |
 

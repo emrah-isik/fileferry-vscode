@@ -128,7 +128,6 @@
 - Inverse ignore patterns: whitelist what to upload instead of listing what to skip
 - Batch deploy from branch diff (all files changed between two branches)
 - Download whole folders from the Remote Files panel
-- Upload, Upload to Servers and Compare with Remote in the editor right-click menu (text area and editor tab)
 - Translated UI
 
 ---
