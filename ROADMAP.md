@@ -1,6 +1,19 @@
 # FileFerry Roadmap
 
-## Current: v0.15
+## Current: v0.16
+
+- Test Connection from the Command Palette: pick a server, the default first; a single server is tested straight away
+- Upload, Upload to Servers and Compare with Remote in the editor right-click menu, inside the text and on the editor tab
+- Project Settings in the status bar menu
+- Deleting from the Remote Files panel shows a progress notification naming the item being removed
+- Listing refresh: the display name is "FileFerry - SFTP/FTP Deploy", and the description and README lead with the git-aware deploy pitch for VS Code and Cursor
+- Fix: deploy hooks are no longer deleted when the server is saved from the Connection tab of Deployment Settings (#38)
+
+---
+
+## Previous Releases
+
+### v0.15
 
 - SSH jump hosts: an ordered chain of hops on the credential; every connection to that server dials through them; each hop authenticates on its own terms (password, key, agent, 2FA) and is host-key verified, and the bastion login is pooled so a deploy's burst of connections asks for a 2FA code once
 - `ProxyJump` honoured from `~/.ssh/config`: nested chains, comma lists, `user@host:port` literals; hops authenticate with their `IdentityFile`, your agent, or a prompt; explicit jump hosts on the credential take precedence
@@ -12,10 +25,6 @@
 - 0.15.1: the upload confirmation, the file date guard, and the excluded-file prompts are Quick Picks (Enter confirms, Escape cancels); deleting a server, secret or credential and discarding unsaved mappings ask with a dialog; refreshed listing and README screenshots
 - 0.15.1 fixes: Reset Upload Confirmations actually clears the stored flags (#27); concurrent uploads of one remote path no longer collide on the temp file (#28); Upload History shows the remote file for Remote Files rows and searches remote paths (#31); Sync Folder to Remote no longer appears in the Command Palette
 - 0.15.2: README only; the VS Marketplace version badge works again (shields.io retired the one it used)
-
----
-
-## Previous Releases
 
 ### v0.14
 

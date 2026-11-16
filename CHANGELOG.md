@@ -2,6 +2,23 @@
 
 All notable changes to FileFerry will be documented in this file.
 
+## [0.16.0] - 2026-11-16
+
+### Added
+
+- **Test Connection from the Command Palette.** `FileFerry: Test Connection` lists your servers with the default first, marked *(current default)*, and tests the one you pick. With a single server it tests straight away, and with no `fileferry.json` it says so. The Servers panel entry and the Deployment Settings button are unchanged.
+- **Upload, Upload to Servers... and Compare with Remote in the editor right-click menu**, both inside the text and on the editor tab, for files in the workspace. They are the same entries as in the Explorer menu, so the file you are editing no longer has to be found in the Explorer first.
+- **Project Settings in the status bar menu**, next to Deployment Settings.
+
+### Changed
+
+- **Deleting from the Remote Files panel shows a progress notification** naming the item being removed, or counting through a multi-selection, so a slow server no longer looks like nothing happened.
+- **Listing refresh.** The display name is **FileFerry - SFTP/FTP Deploy**, and the description and the README open with "Git-aware SFTP/FTP deploy for VS Code and Cursor". The comparison table now says that maintained vscode-sftp forks exist and that FileFerry is a different model rather than a drop-in replacement, and its OpenSSH 8.8 row states the fork's open key-auth issue instead of "manual algorithm config required".
+
+### Fixed
+
+- **Deploy hooks are no longer deleted when the server is saved from the Connection tab** of Deployment Settings (#38). Saving rebuilt the server entry without its hooks; they now carry over like every other field.
+
 ## [0.15.2] - 2026-09-19
 
 ### Fixed
