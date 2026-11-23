@@ -32,6 +32,19 @@ describe('normalizeCommandArgs', () => {
       expect(allResources).toHaveLength(1);
       expect(allResources![0].resourceUri.fsPath).toBe('/workspace/src/app.php');
     });
+
+    // Polish1 manual pass, rows B3/B5 (2026-11-22): the editor tab menu
+    // (editor/title/context) calls the command with (Uri, editorGroup), where
+    // the second argument is an object, not an array. It used to reach
+    // Array.prototype.map and throw "uris.map is not a function".
+    it('ignores a non-array second arg (editor tab menu passes an editor group object)', () => {
+      const uri = makeUri('/workspace/src/app.php');
+      const editorGroup = { groupId: 1, editorIndex: 0 };
+      const { resource, allResources } = normalizeCommandArgs(uri, editorGroup);
+      expect(resource?.resourceUri.fsPath).toBe('/workspace/src/app.php');
+      expect(allResources).toHaveLength(1);
+      expect(allResources![0].resourceUri.fsPath).toBe('/workspace/src/app.php');
+    });
   });
 
   describe('when called from SCM context (SourceControlResourceState args)', () => {

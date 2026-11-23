@@ -46,7 +46,7 @@ export function normalizeCommandArgs(
 
   // Explorer pattern: (Uri, Uri[])
   if (isUri(arg1)) {
-    const uris = (arg2 as vscode.Uri[] | undefined) ?? [arg1];
+    const uris = Array.isArray(arg2) ? arg2 : [arg1];
     return {
       resource: uriToResource(arg1),
       allResources: uris.map(uriToResource),
