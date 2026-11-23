@@ -2,6 +2,13 @@
 
 All notable changes to FileFerry will be documented in this file.
 
+## [0.16.1] - 2026-11-23
+
+### Fixed
+
+- **Upload, Upload to Servers... and Compare with Remote from the editor tab menu failed with `uris.map is not a function`.** The tab menu passes an editor-group object where the Explorer passes a list of files, and the commands treated it as the selection. They now use it only when it is a list and fall back to the open file otherwise (#41).
+- **The three editor entries no longer appear in the left pane of a git diff.** The left side is the committed version, not a file on disk, so there was nothing to upload or compare; the right pane keeps the entries (#42).
+
 ## [0.16.0] - 2026-11-16
 
 ### Added

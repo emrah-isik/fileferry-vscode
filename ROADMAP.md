@@ -8,6 +8,8 @@
 - Deleting from the Remote Files panel shows a progress notification naming the item being removed
 - Listing refresh: the display name is "FileFerry - SFTP/FTP Deploy", and the description and README lead with the git-aware deploy pitch for VS Code and Cursor
 - Fix: deploy hooks are no longer deleted when the server is saved from the Connection tab of Deployment Settings (#38)
+- Fix (0.16.1): the editor tab menu entries no longer fail with `uris.map is not a function` (#41)
+- Fix (0.16.1): the editor entries are hidden in the left pane of a git diff (#42)
 
 ---
 
