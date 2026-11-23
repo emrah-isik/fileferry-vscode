@@ -39,8 +39,15 @@ describe('package.json menus', () => {
       it(`${menuId} offers the three file commands, guarded to the file scheme`, () => {
         const entries = manifest.contributes.menus[menuId] ?? [];
         expect(entries.map(entry => entry.command)).toEqual(expectedCommands);
+        // Polish1 manual pass, row B7 (2026-11-22): resourceScheme describes the
+        // diff editor as a whole (the modified file), so it is "file" in both
+        // panes. The text-area menu needs VS Code's own diff-pane key to stay
+        // off the left (original) side; the tab menu has no panes.
+        const expectedWhen = menuId === 'editor/context'
+          ? 'resourceScheme == file && !isInDiffLeftEditor'
+          : 'resourceScheme == file';
         for (const entry of entries) {
-          expect(entry.when).toBe('resourceScheme == file');
+          expect(entry.when).toBe(expectedWhen);
         }
       });
 
